@@ -22,4 +22,4 @@
 - Note any manual edits or filters I apply.
 
 ## Validation
-- Use the notebook helper `validate_test_set("data/classicmodels_test_200.json")` to run the 200 queries against the live DB and spot any failures. Use `limit=` for a quick smoke test.
+- Use the notebook helper `validate_test_set("data/classicmodels_test_200.json")` to run the 200 queries against the live DB and spot any failures. Use `limit=` for a quick smoke test. Latest run (2024-12-04): 200/200 success via VS Code + ADC.

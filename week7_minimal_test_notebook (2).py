@@ -10,20 +10,25 @@ What this does:
 - Base Llama-3-8B load (pre-QLoRA placeholder)
 """
 
-# Authenticate to Google Cloud (Colab) or skip gracefully elsewhere
+# Authenticate to Google Cloud (Colab) or fall back to local ADC/service account
 try:
-    from google.colab import auth
+    from google.colab import auth  # type: ignore
 except ModuleNotFoundError:
     auth = None
+
 if auth:
     auth.authenticate_user()
 else:
-    print("Not running in Colab; ensure GCP auth via gcloud/ADC or service account if needed.")
+    # Local run: rely on Application Default Credentials (gcloud auth application-default login)
+    # or set GOOGLE_APPLICATION_CREDENTIALS to a service account key JSON.
+    from google.auth import default
+    creds, proj = default()
+    print(f"Using local ADC credentials (project={proj})")
 
 """Project context (swap to env var in production)."""
 
-# Set GCP project and validate access (Colab shell)
-project_id = "modified-enigma-476414-h9"  # replace with env var in production
+# Set GCP project (env override preferred)
+project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "modified-enigma-476414-h9")
 import os
 os.environ["GOOGLE_CLOUD_PROJECT"] = project_id
 
@@ -361,6 +366,8 @@ def validate_test_set(path: str = "data/classicmodels_test_200.json", limit: Opt
         print("Failures (first 5):")
         for f in failures[:5]:
             print(f)
+    else:
+        print("All queries succeeded in this run.")
     return successes, failures
 
 """Data prep: tiny starter set for quick checks (main test set lives in data/)."""

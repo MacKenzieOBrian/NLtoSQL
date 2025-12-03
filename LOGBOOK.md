@@ -51,8 +51,13 @@
 - Next Steps: Load generated dataset for SFT; load target open-source model and finalize QLoRA config; expand training data.
 
 ## 2024-12-02
-- Activities: Reviewed current notebook scaffold (GCP auth, connector, QueryRunner, schema helpers, Llama-3-8B load). Drafted project structure plan in .md files because its easier to write when in my IDE (ARCHITECTURE.md, CONFIG.md, DATA.md, NOTES.md, scripts for data prep/train/eval/agent). 
+- Activities: Reviewed current notebook scaffold (GCP auth, connector, QueryRunner, schema helpers, Llama-3-8B load). Drafted project structure plan in .md files because its easier to write when in my IDE (ARCHITECTURE.md, CONFIG.md, DATA.md, NOTES.md, scripts for data prep/train/eval/agent). ompleted generation of 200 NL-SQL pairs using GPT-5 and classic models context
 - Insights: We should demonstrate few-shot baseline (as in Ojuri et al.) before QLoRA fine-tuning to show benefit says supervisor. Keep QueryRunner as ReAct tool; log traces for interpretability. Add NOTES.md for justifications/context of design decisions for future writing.
 - Next Steps: Implement few-shot prompt baseline against classicmodels. Begin QLoRA prep with pinned deps and resource logging.
 
+## 2024-12-04
+- Activities: Set VS Code terminal env vars/ADC so the notebook connects locally; ran `validate_test_set` on all 200 classicmodels queries—Success: 200, Failures: 0.
+- Challenges: Needed kernel restart and imports before calling the helper; VS Code env setup was finicky until settings.json had the DB vars.
+- Insights: Static test set executes cleanly end-to-end; helper prints are handy.
+- Next Steps: Pin deps/requirements, run few-shot baseline with metrics/screenshots, then start QLoRA prep and training.
 

@@ -1,8 +1,9 @@
-# Notes and Decision Rationale (kept casual but clear)
+# Notes and Decision Rationale 
 
 ## Docs + Git
 - Commit in small chunks: scaffolds, data prep scripts, baseline few-shot, QLoRA config, training runs, eval. Push to `nl2sql` when ready; leave `origin` alone.
 - Docs split: ARCHITECTURE (ReAct/agent/tools/flow), CONFIG (env + deps + QLoRA params + GPU/VRAM), DATA (train/test/distilled provenance), LOGBOOK (day-to-day).
+- VS Code env: set `terminal.integrated.env.osx` with DB creds + project so notebooks run locally without prompts; use ADC (`gcloud auth application-default login`) or service account key.
 
 ## Baseline vs Fine-Tune
 - Start with a few-shot baseline (schema + table blurbs + 2–4 exemplars) like Ojuri, so I can show why fine-tuning wins.
