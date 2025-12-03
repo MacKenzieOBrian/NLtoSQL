@@ -10,9 +10,15 @@ What this does:
 - Base Llama-3-8B load (pre-QLoRA placeholder)
 """
 
-# Authenticate to Google Cloud
-from google.colab import auth
-auth.authenticate_user()
+# Authenticate to Google Cloud (Colab) or skip gracefully elsewhere
+try:
+    from google.colab import auth
+except ModuleNotFoundError:
+    auth = None
+if auth:
+    auth.authenticate_user()
+else:
+    print("Not running in Colab; ensure GCP auth via gcloud/ADC or service account if needed.")
 
 """Project context (swap to env var in production)."""
 
