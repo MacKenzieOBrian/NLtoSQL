@@ -27,14 +27,40 @@ os.environ["GOOGLE_CLOUD_PROJECT"] = project_id
 """Installs (pin these in a requirements cell/file for real runs)."""
 
 import sys
-!{sys.executable} -m pip install --upgrade pip
-!{sys.executable} -m pip install "cloud-sql-python-connector[pymysql]" SQLAlchemy==2.0.7 pymysql cryptography==41.0.0 --force-reinstall --no-cache-dir
-!{sys.executable} -m pip install accelerate
-!{sys.executable} -m pip install bitsandbytes
-!{sys.executable} -m pip install peft
-!{sys.executable} -m pip install transformers
-!{sys.executable} -m pip install datasets
-!{sys.executable} -m pip install trl
+import subprocess
+
+# Use subprocess for installs when running as a .py (Jupyter !-syntax will not work here).
+subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "pip"], check=True)
+subprocess.run(
+    [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "cloud-sql-python-connector[pymysql]",
+        "SQLAlchemy==2.0.7",
+        "pymysql",
+        "cryptography==41.0.0",
+        "--force-reinstall",
+        "--no-cache-dir",
+    ],
+    check=True,
+)
+subprocess.run(
+    [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "accelerate",
+        "bitsandbytes",
+        "peft",
+        "transformers",
+        "datasets",
+        "trl",
+    ],
+    check=True,
+)
 
 # Standard imports and logger setup
 import os
