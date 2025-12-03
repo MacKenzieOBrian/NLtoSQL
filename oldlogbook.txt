@@ -1,0 +1,339 @@
+NL-to-SQL LLM Agent Dissertation Logbook 
+
+Student: Mackenzie O'Brian (3115928) 
+ Supervisor: Dr Simon Powers 
+ Project: Large Language Model Agent for Natural Language to SQL Conversion 
+
+ 
+
+ 
+
+Week Starting 
+
+Task Progress 
+
+Challenges Faced 
+
+Insights / Learnings 
+
+Next Steps  
+
+29 Sep 2025 
+
+Set up and started initial supervisor meetings. 
+
+ 
+
+Read and made notes on linked research on my project. 
+
+ 
+
+Started project outline document focussing on understanding frameworks mentioned 
+
+Was initally confused on the scope of my project 
+
+ 
+
+Read other articles but failed to make note of their relevance  
+
+ 
+
+Might have written too much on my context leaving me less words for ‘state of the art’ section 
+
+Explored all foreign methods (to me)  outlined in the paper, contextualising their place in training agentic LLM systems. 
+
+ 
+
+Understood what the main research paper found and what they suggest to improve on 
+
+ 
+
+Gather sources to talk about research informing my project and justifying frameworks used. 
+
+ 
+
+Share my work with my supervisor  
+
+ 
+
+6th Oct 2025 
+
+2000 words on my project outline  
+
+ 
+
+Leveraged the studies referenced in the paper im working off of to help my state of the art 
+
+ 
+
+Started ethics application after speaking to supervisor  
+
+ 
+
+Set up onedrive and teams channels to share my work 
+
+Felt like ive relied heavily on the sources already listed in the main research paper 
+
+ 
+
+Spent a large amount of time figuring out the best way to lay out my state of the art in order to properly introduce concepts while backing them up with literature  
+
+Supervisor informed me on using zotero to gather references  
+
+ 
+
+Simon (supervisor) told me that I should look at other ways and methods used to develop agentic LLM models 
+
+ 
+
+Improved understanding of techniques ill be using like PEFT, QLoRa, ASOT, ReAct agents and knowledge graphs 
+
+ 
+
+Find different sources and points of view so I can seperate myself from the research im replicating at some point  
+
+ 
+
+Log all references on zetoro  
+
+ 
+
+Complete ethics application 
+
+13th Oct 2025 
+
+Submitted my final ethics application.This was a good milestone as it allowed me to fully focus on continuing my “state of the art” section. 
+
+ 
+
+Wrote 500 words expanding on how existing research connects to the practical elements of my project.  
+
+Is my state of the art section is too descriptive rather than analytical. I think I need to add a more critical perspective on why certain approaches to agentic LLM training are chosen over others, rather than just summarising their function. 
+
+ 
+
+Rewatched the lecture for the outline and changed some parts where I used the wrong technical  tone  
+
+learned to generate citations directly from Zotero, which saved time. 
+
+ 
+
+Just reading and writing more helped bridge some of the contextual writing with the technical discussion on agentic LLM methods  
+
+Revisit my state of the art section to increase critical discussion. 
+
+ 
+
+Start mapping out how the literature aligns with my eventual implementation plan. 
+
+ 
+
+IEEE referencing style through zotero 
+
+ 
+
+Cover page 
+
+20th Oct 2025 
+
+Completed and refined my project outline according to comments added to my draft by my supervisor 
+
+. 
+
+Added critical analysis comparing proprietary vs open-source LLM approaches. 
+
+ 
+
+Created detailed SMART objectives with measurable success criteria. 
+
+ 
+
+Established MoSCoW requirements framework. 
+
+ 
+
+Drafted comprehensive 13-week project timeline with specific deliverables 
+
+ 
+
+ 
+
+Taking on feedback and adjusting the structure and certain aspects of my outline 
+
+ 
+
+Ensuring the evaluation plan metrics (VA, EX, TS) were clearly explained and justified. 
+
+ 
+
+Added how I plan to use google collab as a last minute adjustment since I had doubts that my laptop hardware could complete even basic finetuning, google colab is a great alternative suggested by my supervisor  
+
+ 
+
+Recognized the importance of framing my project as addressing the "reproducibility gap" in existing research - this became my key contribution angle. 
+
+ 
+
+Understanding QLoRA as the enabling technology that makes the project computationally feasible was a breakthrough. 
+
+ 
+
+Realized the project requires hybrid approach: optimized prompting + ReAct refinement + potential constrained decoding 
+
+Hand in outline submission 
+
+ 
+
+Begin practical implementation (Week 7-8 plan). 
+
+ 
+
+Set up Google Colab development environment. 
+
+ 
+
+~Start reading full papers in detail (especially Ojuri et al. [1] and ReAct [2]) 
+
+27th Oct 2025 
+
+Reviewed dissertation outline and project timeline 
+
+ 
+
+ Identified colab-llm repository for initial Colab setup reference 
+
+ 
+
+ Planned week's activities and created task checklist 
+
+ 
+
+ Prepared minimal test notebook for environment introduction 
+
+ 
+
+Original colab-llm repo useful for helping set up with google cloud but requires adaptation for dissertation needs 
+
+ 
+
+Must focus on QLoRA fine-tuning and ReAct agent implementation, colab-llm is infrastructure only - still need to build fine-tuning pipeline, ReAct agent, database integration, evaluation metrics 
+
+ 
+
+ SQLite approach had data loading issues due to MySQL-specific syntax incompatibilities 
+
+ 
+
+ Pivoted to Cloud SQL which added ~1 hour but provided more robust solution 
+
+ 
+
+ Currently using root user with hardcoded password - needs improvement for security 
+
+Understood project scope requires significant custom development beyond available templates 
+
+ 
+
+ Proper documentation now will directly feed into dissertation  
+
+ 
+
+ Cloud SQL Python Connector creates secure tunnel automatically without IP allowlisting or SSL certificates 
+
+ 
+
+ Infrastructure matters: spending time on proper database setup now saves headaches during evaluation 
+
+ Confirm data integrity in Cloud SQL (verify all tables and relationships) 
+
+ 
+
+Load Meta-Llama-3-8B-Instruct in Colab with 4-bit quantization 
+
+ 
+
+ Establish baseline SQL generation performance (pre-fine-tuning metrics) 
+
+ 
+
+Test model with various prompt templates 
+
+ 
+
+Record hardware specifications (GPU type, VRAM, RAM) 
+
+ 
+
+ Read Ojuri et al. [1] paper completely 
+
+Read ReAct framework paper [2] 
+
+Begin QLoRA documentation deep dive 
+
+3rd Nov 2025 
+
+Built Colab notebook scaffold. implemented Cloud SQL Connector + SQLAlchemy creator. Added safe_connection, schema introspection, and QueryRunner; executed smoke tests on classicmodels customers table 
+
+Still using hardcoded credentials 
+
+ 
+
+Progress stalling, focussing on other assigments and class test for november period  
+
+Cloud SQL Connector simplifies Colab connectivity; QueryRunner provides safe execution and reproducible metadata 
+
+Start loading and evaluating models  
+
+ 
+
+Read ReAct and Ojuri and start finding more similar papers not referenced or any I didnt use in my outline  
+
+ 
+
+Get sample test training together (200) 
+
+10th Nov 2025 
+
+Re organised after week focused on other modules. Re evaluated task progress and next steps. Checked timeline from my outline to get ready for data preparation phase  
+
+Transitioning from technical setup (Cloud SQL Connector, Colab scaffold) to complex conceptual tasks (data generation, ReAct integration) needs greater understanding of original papers 
+
+recognized that the most critical step is having theoretical grounding on fine-tuning and how it yields superior accuracy for domain-specific tasks compared to few-shot approaches 
+
+ 
+
+17th Nov 2025 
+
+Ive done the ‘plumbing’ time for QloRa 
+
+ 
+
+Data Preparation almost ready: Curated the NLQ–SQL dataset with 100 nlq,sql pairs 
+
+ 
+
+ Each item in the dataset now has a 'text' field that combines the database schema, the natural language query, and the corresponding SQL query into a single, structured prompt. 
+
+Loading the LLM with quantization can be finicky (GPU memory, CUDA compatibility, bitsandbytes quirks). 
+
+ 
+
+Google colab is struggling to load large models, Im hoping that its my implementation of QloRa that is the issue  
+
+QueryRunner class defines the 'Act' component of the ReAct  framework 
+
+ 
+
+QLoRA configuration is  "key enabling technology" for achieving feasibility on limited VRAM via 4-bit quantization 
+
+Load the generated nlq_sql_pairs.json dataset and structure it into a prompt template suitable for Supervised Fine-Tuning (SFT) 
+
+ 
+
+Load the target open-source model and implement QloRa so I can run it 
+
+ 
+
+Add to training data  
+
+ 

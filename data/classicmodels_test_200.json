@@ -1,0 +1,802 @@
+[
+  {
+    "nlq": "List all product lines.",
+    "sql": "SELECT productLine FROM productlines;"
+  },
+  {
+    "nlq": "Show product names, codes, and MSRPs.",
+    "sql": "SELECT productName, productCode, MSRP FROM products;"
+  },
+  {
+    "nlq": "Which customers are in the USA?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'USA';"
+  },
+  {
+    "nlq": "Count employees in the San Francisco office.",
+    "sql": "SELECT COUNT(*) AS employee_count FROM employees e JOIN offices o ON e.officeCode = o.officeCode WHERE o.city = 'San Francisco';"
+  },
+  {
+    "nlq": "Total amount per order number.",
+    "sql": "SELECT orderNumber, SUM(quantityOrdered * priceEach) AS total_amount FROM orderdetails GROUP BY orderNumber;"
+  },
+  {
+    "nlq": "Customers with credit limits over 100000.",
+    "sql": "SELECT customerName FROM customers WHERE creditLimit > 100000;"
+  },
+  {
+    "nlq": "List all offices with city and country.",
+    "sql": "SELECT city, country FROM offices;"
+  },
+  {
+    "nlq": "Payments made by customer 103.",
+    "sql": "SELECT checkNumber, paymentDate, amount FROM payments WHERE customerNumber = 103;"
+  },
+  {
+    "nlq": "Names and vendors for products in the Classic Cars line.",
+    "sql": "SELECT productName, productVendor FROM products WHERE productLine = 'Classic Cars';"
+  },
+  {
+    "nlq": "How many orders are shipped?",
+    "sql": "SELECT COUNT(*) AS shipped_orders FROM orders WHERE status = 'Shipped';"
+  },
+  {
+    "nlq": "Top 5 orders by total amount.",
+    "sql": "SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM orders o JOIN orderdetails od USING (orderNumber) GROUP BY o.orderNumber ORDER BY order_total DESC LIMIT 5;"
+  },
+  {
+    "nlq": "Top 5 customers by total payments.",
+    "sql": "SELECT c.customerName, SUM(p.amount) AS total_paid FROM customers c JOIN payments p ON c.customerNumber = p.customerNumber GROUP BY c.customerName ORDER BY total_paid DESC LIMIT 5;"
+  },
+  {
+    "nlq": "Customers who have never placed an order.",
+    "sql": "SELECT c.customerName FROM customers c WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.customerNumber = c.customerNumber);"
+  },
+  {
+    "nlq": "Orders that were cancelled.",
+    "sql": "SELECT orderNumber, orderDate FROM orders WHERE status = 'Cancelled';"
+  },
+  {
+    "nlq": "Average payment amount per country.",
+    "sql": "SELECT c.country, AVG(p.amount) AS avg_payment FROM customers c JOIN payments p ON c.customerNumber = p.customerNumber GROUP BY c.country;"
+  },
+  {
+    "nlq": "Employees and their managers.",
+    "sql": "SELECT e.firstName AS employee_first, e.lastName AS employee_last, m.firstName AS manager_first, m.lastName AS manager_last FROM employees e LEFT JOIN employees m ON e.reportsTo = m.employeeNumber;"
+  },
+  {
+    "nlq": "Orders with more than 3 line items.",
+    "sql": "SELECT orderNumber FROM orderdetails GROUP BY orderNumber HAVING COUNT(*) > 3;"
+  },
+  {
+    "nlq": "Products low on stock (less than 100).",
+    "sql": "SELECT productCode, productName, quantityInStock FROM products WHERE quantityInStock < 100;"
+  },
+  {
+    "nlq": "Average MSRP by product line.",
+    "sql": "SELECT productLine, AVG(MSRP) AS avg_msrp FROM products GROUP BY productLine;"
+  },
+  {
+    "nlq": "Orders with a shipped date before the required date.",
+    "sql": "SELECT orderNumber, shippedDate, requiredDate FROM orders WHERE shippedDate < requiredDate;"
+  },
+  {
+    "nlq": "Number of customers per country.",
+    "sql": "SELECT country, COUNT(*) AS customer_count FROM customers GROUP BY country;"
+  },
+  {
+    "nlq": "Orders placed in 2004.",
+    "sql": "SELECT orderNumber, orderDate FROM orders WHERE YEAR(orderDate) = 2004;"
+  },
+  {
+    "nlq": "Total quantity ordered per product.",
+    "sql": "SELECT productCode, SUM(quantityOrdered) AS total_qty FROM orderdetails GROUP BY productCode;"
+  },
+  {
+    "nlq": "Products priced above their MSRP (should be none).",
+    "sql": "SELECT productCode, productName FROM products WHERE buyPrice > MSRP;"
+  },
+  {
+    "nlq": "Customers and their sales rep names.",
+    "sql": "SELECT c.customerName, e.firstName, e.lastName FROM customers c LEFT JOIN employees e ON c.salesRepEmployeeNumber = e.employeeNumber;"
+  },
+  {
+    "nlq": "Orders still in process.",
+    "sql": "SELECT orderNumber, orderDate FROM orders WHERE status = 'In Process';"
+  },
+  {
+    "nlq": "Total payments per customer, highest first.",
+    "sql": "SELECT c.customerName, SUM(p.amount) AS total_paid FROM customers c JOIN payments p ON c.customerNumber = p.customerNumber GROUP BY c.customerName ORDER BY total_paid DESC;"
+  },
+  {
+    "nlq": "Customers with no payments.",
+    "sql": "SELECT c.customerName FROM customers c WHERE NOT EXISTS (SELECT 1 FROM payments p WHERE p.customerNumber = c.customerNumber);"
+  },
+  {
+    "nlq": "Products with more than 500 units in stock.",
+    "sql": "SELECT productCode, productName, quantityInStock FROM products WHERE quantityInStock > 500;"
+  },
+  {
+    "nlq": "Top 3 countries by number of orders.",
+    "sql": "SELECT c.country, COUNT(*) AS order_count FROM customers c JOIN orders o ON c.customerNumber = o.customerNumber GROUP BY c.country ORDER BY order_count DESC LIMIT 3;"
+  },
+  {
+    "nlq": "Average time between order date and required date.",
+    "sql": "SELECT AVG(DATEDIFF(requiredDate, orderDate)) AS avg_days FROM orders;"
+  },
+  {
+    "nlq": "Offices and how many employees work there.",
+    "sql": "SELECT o.city, o.country, COUNT(e.employeeNumber) AS employee_count FROM offices o LEFT JOIN employees e ON o.officeCode = e.officeCode GROUP BY o.city, o.country;"
+  },
+  {
+    "nlq": "Customers in France with their credit limits.",
+    "sql": "SELECT customerName, creditLimit FROM customers WHERE country = 'France';"
+  },
+  {
+    "nlq": "Orders with comments present.",
+    "sql": "SELECT orderNumber, comments FROM orders WHERE comments IS NOT NULL AND comments <> '';"
+  },
+  {
+    "nlq": "Employees who report to no one (top-level).",
+    "sql": "SELECT firstName, lastName FROM employees WHERE reportsTo IS NULL;"
+  },
+  {
+    "nlq": "Average order total for shipped orders.",
+    "sql": "SELECT AVG(order_total) AS avg_shipped_total FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM orders o JOIN orderdetails od USING (orderNumber) WHERE o.status = 'Shipped' GROUP BY o.orderNumber) t;"
+  },
+  {
+    "nlq": "Orders with payment amounts over 50000.",
+    "sql": "SELECT DISTINCT o.orderNumber FROM orders o JOIN payments p ON o.customerNumber = p.customerNumber WHERE p.amount > 50000;"
+  },
+  {
+    "nlq": "Customers and the number of orders they placed.",
+    "sql": "SELECT c.customerName, COUNT(o.orderNumber) AS order_count FROM customers c LEFT JOIN orders o ON c.customerNumber = o.customerNumber GROUP BY c.customerName;"
+  },
+  {
+    "nlq": "Most recent payment per customer.",
+    "sql": "SELECT p.customerNumber, MAX(p.paymentDate) AS last_payment FROM payments p GROUP BY p.customerNumber;"
+  },
+  {
+    "nlq": "Products never ordered.",
+    "sql": "SELECT p.productCode, p.productName FROM products p WHERE NOT EXISTS (SELECT 1 FROM orderdetails od WHERE od.productCode = p.productCode);"
+  },
+  {
+    "nlq": "Orders that shipped late (after required date).",
+    "sql": "SELECT orderNumber, requiredDate, shippedDate FROM orders WHERE shippedDate > requiredDate;"
+  },
+  {
+    "nlq": "Average payments per month in 2003.",
+    "sql": "SELECT MONTH(paymentDate) AS month_num, AVG(amount) AS avg_payment FROM payments WHERE YEAR(paymentDate) = 2003 GROUP BY MONTH(paymentDate);"
+  },
+  {
+    "nlq": "How many orders from customers in USA have status 'Shipped'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'USA' AND o.status = 'Shipped';"
+  },
+  {
+    "nlq": "How many orders from customers in USA have status 'Cancelled'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'USA' AND o.status = 'Cancelled';"
+  },
+  {
+    "nlq": "How many orders from customers in USA have status 'On Hold'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'USA' AND o.status = 'On Hold';"
+  },
+  {
+    "nlq": "How many orders from customers in USA have status 'Disputed'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'USA' AND o.status = 'Disputed';"
+  },
+  {
+    "nlq": "How many orders from customers in USA have status 'In Process'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'USA' AND o.status = 'In Process';"
+  },
+  {
+    "nlq": "How many orders from customers in USA have status 'Resolved'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'USA' AND o.status = 'Resolved';"
+  },
+  {
+    "nlq": "Which customers in USA have credit limits above 50000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'USA' AND creditLimit > 50000;"
+  },
+  {
+    "nlq": "Which customers in USA have credit limits above 100000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'USA' AND creditLimit > 100000;"
+  },
+  {
+    "nlq": "List orders and totals for customers in USA.",
+    "sql": "SELECT c.customerName, o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM customers c JOIN orders o ON c.customerNumber = o.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'USA' GROUP BY c.customerName, o.orderNumber;"
+  },
+  {
+    "nlq": "List customers in San Francisco.",
+    "sql": "SELECT customerName FROM customers WHERE city = 'San Francisco';"
+  },
+  {
+    "nlq": "How many orders from customers in France have status 'Shipped'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'France' AND o.status = 'Shipped';"
+  },
+  {
+    "nlq": "How many orders from customers in France have status 'Cancelled'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'France' AND o.status = 'Cancelled';"
+  },
+  {
+    "nlq": "How many orders from customers in France have status 'On Hold'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'France' AND o.status = 'On Hold';"
+  },
+  {
+    "nlq": "How many orders from customers in France have status 'Disputed'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'France' AND o.status = 'Disputed';"
+  },
+  {
+    "nlq": "How many orders from customers in France have status 'In Process'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'France' AND o.status = 'In Process';"
+  },
+  {
+    "nlq": "How many orders from customers in France have status 'Resolved'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'France' AND o.status = 'Resolved';"
+  },
+  {
+    "nlq": "Which customers in France have credit limits above 50000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'France' AND creditLimit > 50000;"
+  },
+  {
+    "nlq": "Which customers in France have credit limits above 100000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'France' AND creditLimit > 100000;"
+  },
+  {
+    "nlq": "List orders and totals for customers in France.",
+    "sql": "SELECT c.customerName, o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM customers c JOIN orders o ON c.customerNumber = o.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'France' GROUP BY c.customerName, o.orderNumber;"
+  },
+  {
+    "nlq": "List customers in France.",
+    "sql": "SELECT customerName FROM customers WHERE city = 'France';"
+  },
+  {
+    "nlq": "How many orders from customers in Germany have status 'Shipped'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Germany' AND o.status = 'Shipped';"
+  },
+  {
+    "nlq": "How many orders from customers in Germany have status 'Cancelled'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Germany' AND o.status = 'Cancelled';"
+  },
+  {
+    "nlq": "How many orders from customers in Germany have status 'On Hold'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Germany' AND o.status = 'On Hold';"
+  },
+  {
+    "nlq": "How many orders from customers in Germany have status 'Disputed'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Germany' AND o.status = 'Disputed';"
+  },
+  {
+    "nlq": "How many orders from customers in Germany have status 'In Process'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Germany' AND o.status = 'In Process';"
+  },
+  {
+    "nlq": "How many orders from customers in Germany have status 'Resolved'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Germany' AND o.status = 'Resolved';"
+  },
+  {
+    "nlq": "Which customers in Germany have credit limits above 50000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'Germany' AND creditLimit > 50000;"
+  },
+  {
+    "nlq": "Which customers in Germany have credit limits above 100000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'Germany' AND creditLimit > 100000;"
+  },
+  {
+    "nlq": "List orders and totals for customers in Germany.",
+    "sql": "SELECT c.customerName, o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM customers c JOIN orders o ON c.customerNumber = o.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Germany' GROUP BY c.customerName, o.orderNumber;"
+  },
+  {
+    "nlq": "List customers in Germany.",
+    "sql": "SELECT customerName FROM customers WHERE city = 'Germany';"
+  },
+  {
+    "nlq": "How many orders from customers in UK have status 'Shipped'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'UK' AND o.status = 'Shipped';"
+  },
+  {
+    "nlq": "How many orders from customers in UK have status 'Cancelled'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'UK' AND o.status = 'Cancelled';"
+  },
+  {
+    "nlq": "How many orders from customers in UK have status 'On Hold'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'UK' AND o.status = 'On Hold';"
+  },
+  {
+    "nlq": "How many orders from customers in UK have status 'Disputed'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'UK' AND o.status = 'Disputed';"
+  },
+  {
+    "nlq": "How many orders from customers in UK have status 'In Process'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'UK' AND o.status = 'In Process';"
+  },
+  {
+    "nlq": "How many orders from customers in UK have status 'Resolved'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'UK' AND o.status = 'Resolved';"
+  },
+  {
+    "nlq": "Which customers in UK have credit limits above 50000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'UK' AND creditLimit > 50000;"
+  },
+  {
+    "nlq": "Which customers in UK have credit limits above 100000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'UK' AND creditLimit > 100000;"
+  },
+  {
+    "nlq": "List orders and totals for customers in UK.",
+    "sql": "SELECT c.customerName, o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM customers c JOIN orders o ON c.customerNumber = o.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'UK' GROUP BY c.customerName, o.orderNumber;"
+  },
+  {
+    "nlq": "List customers in UK.",
+    "sql": "SELECT customerName FROM customers WHERE city = 'UK';"
+  },
+  {
+    "nlq": "How many orders from customers in Spain have status 'Shipped'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Spain' AND o.status = 'Shipped';"
+  },
+  {
+    "nlq": "How many orders from customers in Spain have status 'Cancelled'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Spain' AND o.status = 'Cancelled';"
+  },
+  {
+    "nlq": "How many orders from customers in Spain have status 'On Hold'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Spain' AND o.status = 'On Hold';"
+  },
+  {
+    "nlq": "How many orders from customers in Spain have status 'Disputed'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Spain' AND o.status = 'Disputed';"
+  },
+  {
+    "nlq": "How many orders from customers in Spain have status 'In Process'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Spain' AND o.status = 'In Process';"
+  },
+  {
+    "nlq": "How many orders from customers in Spain have status 'Resolved'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Spain' AND o.status = 'Resolved';"
+  },
+  {
+    "nlq": "Which customers in Spain have credit limits above 50000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'Spain' AND creditLimit > 50000;"
+  },
+  {
+    "nlq": "Which customers in Spain have credit limits above 100000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'Spain' AND creditLimit > 100000;"
+  },
+  {
+    "nlq": "List orders and totals for customers in Spain.",
+    "sql": "SELECT c.customerName, o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM customers c JOIN orders o ON c.customerNumber = o.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Spain' GROUP BY c.customerName, o.orderNumber;"
+  },
+  {
+    "nlq": "List customers in Spain.",
+    "sql": "SELECT customerName FROM customers WHERE city = 'Spain';"
+  },
+  {
+    "nlq": "How many orders from customers in Australia have status 'Shipped'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Australia' AND o.status = 'Shipped';"
+  },
+  {
+    "nlq": "How many orders from customers in Australia have status 'Cancelled'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Australia' AND o.status = 'Cancelled';"
+  },
+  {
+    "nlq": "How many orders from customers in Australia have status 'On Hold'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Australia' AND o.status = 'On Hold';"
+  },
+  {
+    "nlq": "How many orders from customers in Australia have status 'Disputed'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Australia' AND o.status = 'Disputed';"
+  },
+  {
+    "nlq": "How many orders from customers in Australia have status 'In Process'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Australia' AND o.status = 'In Process';"
+  },
+  {
+    "nlq": "How many orders from customers in Australia have status 'Resolved'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Australia' AND o.status = 'Resolved';"
+  },
+  {
+    "nlq": "Which customers in Australia have credit limits above 50000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'Australia' AND creditLimit > 50000;"
+  },
+  {
+    "nlq": "Which customers in Australia have credit limits above 100000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'Australia' AND creditLimit > 100000;"
+  },
+  {
+    "nlq": "List orders and totals for customers in Australia.",
+    "sql": "SELECT c.customerName, o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM customers c JOIN orders o ON c.customerNumber = o.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Australia' GROUP BY c.customerName, o.orderNumber;"
+  },
+  {
+    "nlq": "List customers in Australia.",
+    "sql": "SELECT customerName FROM customers WHERE city = 'Australia';"
+  },
+  {
+    "nlq": "How many orders from customers in Canada have status 'Shipped'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Canada' AND o.status = 'Shipped';"
+  },
+  {
+    "nlq": "How many orders from customers in Canada have status 'Cancelled'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Canada' AND o.status = 'Cancelled';"
+  },
+  {
+    "nlq": "How many orders from customers in Canada have status 'On Hold'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Canada' AND o.status = 'On Hold';"
+  },
+  {
+    "nlq": "How many orders from customers in Canada have status 'Disputed'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Canada' AND o.status = 'Disputed';"
+  },
+  {
+    "nlq": "How many orders from customers in Canada have status 'In Process'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Canada' AND o.status = 'In Process';"
+  },
+  {
+    "nlq": "How many orders from customers in Canada have status 'Resolved'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Canada' AND o.status = 'Resolved';"
+  },
+  {
+    "nlq": "Which customers in Canada have credit limits above 50000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'Canada' AND creditLimit > 50000;"
+  },
+  {
+    "nlq": "Which customers in Canada have credit limits above 100000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'Canada' AND creditLimit > 100000;"
+  },
+  {
+    "nlq": "List orders and totals for customers in Canada.",
+    "sql": "SELECT c.customerName, o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM customers c JOIN orders o ON c.customerNumber = o.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Canada' GROUP BY c.customerName, o.orderNumber;"
+  },
+  {
+    "nlq": "List customers in Canada.",
+    "sql": "SELECT customerName FROM customers WHERE city = 'Canada';"
+  },
+  {
+    "nlq": "How many orders from customers in Japan have status 'Shipped'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Japan' AND o.status = 'Shipped';"
+  },
+  {
+    "nlq": "How many orders from customers in Japan have status 'Cancelled'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Japan' AND o.status = 'Cancelled';"
+  },
+  {
+    "nlq": "How many orders from customers in Japan have status 'On Hold'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Japan' AND o.status = 'On Hold';"
+  },
+  {
+    "nlq": "How many orders from customers in Japan have status 'Disputed'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Japan' AND o.status = 'Disputed';"
+  },
+  {
+    "nlq": "How many orders from customers in Japan have status 'In Process'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Japan' AND o.status = 'In Process';"
+  },
+  {
+    "nlq": "How many orders from customers in Japan have status 'Resolved'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Japan' AND o.status = 'Resolved';"
+  },
+  {
+    "nlq": "Which customers in Japan have credit limits above 50000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'Japan' AND creditLimit > 50000;"
+  },
+  {
+    "nlq": "Which customers in Japan have credit limits above 100000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'Japan' AND creditLimit > 100000;"
+  },
+  {
+    "nlq": "List orders and totals for customers in Japan.",
+    "sql": "SELECT c.customerName, o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM customers c JOIN orders o ON c.customerNumber = o.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Japan' GROUP BY c.customerName, o.orderNumber;"
+  },
+  {
+    "nlq": "List customers in Japan.",
+    "sql": "SELECT customerName FROM customers WHERE city = 'Japan';"
+  },
+  {
+    "nlq": "How many orders from customers in Italy have status 'Shipped'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Italy' AND o.status = 'Shipped';"
+  },
+  {
+    "nlq": "How many orders from customers in Italy have status 'Cancelled'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Italy' AND o.status = 'Cancelled';"
+  },
+  {
+    "nlq": "How many orders from customers in Italy have status 'On Hold'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Italy' AND o.status = 'On Hold';"
+  },
+  {
+    "nlq": "How many orders from customers in Italy have status 'Disputed'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Italy' AND o.status = 'Disputed';"
+  },
+  {
+    "nlq": "How many orders from customers in Italy have status 'In Process'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Italy' AND o.status = 'In Process';"
+  },
+  {
+    "nlq": "How many orders from customers in Italy have status 'Resolved'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Italy' AND o.status = 'Resolved';"
+  },
+  {
+    "nlq": "Which customers in Italy have credit limits above 50000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'Italy' AND creditLimit > 50000;"
+  },
+  {
+    "nlq": "Which customers in Italy have credit limits above 100000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'Italy' AND creditLimit > 100000;"
+  },
+  {
+    "nlq": "List orders and totals for customers in Italy.",
+    "sql": "SELECT c.customerName, o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM customers c JOIN orders o ON c.customerNumber = o.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Italy' GROUP BY c.customerName, o.orderNumber;"
+  },
+  {
+    "nlq": "List customers in Italy.",
+    "sql": "SELECT customerName FROM customers WHERE city = 'Italy';"
+  },
+  {
+    "nlq": "How many orders from customers in Norway have status 'Shipped'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Norway' AND o.status = 'Shipped';"
+  },
+  {
+    "nlq": "How many orders from customers in Norway have status 'Cancelled'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Norway' AND o.status = 'Cancelled';"
+  },
+  {
+    "nlq": "How many orders from customers in Norway have status 'On Hold'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Norway' AND o.status = 'On Hold';"
+  },
+  {
+    "nlq": "How many orders from customers in Norway have status 'Disputed'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Norway' AND o.status = 'Disputed';"
+  },
+  {
+    "nlq": "How many orders from customers in Norway have status 'In Process'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Norway' AND o.status = 'In Process';"
+  },
+  {
+    "nlq": "How many orders from customers in Norway have status 'Resolved'?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber WHERE c.country = 'Norway' AND o.status = 'Resolved';"
+  },
+  {
+    "nlq": "Which customers in Norway have credit limits above 50000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'Norway' AND creditLimit > 50000;"
+  },
+  {
+    "nlq": "Which customers in Norway have credit limits above 100000?",
+    "sql": "SELECT customerName FROM customers WHERE country = 'Norway' AND creditLimit > 100000;"
+  },
+  {
+    "nlq": "List orders and totals for customers in Norway.",
+    "sql": "SELECT c.customerName, o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM customers c JOIN orders o ON c.customerNumber = o.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Norway' GROUP BY c.customerName, o.orderNumber;"
+  },
+  {
+    "nlq": "List customers in Norway.",
+    "sql": "SELECT customerName FROM customers WHERE city = 'Norway';"
+  },
+  {
+    "nlq": "What is the average order total for orders with status Shipped?",
+    "sql": "SELECT AVG(order_total) AS avg_total FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM orders o JOIN orderdetails od USING (orderNumber) WHERE o.status = 'Shipped' GROUP BY o.orderNumber) t;"
+  },
+  {
+    "nlq": "What is the average order total for orders with status Cancelled?",
+    "sql": "SELECT AVG(order_total) AS avg_total FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM orders o JOIN orderdetails od USING (orderNumber) WHERE o.status = 'Cancelled' GROUP BY o.orderNumber) t;"
+  },
+  {
+    "nlq": "What is the average order total for orders with status On Hold?",
+    "sql": "SELECT AVG(order_total) AS avg_total FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM orders o JOIN orderdetails od USING (orderNumber) WHERE o.status = 'On Hold' GROUP BY o.orderNumber) t;"
+  },
+  {
+    "nlq": "What is the average order total for orders with status Disputed?",
+    "sql": "SELECT AVG(order_total) AS avg_total FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM orders o JOIN orderdetails od USING (orderNumber) WHERE o.status = 'Disputed' GROUP BY o.orderNumber) t;"
+  },
+  {
+    "nlq": "What is the average order total for orders with status In Process?",
+    "sql": "SELECT AVG(order_total) AS avg_total FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM orders o JOIN orderdetails od USING (orderNumber) WHERE o.status = 'In Process' GROUP BY o.orderNumber) t;"
+  },
+  {
+    "nlq": "What is the average order total for orders with status Resolved?",
+    "sql": "SELECT AVG(order_total) AS avg_total FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS order_total FROM orders o JOIN orderdetails od USING (orderNumber) WHERE o.status = 'Resolved' GROUP BY o.orderNumber) t;"
+  },
+  {
+    "nlq": "List payments made after 2003 that are over 5000.",
+    "sql": "SELECT customerNumber, checkNumber, paymentDate, amount FROM payments WHERE YEAR(paymentDate) > 2003 AND amount > 5000;"
+  },
+  {
+    "nlq": "What is the average payment amount in 2003?",
+    "sql": "SELECT AVG(amount) AS avg_payment FROM payments WHERE YEAR(paymentDate) = 2003;"
+  },
+  {
+    "nlq": "Find orders placed between 2003 and 2003.",
+    "sql": "SELECT orderNumber, orderDate FROM orders WHERE orderDate BETWEEN '2003-01-01' AND '2003-12-31';"
+  },
+  {
+    "nlq": "Which customers have no payments after 2003?",
+    "sql": "SELECT c.customerName FROM customers c WHERE NOT EXISTS (SELECT 1 FROM payments p WHERE p.customerNumber = c.customerNumber AND YEAR(p.paymentDate) > 2003);"
+  },
+  {
+    "nlq": "List payments made after 2004 that are over 5000.",
+    "sql": "SELECT customerNumber, checkNumber, paymentDate, amount FROM payments WHERE YEAR(paymentDate) > 2004 AND amount > 5000;"
+  },
+  {
+    "nlq": "What is the average payment amount in 2004?",
+    "sql": "SELECT AVG(amount) AS avg_payment FROM payments WHERE YEAR(paymentDate) = 2004;"
+  },
+  {
+    "nlq": "Find orders placed between 2004 and 2004.",
+    "sql": "SELECT orderNumber, orderDate FROM orders WHERE orderDate BETWEEN '2004-01-01' AND '2004-12-31';"
+  },
+  {
+    "nlq": "Which customers have no payments after 2004?",
+    "sql": "SELECT c.customerName FROM customers c WHERE NOT EXISTS (SELECT 1 FROM payments p WHERE p.customerNumber = c.customerNumber AND YEAR(p.paymentDate) > 2004);"
+  },
+  {
+    "nlq": "List payments made after 2005 that are over 5000.",
+    "sql": "SELECT customerNumber, checkNumber, paymentDate, amount FROM payments WHERE YEAR(paymentDate) > 2005 AND amount > 5000;"
+  },
+  {
+    "nlq": "What is the average payment amount in 2005?",
+    "sql": "SELECT AVG(amount) AS avg_payment FROM payments WHERE YEAR(paymentDate) = 2005;"
+  },
+  {
+    "nlq": "Find orders placed between 2005 and 2005.",
+    "sql": "SELECT orderNumber, orderDate FROM orders WHERE orderDate BETWEEN '2005-01-01' AND '2005-12-31';"
+  },
+  {
+    "nlq": "Which customers have no payments after 2005?",
+    "sql": "SELECT c.customerName FROM customers c WHERE NOT EXISTS (SELECT 1 FROM payments p WHERE p.customerNumber = c.customerNumber AND YEAR(p.paymentDate) > 2005);"
+  },
+  {
+    "nlq": "Show the top 5 products by sales amount in the Classic Cars line ordered.",
+    "sql": "SELECT p.productName, SUM(od.quantityOrdered * od.priceEach) AS total_sales FROM products p JOIN orderdetails od ON p.productCode = od.productCode WHERE p.productLine = 'Classic Cars' GROUP BY p.productName ORDER BY total_sales DESC LIMIT 5;"
+  },
+  {
+    "nlq": "Show the top 5 products by sales amount in the Vintage Cars line ordered.",
+    "sql": "SELECT p.productName, SUM(od.quantityOrdered * od.priceEach) AS total_sales FROM products p JOIN orderdetails od ON p.productCode = od.productCode WHERE p.productLine = 'Vintage Cars' GROUP BY p.productName ORDER BY total_sales DESC LIMIT 5;"
+  },
+  {
+    "nlq": "Show the top 5 products by sales amount in the Motorcycles line ordered.",
+    "sql": "SELECT p.productName, SUM(od.quantityOrdered * od.priceEach) AS total_sales FROM products p JOIN orderdetails od ON p.productCode = od.productCode WHERE p.productLine = 'Motorcycles' GROUP BY p.productName ORDER BY total_sales DESC LIMIT 5;"
+  },
+  {
+    "nlq": "Show the top 5 products by sales amount in the Trains line ordered.",
+    "sql": "SELECT p.productName, SUM(od.quantityOrdered * od.priceEach) AS total_sales FROM products p JOIN orderdetails od ON p.productCode = od.productCode WHERE p.productLine = 'Trains' GROUP BY p.productName ORDER BY total_sales DESC LIMIT 5;"
+  },
+  {
+    "nlq": "Show the top 5 products by sales amount in the Planes line ordered.",
+    "sql": "SELECT p.productName, SUM(od.quantityOrdered * od.priceEach) AS total_sales FROM products p JOIN orderdetails od ON p.productCode = od.productCode WHERE p.productLine = 'Planes' GROUP BY p.productName ORDER BY total_sales DESC LIMIT 5;"
+  },
+  {
+    "nlq": "Show the top 5 products by sales amount in the Ships line ordered.",
+    "sql": "SELECT p.productName, SUM(od.quantityOrdered * od.priceEach) AS total_sales FROM products p JOIN orderdetails od ON p.productCode = od.productCode WHERE p.productLine = 'Ships' GROUP BY p.productName ORDER BY total_sales DESC LIMIT 5;"
+  },
+  {
+    "nlq": "Show the top 5 products by sales amount in the Trucks and Buses line ordered.",
+    "sql": "SELECT p.productName, SUM(od.quantityOrdered * od.priceEach) AS total_sales FROM products p JOIN orderdetails od ON p.productCode = od.productCode WHERE p.productLine = 'Trucks and Buses' GROUP BY p.productName ORDER BY total_sales DESC LIMIT 5;"
+  },
+  {
+    "nlq": "Show the top 10 products by sales amount ordered.",
+    "sql": "SELECT p.productName, SUM(od.quantityOrdered * od.priceEach) AS total_sales FROM products p JOIN orderdetails od ON p.productCode = od.productCode GROUP BY p.productName ORDER BY total_sales DESC LIMIT 10;"
+  },
+  {
+    "nlq": "List products supplied by Min Lin Diecast.",
+    "sql": "SELECT productCode, productName FROM products WHERE productVendor = 'Min Lin Diecast';"
+  },
+  {
+    "nlq": "List products supplied by Autoart Studio Design.",
+    "sql": "SELECT productCode, productName FROM products WHERE productVendor = 'Autoart Studio Design';"
+  },
+  {
+    "nlq": "List products supplied by Highway 66 Mini Classics.",
+    "sql": "SELECT productCode, productName FROM products WHERE productVendor = 'Highway 66 Mini Classics';"
+  },
+  {
+    "nlq": "List products supplied by Red Start Diecast.",
+    "sql": "SELECT productCode, productName FROM products WHERE productVendor = 'Red Start Diecast';"
+  },
+  {
+    "nlq": "List products supplied by Classic Metal Creations.",
+    "sql": "SELECT productCode, productName FROM products WHERE productVendor = 'Classic Metal Creations';"
+  },
+  {
+    "nlq": "How many employees work in each office?",
+    "sql": "SELECT o.city, o.country, COUNT(e.employeeNumber) AS employee_count FROM offices o LEFT JOIN employees e ON o.officeCode = e.officeCode GROUP BY o.city, o.country;"
+  },
+  {
+    "nlq": "Show 5 orders with the highest number of line items.",
+    "sql": "SELECT orderNumber, COUNT(*) AS line_items FROM orderdetails GROUP BY orderNumber ORDER BY line_items DESC, orderNumber ASC LIMIT 5;"
+  },
+  {
+    "nlq": "Show 10 orders with the highest number of line items.",
+    "sql": "SELECT orderNumber, COUNT(*) AS line_items FROM orderdetails GROUP BY orderNumber ORDER BY line_items DESC, orderNumber ASC LIMIT 10;"
+  },
+  {
+    "nlq": "Find orders where the customer has never made a payment.",
+    "sql": "SELECT DISTINCT o.orderNumber FROM orders o WHERE NOT EXISTS (SELECT 1 FROM payments p WHERE p.customerNumber = o.customerNumber);"
+  },
+  {
+    "nlq": "Count Shipped orders for USA with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'USA' AND o.status = 'Shipped' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count Cancelled orders for France with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'France' AND o.status = 'Cancelled' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count On Hold orders for Germany with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Germany' AND o.status = 'On Hold' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count Disputed orders for UK with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'UK' AND o.status = 'Disputed' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count In Process orders for Spain with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Spain' AND o.status = 'In Process' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count Resolved orders for Australia with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Australia' AND o.status = 'Resolved' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count Shipped orders for Canada with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Canada' AND o.status = 'Shipped' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count Cancelled orders for Japan with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Japan' AND o.status = 'Cancelled' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count On Hold orders for Italy with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Italy' AND o.status = 'On Hold' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count Disputed orders for Norway with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Norway' AND o.status = 'Disputed' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count In Process orders for USA with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'USA' AND o.status = 'In Process' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count Resolved orders for France with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'France' AND o.status = 'Resolved' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count Shipped orders for Germany with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Germany' AND o.status = 'Shipped' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count Cancelled orders for UK with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'UK' AND o.status = 'Cancelled' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count On Hold orders for Spain with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Spain' AND o.status = 'On Hold' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count Disputed orders for Australia with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Australia' AND o.status = 'Disputed' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count In Process orders for Canada with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Canada' AND o.status = 'In Process' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count Resolved orders for Japan with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Japan' AND o.status = 'Resolved' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count Shipped orders for Italy with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Italy' AND o.status = 'Shipped' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count Cancelled orders for Norway with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Norway' AND o.status = 'Cancelled' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count On Hold orders for USA with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'USA' AND o.status = 'On Hold' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count Disputed orders for France with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'France' AND o.status = 'Disputed' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  },
+  {
+    "nlq": "Count In Process orders for Germany with totals over 50000.",
+    "sql": "SELECT COUNT(*) AS order_count FROM (SELECT o.orderNumber, SUM(od.quantityOrdered * od.priceEach) AS total_amount FROM orders o JOIN customers c ON o.customerNumber = c.customerNumber JOIN orderdetails od ON o.orderNumber = od.orderNumber WHERE c.country = 'Germany' AND o.status = 'In Process' GROUP BY o.orderNumber HAVING total_amount > 50000) t;"
+  }
+]
