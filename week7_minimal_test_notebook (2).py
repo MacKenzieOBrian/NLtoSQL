@@ -35,44 +35,18 @@ os.environ["GOOGLE_CLOUD_PROJECT"] = project_id
 # !gcloud config set project {project_id}
 # !gcloud projects describe {project_id}
 
-"""Installs (pin these in a requirements cell/file for real runs)."""
+"""Installs (prefer: pip install -r requirements.txt)."""
 
 import sys
 import subprocess
 
 # Use subprocess for installs when running as a .py (Jupyter !-syntax will not work here).
-subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "pip"], check=True)
-subprocess.run(
-    [
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "google-api-core",
-        "cloud-sql-python-connector[pymysql]",
-        "SQLAlchemy==2.0.7",
-        "pymysql",
-        "cryptography==41.0.0",
-        "--force-reinstall",
-        "--no-cache-dir",
-    ],
-    check=True,
-)
-subprocess.run(
-    [
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "accelerate",
-        "bitsandbytes",
-        "peft",
-        "transformers",
-        "datasets",
-        "trl",
-    ],
-    check=True,
-)
+# Prefer requirements.txt to keep versions pinned and reproducible.
+try:
+    subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "pip"], check=True)
+    subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], check=True)
+except Exception as e:
+    print(f"Install step skipped/failed: {e}")
 
 # Standard imports and logger setup
 import os
