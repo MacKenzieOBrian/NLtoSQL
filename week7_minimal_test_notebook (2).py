@@ -43,6 +43,7 @@ subprocess.run(
         "-m",
         "pip",
         "install",
+        "google-api-core",
         "cloud-sql-python-connector[pymysql]",
         "SQLAlchemy==2.0.7",
         "pymysql",
