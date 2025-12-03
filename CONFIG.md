@@ -6,20 +6,21 @@
 - Hardware: jot GPU model, VRAM, RAM per run in LOGBOOK.
 - Secrets: env/interactive for now; move to Secret Manager later.
 
-## Deps to pin (add to requirements cell/file)
+## Deps to pin (requirements.txt)
 - python 3.10+
-- torch (match Colab GPU)
-- transformers (pin)
-- accelerate (pin)
-- bitsandbytes (pin)
-- peft (pin)
-- trl (pin)
-- datasets (pin)
-- cloud-sql-python-connector[pymysql]
+- torch==2.2.2
+- transformers==4.37.2
+- accelerate==0.27.2
+- bitsandbytes==0.42.0
+- peft==0.10.0
+- trl==0.7.10
+- datasets==2.16.1
+- google-api-core==2.11.1
+- cloud-sql-python-connector[pymysql]==1.3.1
 - SQLAlchemy==2.0.7
-- pymysql
+- pymysql==1.1.0
 - cryptography==41.0.0
-- pandas
+- pandas==2.2.1
 
 ## Models
 - Base: `meta-llama/Meta-Llama-3-8B-Instruct`
