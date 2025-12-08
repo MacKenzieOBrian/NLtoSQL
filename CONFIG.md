@@ -19,7 +19,7 @@
 - cloud-sql-python-connector[pymysql]==1.18.5
 - SQLAlchemy==2.0.7
 - pymysql==1.1.0
-- cryptography==41.0.0
+- cryptography==42.0.5
 - pandas==2.2.1
 
 ## Models
