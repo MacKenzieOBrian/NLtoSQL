@@ -2,10 +2,10 @@
 """
 week7_minimal_test_notebook.ipynb (flattened)
 
-What this does:
-- Auth to GCP
+Flow (unchanged logic):
+- Auth to GCP (Colab or local ADC/service account)
 - Safe Cloud SQL connection (classicmodels) via connector + SQLAlchemy
-- Schema helpers + QueryRunner tool
+- Schema helpers + QueryRunner tool (read-only)
 - Smoke tests and test-set validator
 - Base Llama-3-8B load (pre-QLoRA placeholder)
 """
@@ -25,7 +25,7 @@ else:
     creds, proj = default()
     print(f"Using local ADC credentials (project={proj})")
 
-"""Project context (swap to env var in production)."""
+"""Project context (use env var in production)."""
 
 # Set GCP project (env override preferred)
 project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "modified-enigma-476414-h9")
@@ -166,26 +166,7 @@ finally:
     # connector.close()  # uncomment to close when finished
     pass
 
-"""# Justification for QueryRunner Class
-
-**Purpose**:
-The QueryRunner class is a central component for safely and systematically executing SQL queries within this NL-to-SQL evaluation framework. Its design incorporates several key features:
-
-**Safety Checks**(_safety_check):
-
-Crucially, it includes logic to prevent the execution of potentially destructive SQL commands (DROP, DELETE, TRUNCATE, ALTER, CREATE).
-
-**History Tracking:** Every executed query, along with its outcome (success/failure, execution time, row count, errors, and a result preview)
-
-**Result Capture:** Query results are captured into pandas.DataFrame objects, making them easy to analyze, display, and further process within the Python environment.
-
-**Error Handling:** Robust try...except blocks ensure that database errors are caught, logged, and associated with the specific query in the history.
-
-**Reproducibility and Evaluation:** By logging comprehensive metadata for each query, the QueryRunner directly supports the evaluation of NL-to-SQL models, enabling analysis of generated SQL correctness and execution behavior.
-
-
-**Sources**: sqlalchemy for database interaction, pandas for data handling, Python's datetime and json for timestamping and serialization, software engineering principles for robust and safe code.
-"""
+"""QueryRunner: read-only executor with guardrails + metadata (tool in the ReAct loop)."""
 
 # QueryRunner with timezone-aware datetimes
 import pandas as pd
