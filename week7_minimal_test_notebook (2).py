@@ -344,22 +344,6 @@ def validate_test_set(path: str = "data/classicmodels_test_200.json", limit: Opt
         print("All queries succeeded in this run.")
     return successes, failures
 
-"""Data prep: tiny starter set for quick checks (main test set lives in data/)."""
-
-import json
-
-nlq_sql_pairs = [
-    {"nlq": "What are all the product lines available in our catalog?", "sql": "SELECT productLine FROM productlines;"},
-    {"nlq": "List all products, their product codes, and their MSRPs.", "sql": "SELECT productName, productCode, MSRP FROM products;"},
-    {"nlq": "Show the names of customers from the USA.", "sql": "SELECT customerName FROM customers WHERE country = 'USA';"},
-    {"nlq": "How many employees work in the 'San Francisco' office?", "sql": "SELECT COUNT(*) FROM employees e JOIN offices o ON e.officeCode = o.officeCode WHERE o.city = 'San Francisco';"},
-    {"nlq": "Find the total amount for each order number.", "sql": "SELECT orderNumber, SUM(quantityOrdered * priceEach) AS total_amount FROM orderdetails GROUP BY orderNumber;"},
-    {"nlq": "Which customers have a credit limit greater than 100000?", "sql": "SELECT customerName FROM customers WHERE creditLimit > 100000;"},
-    {"nlq": "List all offices and their locations (city, country).", "sql": "SELECT city, country FROM offices;"},
-    {"nlq": "What are the details of payments made by customer number 103?", "sql": "SELECT checkNumber, paymentDate, amount FROM payments WHERE customerNumber = 103;"},
-    {"nlq": "Show the product names and their vendors for products in the 'Classic Cars' product line.", "sql": "SELECT productName, productVendor FROM products WHERE productLine = 'Classic Cars';"},
-    {"nlq": "How many orders have a 'Shipped' status?", "sql": "SELECT COUNT(*) FROM orders WHERE status = 'Shipped';"}
-]
 
 # Save the NLQ-SQL pairs to a JSON file
 file_path = "curated_nlq_sql_pairs.json"

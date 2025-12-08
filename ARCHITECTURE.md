@@ -14,6 +14,7 @@
   - Safety: rejects destructive tokens (DROP/DELETE/TRUNCATE/ALTER/CREATE).
   - Metadata: `success`, `rowcount`, `exec_time_s`, `error`, `columns`, `result_preview` (truncated), timestamp.
   - History: append-only for later evaluation and TS scoring.
+- Why it matters: QueryRunner is the bridge between the LLM’s SQL and the database. It enforces read-only safety, provides an audit trail (history/save_history), and produces the Observation (errors, row counts, previews) that the LLM uses to self-correct in ReAct. It is a thin, reproducible wrapper over SQLAlchemy + Cloud SQL connector, inspired by safe DB executor patterns—not a third-party agent lib.
 - Observation Handling:
   - On error: include error message and prior SQL in the next prompt section for self-correction.
   - On success: include row count and preview to validate semantic correctness.
@@ -26,6 +27,12 @@
 5) QueryRunner executes SQL → Observation (result/error).
 6) LLM refines using Observation; repeat or stop.
 7) Outputs: final SQL, execution metadata, reasoning trace.
+
+## Context Assembly, Thought, Refinement
+- Context assembly: gather schema/table blurbs (via list_tables/get_table_columns or cached JSON) and, for few-shot, 2–4 NLQ→SQL exemplars. Build a prompt that includes schema, brief table descriptions, the NLQ, and tool description (for ReAct).
+- Thought: the model reasons over the assembled context to plan the query (tables, joins, filters).
+- Action/Observation: emit SQL, run through QueryRunner; capture success/error, rowcount, columns, preview. Feed this back.
+- Refinement: include errors or mismatched results in the next prompt turn so the LLM can adjust column names, joins, filters, or add/remove conditions. Iterate until stopping criteria are met.
 
 ## Training/Evaluation Hooks
 - QLoRA SFT: train on curated NLQ-SQL pairs (schema-aware text fields) with 4-bit quantization and LoRA adapters; log VRAM/time.
