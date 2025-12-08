@@ -12,6 +12,8 @@
 ## Agent Shape
 - ReAct loop: Thought → Action (SQL via QueryRunner) → Observation → refine. QueryRunner stays the tool with read-only guardrails.
 - Log traces so I can show how the agent reasons and fixes itself.
+- QueryRunner rationale: read-only executor with guardrails and metadata is the “Act” tool; it turns LLM SQL into DB calls safely and produces the Observation (errors/row counts/previews/history) needed for ReAct self-correction and evaluation.
+- Colab sync tips: always git pull before installs; set env vars/ADC/quota project; if NumPy binary mismatch appears, force reinstall once and restart. IAM needed: Cloud SQL Client + Service Usage on the project.
 
 ## Data
 - Classicmodels only. Need a 200-sample test set plus a bigger train set covering joins/aggregations/filters. Keep a schema cache JSON for prompts.
