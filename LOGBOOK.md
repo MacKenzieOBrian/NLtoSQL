@@ -61,3 +61,14 @@
 - Insights: Static test set executes cleanly end-to-end; helper prints are handy.
 - Next Steps: Pin deps/requirements, run few-shot baseline with metrics/screenshots, then start QLoRA prep and training.
 
+## 2024-12-05
+- Activities: Pinned deps in requirements.txt, updated notebook/script installs to use it; pushed changes. Verified the updated install cell in the clean notebook. Confirmed validation remains green.
+- Challenges: VS Code caching made it look like cells weren’t updating, annoying to figure out.
+- Insights: Locking installs via requirements.txt keeps runs reproducible across Colab/local.
+- Next Steps: Build/run the few-shot baseline (log VA/EX with prompts/screenshots), then start QLoRA hyperparam locking and SFT prep.
+
+## 2024-12-06
+- Activities: Synced Colab with repo, pulled latest pins; fixed connector/cryptography pins and NumPy mismatch; set ADC/quota project; ran installs via requirements.txt. Notebook installs now point at requirements.txt; Config now includes env var examples.
+- Challenges: Cloud SQL auth issues in Colab (quota project/permissions) and binary mismatches; had to force reinstall NumPy and restart. Colab preinstalls conflict with pinned stack, so restart/order matters.
+- Insights: Use git pull in Colab before installs; set env vars and ADC/quota project explicitly; if NumPy errors appear, reinstall once per session and restart. Colab needs the right IAM (Cloud SQL Client + Service Usage) for the connector.
+- Next Steps: Run few-shot baseline on Colab GPU with current stack; record VA/EX and screenshots; then move to QLoRA SFT prep (hyperparams/logging).

@@ -2,10 +2,10 @@
 """
 week7_minimal_test_notebook.ipynb (flattened)
 
-What this does:
-- Auth to GCP
+Flow (unchanged logic):
+- Auth to GCP (Colab or local ADC/service account)
 - Safe Cloud SQL connection (classicmodels) via connector + SQLAlchemy
-- Schema helpers + QueryRunner tool
+- Schema helpers + QueryRunner tool (read-only)
 - Smoke tests and test-set validator
 - Base Llama-3-8B load (pre-QLoRA placeholder)
 """
@@ -25,7 +25,7 @@ else:
     creds, proj = default()
     print(f"Using local ADC credentials (project={proj})")
 
-"""Project context (swap to env var in production)."""
+"""Project context (use env var in production)."""
 
 # Set GCP project (env override preferred)
 project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "modified-enigma-476414-h9")
@@ -166,26 +166,7 @@ finally:
     # connector.close()  # uncomment to close when finished
     pass
 
-"""# Justification for QueryRunner Class
-
-**Purpose**:
-The QueryRunner class is a central component for safely and systematically executing SQL queries within this NL-to-SQL evaluation framework. Its design incorporates several key features:
-
-**Safety Checks**(_safety_check):
-
-Crucially, it includes logic to prevent the execution of potentially destructive SQL commands (DROP, DELETE, TRUNCATE, ALTER, CREATE).
-
-**History Tracking:** Every executed query, along with its outcome (success/failure, execution time, row count, errors, and a result preview)
-
-**Result Capture:** Query results are captured into pandas.DataFrame objects, making them easy to analyze, display, and further process within the Python environment.
-
-**Error Handling:** Robust try...except blocks ensure that database errors are caught, logged, and associated with the specific query in the history.
-
-**Reproducibility and Evaluation:** By logging comprehensive metadata for each query, the QueryRunner directly supports the evaluation of NL-to-SQL models, enabling analysis of generated SQL correctness and execution behavior.
-
-
-**Sources**: sqlalchemy for database interaction, pandas for data handling, Python's datetime and json for timestamping and serialization, software engineering principles for robust and safe code.
-"""
+"""QueryRunner: read-only executor with guardrails + metadata (tool in the ReAct loop)."""
 
 # QueryRunner with timezone-aware datetimes
 import pandas as pd
@@ -344,22 +325,6 @@ def validate_test_set(path: str = "data/classicmodels_test_200.json", limit: Opt
         print("All queries succeeded in this run.")
     return successes, failures
 
-"""Data prep: tiny starter set for quick checks (main test set lives in data/)."""
-
-import json
-
-nlq_sql_pairs = [
-    {"nlq": "What are all the product lines available in our catalog?", "sql": "SELECT productLine FROM productlines;"},
-    {"nlq": "List all products, their product codes, and their MSRPs.", "sql": "SELECT productName, productCode, MSRP FROM products;"},
-    {"nlq": "Show the names of customers from the USA.", "sql": "SELECT customerName FROM customers WHERE country = 'USA';"},
-    {"nlq": "How many employees work in the 'San Francisco' office?", "sql": "SELECT COUNT(*) FROM employees e JOIN offices o ON e.officeCode = o.officeCode WHERE o.city = 'San Francisco';"},
-    {"nlq": "Find the total amount for each order number.", "sql": "SELECT orderNumber, SUM(quantityOrdered * priceEach) AS total_amount FROM orderdetails GROUP BY orderNumber;"},
-    {"nlq": "Which customers have a credit limit greater than 100000?", "sql": "SELECT customerName FROM customers WHERE creditLimit > 100000;"},
-    {"nlq": "List all offices and their locations (city, country).", "sql": "SELECT city, country FROM offices;"},
-    {"nlq": "What are the details of payments made by customer number 103?", "sql": "SELECT checkNumber, paymentDate, amount FROM payments WHERE customerNumber = 103;"},
-    {"nlq": "Show the product names and their vendors for products in the 'Classic Cars' product line.", "sql": "SELECT productName, productVendor FROM products WHERE productLine = 'Classic Cars';"},
-    {"nlq": "How many orders have a 'Shipped' status?", "sql": "SELECT COUNT(*) FROM orders WHERE status = 'Shipped';"}
-]
 
 # Save the NLQ-SQL pairs to a JSON file
 file_path = "curated_nlq_sql_pairs.json"

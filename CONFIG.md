@@ -5,6 +5,12 @@
 - Connector: `cloud-sql-python-connector[pymysql]` + SQLAlchemy creator.
 - Hardware: jot GPU model, VRAM, RAM per run in LOGBOOK.
 - Secrets: env/interactive for now; move to Secret Manager later.
+- Env vars (dev convenience values):
+  - `INSTANCE_CONNECTION_NAME=modified-enigma-476414-h9:europe-west2:classicmodels`
+  - `DB_USER=root`
+  - `DB_PASS=<your_password>`
+  - `DB_NAME=classicmodels`
+  - `GOOGLE_CLOUD_PROJECT=modified-enigma-476414-h9`
 
 ## Deps to pin (requirements.txt)
 - python 3.10+
@@ -16,10 +22,10 @@
 - trl==0.7.10
 - datasets==2.16.1
 - google-api-core==2.11.1
-- cloud-sql-python-connector[pymysql]==1.3.1
+- cloud-sql-python-connector[pymysql]==1.18.5
 - SQLAlchemy==2.0.7
 - pymysql==1.1.0
-- cryptography==41.0.0
+- cryptography==42.0.5
 - pandas==2.2.1
 
 ## Models
