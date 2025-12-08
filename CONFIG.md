@@ -16,7 +16,7 @@
 - trl==0.7.10
 - datasets==2.16.1
 - google-api-core==2.11.1
-- cloud-sql-python-connector[pymysql]==1.3.1
+- cloud-sql-python-connector[pymysql]==1.18.5
 - SQLAlchemy==2.0.7
 - pymysql==1.1.0
 - cryptography==41.0.0
