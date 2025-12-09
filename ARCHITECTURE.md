@@ -1,40 +1,243 @@
-# ARCHITECTURE
+# System Architecture & Design Justification  
+_Dissertation Project: NL-to-SQL Translation over the ClassicModels Database_  
+---
 
-## Overview
-- Goal: ReAct-based text-to-SQL system targeting the classicmodels MySQL schema, using an open-source LLM (Meta-Llama-3-8B-Instruct) with QLoRA adapters.
-- Agent loop: Thought → Action (SQL via tool) → Observation (QueryRunner output/error) → Refined Thought. Iterates until a stopping condition or maximum turns.
-- Tools: `QueryRunner` exposes a guarded `run(sql, params)` interface; additional helper tools (schema cache loader, prompt builder) can be added as simple callables returning JSON/text.
+## 1. Overview
 
-## Components
-- LLM Backbone: `meta-llama/Meta-Llama-3-8B-Instruct` loaded in 4-bit for QLoRA; tokenizer aligned to model.
-- Prompting:
-  - Few-shot baseline prompt (schema + table descriptions + NLQ + 2–4 exemplars) for pre-finetune evaluation.
-  - ReAct prompt template includes: question, schema context, available tools, previous Thought/Action/Observation history, and safety note (read-only).
-- QueryRunner (Act/Tool):
-  - Safety: rejects destructive tokens (DROP/DELETE/TRUNCATE/ALTER/CREATE).
-  - Metadata: `success`, `rowcount`, `exec_time_s`, `error`, `columns`, `result_preview` (truncated), timestamp.
-  - History: append-only for later evaluation and TS scoring.
-- Why it matters: QueryRunner is the bridge between the LLM’s SQL and the database. It enforces read-only safety, provides an audit trail (history/save_history), and produces the Observation (errors, row counts, previews) that the LLM uses to self-correct in ReAct. It is a thin, reproducible wrapper over SQLAlchemy + Cloud SQL connector, inspired by safe DB executor patterns—not a third-party agent lib.
-- Observation Handling:
-  - On error: include error message and prior SQL in the next prompt section for self-correction.
-  - On success: include row count and preview to validate semantic correctness.
+This project implements a complete NL-to-SQL experimentation pipeline over the **ClassicModels** MySQL dataset.  
+The system is structured around four components:
 
-## Data Flow
-1) Input: Natural language question.
-2) Context assembly: schema cache + table descriptions + (optionally) few-shot exemplars.
-3) LLM Thought: reason about intent and plan query.
-4) Action: emit SQL string (read-only).
-5) QueryRunner executes SQL → Observation (result/error).
-6) LLM refines using Observation; repeat or stop.
-7) Outputs: final SQL, execution metadata, reasoning trace.
+1. **Secure database access layer** (Cloud SQL Connector + SQLAlchemy).  
+2. **QueryRunner execution engine** for controlled SQL evaluation.  
+3. **Schema introspection & representation pipeline** for LLM prompting.  
+4. **Model inference and evaluation pipeline**, including few-shot prompting and later QLoRA fine-tuning.
 
-## Context Assembly, Thought, Refinement
-- Context assembly: gather schema/table blurbs (via list_tables/get_table_columns or cached JSON) and, for few-shot, 2–4 NLQ→SQL exemplars. Build a prompt that includes schema, brief table descriptions, the NLQ, and tool description (for ReAct).
-- Thought: the model reasons over the assembled context to plan the query (tables, joins, filters).
-- Action/Observation: emit SQL, run through QueryRunner; capture success/error, rowcount, columns, preview. Feed this back.
-- Refinement: include errors or mismatched results in the next prompt turn so the LLM can adjust column names, joins, filters, or add/remove conditions. Iterate until stopping criteria are met.
+The design explicitly follows the methodological recommendations of **Ojuri et al. (2024)**, specifically:
 
-## Training/Evaluation Hooks
-- QLoRA SFT: train on curated NLQ-SQL pairs (schema-aware text fields) with 4-bit quantization and LoRA adapters; log VRAM/time.
-- Metrics: VA (syntax), EX (execution vs gold), TS (distilled DB consistency). Distilled DBs are schema-identical variants with altered data.
-- Tracing: save per-turn traces (Thought/Action/Observation) for interpretability and dissertation artifacts.
+- Evaluation via **VA** (Validity), **EX** (Exact Match), and later **TS** (True Semantic).  
+- Systematic comparison of **few-shot prompting vs parameter-efficient fine-tuning**.  
+- Emphasis on **safe SQL execution**, **reproducibility**, and **transparent experimental logging**.
+
+This architecture document explains not only *how* the system is implemented, but also *why* each component exists and how it contributes to methodological alignment.
+
+---
+
+## 1.1 Execution Environment & Dependency Discipline
+
+- **Environment**: Google Colab GPU runtime (T4/A100), Python 3.12, repo synced from https://github.com/MacKenzieOBrian/NLtoSQL.  
+- **Dependencies**: Pinned via `requirements.txt` to stabilize binaries: `torch==2.2.2`, `transformers==4.37.2`, `bitsandbytes==0.42.0`, `pandas==2.2.1`, and `numpy==1.26.4` to resolve the NumPy C-extension incompatibility.  
+- **Process**: Install, then **restart runtime** to clear conflicting preinstalled extensions; verify NumPy/Pandas/Torch alignment.  
+- **Missing files**: requirements, JSON test set, and docs are synced from the GitHub project; notebook cells rely on these paths.
+
+## 1.2 Design Principles & Research Questions
+
+- **Reproducibility first**: Pinned requirements, logged notebook cells, and this document form the reproducibility spine so results can be rerun across Colab sessions.  
+- **Safety and auditability**: All SQL is read-only, filtered, and logged with metadata; prompts and outputs are stored for traceability.  
+- **Baseline before fine-tune**: Start with schema-grounded few-shot prompting to establish VA/EX baselines before adding QLoRA adapters, aligning with Ojuri et al. on measuring true uplift.  
+- **Tight schema grounding**: Schema summaries stay in the prompt; prompt length vs. fidelity trade-offs are recorded to justify accuracy/latency decisions.  
+- **Research questions**: (a) How well do schema-grounded few-shot prompts perform on ClassicModels? (b) What uplift comes from QLoRA fine-tuning vs prompting alone? (c) How does safety-checked execution affect VA/EX outcomes?
+
+## 1.3 Scope, Assumptions, Risks
+
+- **Scope**: Single-schema ClassicModels MySQL DB; focus on SELECT-only NL-to-SQL.  
+- **Assumptions**: Live DB connectivity is available; HF access to the gated Llama-3-8B-Instruct is granted.  
+- **Risks & mitigations**: HF gate → request access and cache token in env (fallback to an open model if blocked); Colab binary drift → pin deps and restart runtime; DB safety → QueryRunner blocks DDL/DML substrings and logs violations.
+
+---
+
+## 2. Secure Database Access Layer
+
+### 2.1 Motivation
+
+A live database is required to compute the **VA metric**, which measures whether an LLM-generated SQL query successfully executes. A secure connection must satisfy:
+
+- Role-appropriate access (read-only queries only).  
+- Stability under colab/prod environments.  
+- Protection against credentials exposure.
+
+### 2.2 Chosen Approach: Cloud SQL Connector + SQLAlchemy
+
+The system uses:
+
+- **Google Cloud SQL Connector (Python)**  
+- **SQLAlchemy with a custom `creator` function**
+
+This pattern was chosen because:
+
+- It is the **recommended secure method** for accessing Cloud SQL instances without exposing IPs or opening public access.
+- SQLAlchemy offers a consistent interface for *safe*, *parameterized* execution and schema metadata retrieval.
+- Colab compatibility is guaranteed through ephemeral OAuth or ADC.
+
+### 2.3 Alternative Considered
+
+| Option | Rejected Because |
+|--------|------------------|
+| Direct TCP connections | Requires IP allowlisting; less secure. |
+| mysqlclient connector | Difficult to configure across Colab + local OS environments. |
+| REST/Proxy API layers | Increased latency; breaks standard SQLAlchemy workflows. |
+
+The final choice ensures maximum portability and reproducibility for dissertation experiments.
+
+---
+
+## 3. QueryRunner Execution Engine
+
+### 3.1 Purpose
+
+The **QueryRunner** module is central to this system. It provides:
+
+- Controlled SQL execution  
+- Safety filtering  
+- Metadata logging  
+- Structured evaluation results  
+
+This directly supports NL-to-SQL evaluation, where generated SQL queries must be validated and compared.
+
+### 3.2 Academic Justification
+
+Ojuri et al. (2024) emphasise that NL-to-SQL evaluation requires:
+
+- Verification that a query executes (**VA**)  
+- Comparison between generated and gold SQL (**EX**)  
+- Eventually assessing semantic equivalence (**TS**)
+
+To reliably compute VA at scale, the system must:
+
+- Prevent destructive queries  
+- Capture errors  
+- Record execution traces  
+- Support large-scale evaluation loops  
+
+This mirrors patterns used in:
+- The **Spider**
+
+### 3.3 Safety Design
+
+The QueryRunner blocks destructive operations via substring scanning:
+["drop ", "delete ", "truncate ", "alter ", "create ", "update ", "insert "]
+
+This is intentionally simple but effective for supervised NL-to-SQL generation, where:
+- The model should *never* produce DDL/DML  
+- We must guarantee **read-only execution** for cloud DB security  
+- Safety violations must be logged for analysis
+- A lightweight guard avoids the latency and complexity of full SQL parsing while still preventing the common destructive cases seen in generated SQL.
+
+### 3.4 Metadata Logged
+
+QueryRunner records:
+
+- SQL query text  
+- Timestamp  
+- Execution success/failure  
+- Error messages  
+- Column names  
+- Result preview (optional)  
+
+This ensures **transparent, auditable evaluation**, consistent with reproducibility standards in experimental NLP research.
+
+### 3.5 Smoke Tests Completed
+
+- Connectivity and schema enumeration verified against ClassicModels.  
+- Sample `SELECT` queries and execution limits validated.  
+- The 200-item test set (`data/classicmodels_test_200.json`) runs 200/200 successfully via `validate_test_set`, confirming DB reliability for VA/EX evaluation.
+
+## 4. Schema Exploration & Representation
+
+### 4.1 Rationale
+
+Modern LLM-based NL-to-SQL models require **schema grounding** to perform well.  
+Schema representation is referenced throughout LLM prompting literature, including:
+
+- GRAPPA (Li et al., 2020)  
+- PICARD (Scholak et al., 2021)  
+- Instruction-tuned SQL models (e.g., SQL-LLaMA)
+
+This project, however, uses the simpler but effective approach used in Ojuri et al. (2024):
+
+> Provide a flattened schema description directly inside the LLM prompt.
+
+### 4.2 Implementation
+
+The schema helper builds compact summaries like:
+customers(customerNumber int, customerName varchar, city varchar, ...)
+orders(orderNumber int, orderDate date, status varchar, ...)
+
+This balances:
+- Sufficient schema grounding  
+- Minimal prompt length inflation  
+- Easy readability for human inspection  
+
+The same schema representation is used for:
+- Few-shot prompting  
+- Baseline evaluation  
+- Fine-tuning experiments  
+
+## 5. LLM Model Loading Architecture
+
+### 5.1 Model Choice: Llama-3-8B-Instruct
+
+This project uses **Llama-3-8B-Instruct** because:
+
+- It is a state-of-the-art open LLM with strong reasoning capabilities.  
+- It supports **chat-style prompting**, required for few-shot demonstrations.  
+- Its 8B size makes it viable for **4-bit quantized inference** on a T4/A100 GPU in Colab.  
+- It aligns with the experimental setups seen in NL2SQL research using LLaMA-based backbones.
+
+### 5.2 Technical Justification for 4-bit Quantization
+
+Using **BitsAndBytes 4-bit NF4 quantization** enables:
+
+- ~4× memory reduction  
+- Feasible inference in constrained GPU environments  
+- Maintaining competitive accuracy (as shown in Dettmers et al.)
+
+This also matches planned **QLoRA fine-tuning**, which requires the model to be loaded in 4-bit.
+
+### 5.3 HuggingFace Access Controls (Gated Model)
+
+- Meta-Llama-3-8B-Instruct is gated: login + approved access on the model page are both required.  
+- Use `notebook_login()` (or `HF_TOKEN`) to persist tokens in Colab.  
+- Verified auth via `whoami()`; remaining 403s are authorization-related, not token errors.
+
+### 5.4 4-bit Load & Sanity Check
+
+- Load with `BitsAndBytesConfig` (NF4) and `device_map="auto"` to fit on the GPU.  
+- Pad tokenizer if needed; set deterministic generation parameters for evaluation.  
+- Smoke test prompt: `"Reply with only the word OK."` confirms model load + generation.
+
+## 6. End-to-End Smoke Tests
+
+- DB: connectivity, schema enumeration, and sample `SELECT` queries pass; `validate_test_set` reports 200/200 success on `data/classicmodels_test_200.json`.  
+- Runtime: dependency reinstall + runtime restart clears Colab C-extension conflicts (notably NumPy).  
+- Model: 4-bit Llama-3 load with a minimal prompt (“Reply with only the word OK.”) confirms GPU mapping and tokenizer padding before running NL→SQL prompts.
+
+## 7. Few-Shot Prompting Architecture
+
+- Objective: provide a transparent, non-fine-tuned baseline before QLoRA.  
+- Prompt shape: schema summary + table blurbs + 2–4 NLQ→SQL exemplars + the new NLQ.  
+- Justification: Mirrors Ojuri et al.’s guidance to measure uplift; schema grounding reduces column-name hallucinations; exemplar count balances recall vs. prompt length.  
+- Notes: Prompt templates and exemplars are versioned to keep evaluations comparable across runs.
+
+## 8. Evaluation Architecture (VA / EX, TS planned)
+
+- **VA (Validity)**: Checks if generated SQL executes; driven by QueryRunner success/error metadata.  
+- **EX (Exact Match)**: Normalized SQL string comparison against gold SQL for the 200-sample test set.  
+- **TS (True Semantic)**: Planned; result-equivalence on distilled DB variants to catch semantically wrong-but-executable SQL.  
+- **Experimental control**: Few-shot prompts and QLoRA adapters are pluggable; the evaluation harness stays fixed to isolate model/prompt effects.  
+- **Traceability**: Thought/Action/Observation traces, prompts, SQL strings, and execution metadata are logged for later dissertation analysis.
+
+## 9. Summary
+This architecture is intentionally designed for:
+
+- Academic reproducibility
+- Secure live SQL execution
+- LLM baselines + fine-tuning comparisons
+- Alignment with NL-to-SQL evaluation methodology (Ojuri et al.)
+
+## 10. Large Language Model Integration (current)
+- Backbone: `meta-llama/Meta-Llama-3-8B-Instruct` (gated).
+- Quantization: 4-bit (NF4) via bitsandbytes; enables Colab GPU feasibility and QLoRA compatibility.
+- Auth: gated access via Hugging Face token (`notebook_login()` or env token; pass `token=True` on load).
+- Inference: chat template (`apply_chat_template`), deterministic decoding (`temperature=0`) for reproducible evaluation, `device_map="auto"` (GPU-backed).
+- Why 4-bit: reduces memory footprint with minimal capability loss, aligning with parameter-efficient training practice and enabling 8B models on modest GPUs (T4).
+- Notes: deterministic decoding and chat template use are required for consistent VA/EX evaluation and align with Ojuri et al.’s methodology.

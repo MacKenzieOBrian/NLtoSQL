@@ -1,38 +1,53 @@
-# CONFIG (notes to self)
+## 1. Overview
 
-## Environment
-- Colab + Google Cloud SQL (classicmodels).
-- Connector: `cloud-sql-python-connector[pymysql]` + SQLAlchemy creator.
-- Hardware: jot GPU model, VRAM, RAM per run in LOGBOOK.
-- Secrets: env/interactive for now; move to Secret Manager later.
-- Env vars (dev convenience values):
-  - `INSTANCE_CONNECTION_NAME=modified-enigma-476414-h9:europe-west2:classicmodels`
-  - `DB_USER=root`
-  - `DB_PASS=<your_password>`
-  - `DB_NAME=classicmodels`
-  - `GOOGLE_CLOUD_PROJECT=modified-enigma-476414-h9`
+This document provides configuration details required to reproduce all experiments in the project, including:
 
-## Deps to pin (requirements.txt)
-- python 3.10+
-- torch==2.2.2
-- transformers==4.37.2
-- accelerate==0.27.2
-- bitsandbytes==0.42.0
-- peft==0.10.0
-- trl==0.7.10
-- datasets==2.16.1
-- google-api-core==2.11.1
-- cloud-sql-python-connector[pymysql]==1.18.5
-- SQLAlchemy==2.0.7
-- pymysql==1.1.0
-- cryptography==42.0.5
-- pandas==2.2.1
+- Environment variables  
+- Authentication steps  
+- Hardware/GPU assumptions  
+- Python dependencies  
+- Cloud SQL access requirements  
+- HuggingFace model access  
+
+## 2. Environment Variables
+
+The following variables must be defined **before** running the notebook:
+
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `INSTANCE_CONNECTION_NAME` | Cloud SQL instance identifier | `modified-enigma-476414-h9:europe-west2:classicmodels` |
+| `DB_USER` | MySQL username | `root` |
+| `DB_PASS` | MySQL password | — |
+| `DB_NAME` | Database name | `classicmodels` |
+| `HF_TOKEN` | HuggingFace access token for gated models | `REDACTED_HF_TOKEN` |
+
+## 3. Runtime / Notebook Setup (Colab)
+- Runtime: GPU-enabled (T4/A100), Python 3.12.  
+- GitHub: clone https://github.com/MacKenzieOBrian/NLtoSQL inside `/content` and keep in sync (`git pull`).  
+- Missing files (requirements.txt, JSON test set, .md docs): pull from repo; notebook cells reference these files.  
+- After installs: **restart runtime** to clear stale C-extensions from Colab base images.
+
+## 4. Python Dependencies
+Pinned in `requirements.txt`. Critical pins and reasons:
+- `torch==2.2.2`, `transformers==4.37.2`, `bitsandbytes==0.42.0`, `pandas==2.2.1`
+- `numpy==1.26.4` — fixes the binary incompatibility error (`ValueError: numpy.dtype size changed...`) seen with newer NumPy wheels.
+
+Workflow:
+1) `pip install -r requirements.txt`  
+2) Restart runtime  
+3) Verify versions: NumPy, Pandas, Torch align (avoids C-extension crashes).  
+
+## 5. Hugging Face Authentication (Gated Models)
+- Use `from huggingface_hub import notebook_login; notebook_login()` or set `HF_TOKEN`.  
+- Meta-Llama-3-8B-Instruct is **gated**: token + approved access on the model page are both required.  
+- 403 after login usually means authorization pending; request access with affiliation (university/independent).
 
 ## Models
 - Base: `meta-llama/Meta-Llama-3-8B-Instruct`
 - Tokenizer: same.
 
-## QLoRA sketch (see definitions below)
+
+## QLoRA idea as my understanding (see definitions below)
 - 4-bit quantization.
 - LoRA r/alpha/dropout: TBD (e.g., r 16–64). Target attention/MLP.
 - SFT on curated NLQ-SQL; batch/gradacc tuned to VRAM; log peak VRAM + runtime; capture seed.
@@ -54,7 +69,12 @@
 - Few-shot baseline: schema + table blurbs + 2–4 exemplars + NLQ.
 - ReAct: tool description, schema context, and running Thought/Action/Observation trace.
 
-## Evaluation
-- Metrics: VA, EX, TS.
-- Data: 200-sample test set; distilled variants for TS.
-- Logging: save run configs (seed, hyperparams, dataset snapshot hashes) with metrics.
+## Model Access & Loading
+- Model: `meta-llama/Meta-Llama-3-8B-Instruct` (gated).
+- Auth: Hugging Face token required. Request access on the model page. In notebooks, run `from huggingface_hub import notebook_login; notebook_login()` or set `HUGGINGFACE_HUB_TOKEN`/`HF_TOKEN` and pass `token=True` on load.
+- Loading: 4-bit (NF4) quantization via bitsandbytes, `device_map="auto"` (GPU-backed), use chat template (`apply_chat_template`), pad-token fallback to EOS if needed, deterministic decoding (`temperature=0`) for reproducible evaluation.
+
+## Dependency Compatibility Note
+- NumPy 2.x + Colab preinstalls can conflict with pinned C-extensions. Pins that avoid the binary mismatch:
+  - `numpy==1.26.4`
+  - `pandas==2.2.1`
