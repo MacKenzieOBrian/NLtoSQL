@@ -50,30 +50,30 @@
 - Insights: QLoRA 4-bit is key for feasibility; loading/quantization is finicky; QueryRunner maps directly to Act in ReAct loop.
 - Next Steps: Load generated dataset for SFT; load target open-source model and finalize QLoRA config; expand training data.
 
-## 2024-12-02
+## 2025-12-02
 - Activities: Reviewed current notebook scaffold (GCP auth, connector, QueryRunner, schema helpers, Llama-3-8B load). Drafted project structure plan in .md files (ARCHITECTURE.md, CONFIG.md, DATA.md, NOTES.md, scripts for data prep/train/eval/agent). Completed generation of 200 NL-SQL pairs using GPT-5 and ClassicModels context.
 - Insights: Should demonstrate few-shot baseline (as in Ojuri et al.) before QLoRA fine-tuning. Keep QueryRunner as ReAct tool; log traces for interpretability. Add NOTES.md for design justifications.
 - Next Steps: Implement few-shot prompt baseline against ClassicModels. Begin QLoRA prep with pinned deps and resource logging.
 
-## 2024-12-04
+## 2025-12-04
 - Activities: Set VS Code terminal env vars/ADC so the notebook connects locally; ran `validate_test_set` on all 200 ClassicModels queries—Success: 200, Failures: 0.
 - Challenges: Needed kernel restart and imports before calling the helper; VS Code env setup was finicky until settings.json had the DB vars.
 - Insights: Static test set executes cleanly end-to-end!
 - Next Steps: Pin deps/requirements, run few-shot baseline with metrics/screenshots, then start QLoRA prep and training.
 
-## 2024-12-05
+## 2025-12-05
 - Activities: Pinned deps in requirements.txt, updated notebook/script installs to use it; pushed changes. Verified the updated install cell in the clean notebook. Confirmed validation remains green.
 - Challenges: VS Code caching made it look like cells weren’t updating, annoying to figure out.
 - Insights: Locking installs via requirements.txt keeps runs reproducible across Colab/local.
 - Next Steps: Build/run the few-shot baseline (log VA/EX with prompts/screenshots), then start QLoRA hyperparam locking and SFT prep.
 
-## 2024-12-06
+## 2025-12-06
 - Activities: Synced Colab with repo, pulled latest pins; fixed connector/cryptography pins and NumPy mismatch; set ADC/quota project; ran installs via requirements.txt. Notebook installs now point at requirements.txt; Config now includes env var examples.
 - Challenges: Cloud SQL auth issues in Colab (quota project/permissions).
 - Insights: Use git pull in Colab before installs; set env vars explicitly.
 - Next Steps: Run few-shot baseline on Colab GPU with current stack; record VA/EX and screenshots; then move to QLoRA SFT prep (hyperparams/logging) if set up is correct. 
 
-## 2024-12-07
+## 2025-12-07
 - Activities: Documented gated-model loading (HF token, access approval), 4-bit NF4 setup, and dependency pin rationale in CONFIG/ARCHITECTURE. Verified validation still 200/200.
 - Challenges: Hugging Face gated access and Colab binary drift can still throw warnings; requires correct token + access and careful install/restart order.
 - Insights: Deterministic decoding + chat template + 4-bit load are required for reproducible eval and future QLoRA on Colab GPUs.
