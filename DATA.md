@@ -1,5 +1,7 @@
 # DATA (what I need to track)
 
+Quick recap for the reader: the ClassicModels test set anchors both evaluation and few-shot exemplars. Exemplars are only for **prompt conditioning** at inference; nothing here is used to train or update weights. Validation against the live DB keeps VA/EX honest.
+
 ## Datasets
 - Train: NLQ-SQL pairs for classicmodels with joins/aggregations/filters/single-table coverage. Include schema bits in the text field for SFT.
 - Test: 200 NLQ-SQL pairs held out for VA/EX/TS.

@@ -1,6 +1,7 @@
 # Logbook
 
 > Format per day: Activities, Challenges, Insights, Next Steps. Backfilled earlier entries from provided oldlogbook.txt.
+> Conversational recap: since November I’ve been moving from “plumbing and papers” to a reproducible NL→SQL baseline—secure DB access, schema-grounded prompting, few-shot at inference time only, deterministic decoding, and lightweight post-processing so any VA/EX gains are methodological, not parametric.
 
 ## 2025-09-29
 - Activities: Met supervisor to align scope; drafted project outline; read core references on agentic NL-to-SQL; captured framework notes.
@@ -48,12 +49,12 @@
 - Activities: Completed plumbing for QLoRA; curated ~100 NLQ-SQL pairs; structured dataset with schema+NLQ+SQL text field; aligned QueryRunner with ReAct Act.
 - Challenges: Bitsandbytes/model loading unstable on Colab GPUs; Colab struggled with large model; uncertainty if QLoRA setup is at fault.
 - Insights: QLoRA 4-bit is key for feasibility; loading/quantization is finicky; QueryRunner maps directly to Act in ReAct loop.
-- Next Steps: Load generated dataset for SFT; load target open-source model and finalize QLoRA config; expand training data.
+- Next Steps: Load generated dataset for SFT; load target open-source model and expand training data.
 
 ## 2025-12-02
 - Activities: Reviewed current notebook scaffold (GCP auth, connector, QueryRunner, schema helpers, Llama-3-8B load). Drafted project structure plan in .md files (ARCHITECTURE.md, CONFIG.md, DATA.md, NOTES.md, scripts for data prep/train/eval/agent). Completed generation of 200 NL-SQL pairs using GPT-5 and ClassicModels context.
 - Insights: Should demonstrate few-shot baseline (as in Ojuri et al.) before QLoRA fine-tuning. Keep QueryRunner as ReAct tool; log traces for interpretability. Add NOTES.md for design justifications.
-- Next Steps: Implement few-shot prompt baseline against ClassicModels. Begin QLoRA prep with pinned deps and resource logging.
+- Next Steps: Implement few-shot prompt baseline against ClassicModels.
 
 ## 2025-12-04
 - Activities: Set VS Code terminal env vars/ADC so the notebook connects locally; ran `validate_test_set` on all 200 ClassicModels queries—Success: 200, Failures: 0.
@@ -80,13 +81,13 @@
 - Next Steps: Run few-shot NL→SQL baseline on Colab GPU with current stack; capture VA/EX and prompts; begin QLoRA SFT prep with pinned toolchain.
 
 ## 2025-12-12
-- Activities: Added `triton==2.2.0` to requirements and pushed; refreshed Colab workflow to always reclone clean (`rm -rf /content/NLtoSQL`, `git clone`) and install pins, then restart runtime; confirmed 4-bit Llama-3-8B-Instruct loads on `cuda:0` with deterministic defaults; captured the fresh-clone cell for notebooks.
+- Activities: Added `triton==2.2.0` to requirements and pushed; refreshed Colab workflow to always reclone clean (`rm -rf /content/NLtoSQL`, `git clone`) confirmed 4-bit Llama-3-8B-Instruct loads on `cuda:0` with deterministic defaults
 - Challenges: saw sampling warnings when mixing `do_sample=False` with `temperature/top_p`.
 - Insights: For VA/EX baselines, use deterministic generation (no sampling params, small `max_new_tokens`, set `pad_token_id=eos_token_id`); sampling is only for exploratory runs.
 - Next Steps: Build/run the schema-grounded few-shot baseline, log VA/EX with fixed prompt template and generation settings; record hardware/commit/prompt version for reproducibility.
 
 ## 2025-12-14
-- Activities: Added inference-time few-shot prompt pipeline (system + schema + k exemplars + NLQ), enforced deterministic decoding, and implemented SQL post-processing (extract first `SELECT ...;`, minimal projection for list-style queries). Kept schema columns ordered (PKs/name-like first) in the prompt.
-- Challenges: Zero-shot outputs were executable (VA) but misaligned with gold SQL (EX gaps); model occasionally echoed instructions or over-selected columns.
-- Insights: Few-shot exemplars + ordered schema + post-processing improved syntactic correctness and column choice (e.g., productLine over textDescription), achieving VA=True and EX=True on representative cases without changing model weights. Improvements stem from prompt conditioning and heuristics only.
-- Next Steps: Run the full 200-sample VA/EX baseline with the fixed prompt/post-processing; log commit/prompt version/hardware; consider tightening heuristics only if misalignments persist.
+- Activities: Built the inference-time few-shot pipeline end-to-end (schema + k exemplars + NLQ), tightened prompts to demand minimal columns, and added post-processing to strip everything except the first `SELECT ... ;` and to enforce minimal projection on “list all …” questions.
+- Challenges: Zero-shot was executable but misaligned with gold SQL; the model sometimes echoed instructions or picked verbose columns (e.g., `textDescription` instead of `productLine`); early generations carried “assistant” residue that broke SQL parsing.
+- Insights: Ordering schema with PK/name-like columns first plus exemplars and a small projection heuristic flips VA/EX to True on the representative “product lines” case without touching weights—proof that uplift is from prompt conditioning and cleanup, not training.
+- Next Steps: Run the full 200-sample VA/EX sweep with the fixed prompt/post-processing; log commit/prompt/hardware; keep this as the baseline before any QLoRA fine-tuning.

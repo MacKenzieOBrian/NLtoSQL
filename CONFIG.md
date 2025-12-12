@@ -9,6 +9,8 @@ This document provides configuration details required to reproduce all experimen
 - Cloud SQL access requirements  
 - HuggingFace model access  
 
+Quick reading note: everything here is geared to inference-time prompting first (few-shot baseline) with the model frozen, so any gains are from prompt design and post-processing, not from training. Pins + seeds + deterministic decoding are the guardrails for reproducibility.
+
 ## 2. Environment Variables
 
 The following variables must be defined **before** running the notebook:
@@ -46,7 +48,6 @@ Workflow:
 - Base: `meta-llama/Meta-Llama-3-8B-Instruct`
 - Tokenizer: same.
 
-
 ## QLoRA idea as my understanding (see definitions below)
 - 4-bit quantization.
 - LoRA r/alpha/dropout: TBD (e.g., r 16–64). Target attention/MLP.
@@ -73,8 +74,6 @@ Workflow:
 - Model: `meta-llama/Meta-Llama-3-8B-Instruct` (gated).
 - Auth: Hugging Face token required. Request access on the model page. In notebooks, run `from huggingface_hub import notebook_login; notebook_login()` or set `HUGGINGFACE_HUB_TOKEN`/`HF_TOKEN` and pass `token=True` on load.
 - Loading: 4-bit (NF4) quantization via bitsandbytes, `device_map="auto"` (GPU-backed), use chat template (`apply_chat_template`), pad-token fallback to EOS if needed, deterministic decoding (`temperature=0`) for reproducible evaluation.
-- Usage: strictly **inference-only**. No fine-tuning, adapters, or other parameter updates are applied; few-shot is prompt conditioning only.
-- Generation: deterministic baselines (`do_sample=False`, no `temperature/top_p`) to keep VA/EX reproducible; set seeds for exemplar selection and log commit hash/timestamps.
 
 ## Few-Shot Baseline Run (for VA/EX)
 - Build prompt: schema summary + 2–4 NLQ→SQL exemplars + new NLQ (fixed template/versioned).  
@@ -82,7 +81,8 @@ Workflow:
 - Evaluation: run generated SQL through QueryRunner against `data/classicmodels_test_200.json`; compute VA/EX.  
 - Provenance: log commit hash, prompt version, generation params, and hardware in notebook + LOGBOOK to mirror Ojuri-style academic reporting.
 
-## Dependency Compatibility Note
-- NumPy 2.x + Colab preinstalls can conflict with pinned C-extensions. Pins that avoid the binary mismatch:
-  - `numpy==1.26.4`
-  - `pandas==2.2.1`
+## Reproducibility and Inference-Only Guardrails
+- Model usage is **strictly inference-time**: no fine-tuning, adapters, or parameter updates during baselines.  
+- Fix seeds for exemplar selection and keep decoding deterministic so VA/EX shifts reflect prompt changes, not randomness.  
+- Capture run metadata (commit, prompt template, hardware) alongside outputs to make results re-runnable for the dissertation.
+
