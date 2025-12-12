@@ -30,7 +30,7 @@
 ## Artifacts
 - Save screenshots/figures when I demo baselines, training curves, and evals; diagrams where helpful.
 
-## Papers & Justifications (ready-to-drop wording)
+## Papers & Justifications 
 - **Few-shot baseline first** — Following Brown et al. (2020) and Mosbach et al. (2023), few-shot prompting is treated as an inference-time baseline that does not modify model parameters. Ojuri et al. (2025) argue prompt-based baselines are necessary to quantify the true contribution of agents or fine-tuning. Consequently, this project implements a schema-grounded few-shot NL→SQL baseline prior to any parameter-efficient fine-tuning (QLoRA).  
 - **Schema grounding** — Prior work shows schema grounding is critical for Text-to-SQL (Li et al., 2023; Zhu et al., 2024; Hong et al., 2025; RESDSQL). The schema is dynamically extracted from INFORMATION_SCHEMA and embedded directly in the prompt; columns are ordered to prioritise identifiers/PKs as a lightweight inductive bias without changing model parameters.  
 - **Deterministic decoding for VA/EX** — For VA/EX evaluation, deterministic decoding (`do_sample=False`) removes sampling noise so differences reflect prompt/model changes, consistent with benchmark practice (Zhong et al., 2020; Gao et al., 2025; Ojuri et al., 2025).  

@@ -18,9 +18,6 @@ The design explicitly follows the methodological recommendations of **Ojuri et a
 - Systematic comparison of **few-shot prompting vs parameter-efficient fine-tuning**.  
 - Emphasis on **safe SQL execution**, **reproducibility**, and **transparent experimental logging**.
 
-This architecture document explains not only *how* the system is implemented, but also *why* each component exists and how it contributes to methodological alignment.
-
-> Quick recap: since November the goal has been a trustworthy, repeatable NL→SQL baseline. I stood up the infra (safe DB access + QueryRunner), grounded prompts on live schema, and now run few-shot *at inference time only* with deterministic decoding and light post-processing so VA/EX shifts reflect prompts—not weight changes.
 
 ---
 
