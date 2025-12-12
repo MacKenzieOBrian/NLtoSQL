@@ -74,6 +74,12 @@ Workflow:
 - Auth: Hugging Face token required. Request access on the model page. In notebooks, run `from huggingface_hub import notebook_login; notebook_login()` or set `HUGGINGFACE_HUB_TOKEN`/`HF_TOKEN` and pass `token=True` on load.
 - Loading: 4-bit (NF4) quantization via bitsandbytes, `device_map="auto"` (GPU-backed), use chat template (`apply_chat_template`), pad-token fallback to EOS if needed, deterministic decoding (`temperature=0`) for reproducible evaluation.
 
+## Few-Shot Baseline Run (for VA/EX)
+- Build prompt: schema summary + 2–4 NLQ→SQL exemplars + new NLQ (fixed template/versioned).  
+- Generation: deterministic (`do_sample=False`, omit `temperature/top_p`, modest `max_new_tokens`, set `pad_token_id=eos_token_id`).  
+- Evaluation: run generated SQL through QueryRunner against `data/classicmodels_test_200.json`; compute VA/EX.  
+- Provenance: log commit hash, prompt version, generation params, and hardware in notebook + LOGBOOK to mirror Ojuri-style academic reporting.
+
 ## Dependency Compatibility Note
 - NumPy 2.x + Colab preinstalls can conflict with pinned C-extensions. Pins that avoid the binary mismatch:
   - `numpy==1.26.4`

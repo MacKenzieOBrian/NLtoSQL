@@ -229,6 +229,7 @@ This also matches planned **QLoRA fine-tuning**, which requires the model to be 
 - Prompt shape: schema summary + table blurbs + 2–4 NLQ→SQL exemplars + the new NLQ.  
 - Justification: Mirrors Ojuri et al.’s guidance to measure uplift; schema grounding reduces column-name hallucinations; exemplar count balances recall vs. prompt length.  
 - Notes: Prompt templates and exemplars are versioned to keep evaluations comparable across runs.
+- Baseline rigor: use deterministic decoding (`do_sample=False`, no `temperature/top_p`, bounded `max_new_tokens`, `pad_token_id=eos_token_id`) so VA/EX differences reflect prompt/model changes, not sampling noise; log prompt version + commit hash per run for dissertation traceability.
 
 ## 8. Evaluation Architecture (VA / EX, TS planned)
 
