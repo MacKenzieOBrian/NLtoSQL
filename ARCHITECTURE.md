@@ -12,9 +12,9 @@ The system is structured around four components:
 3. **Schema introspection & representation pipeline** for LLM prompting.  
 4. **Model inference and evaluation pipeline**, including few-shot prompting and later QLoRA fine-tuning.
 
-The design explicitly follows the methodological recommendations of **Ojuri et al. (2024)**, specifically:
+The design explicitly follows the methodological recommendations of **Ojuri et al. (2025)**, specifically:
 
-- Evaluation via **VA** (Validity), **EX** (Exact Match), and later **TS** (True Semantic).  
+- Evaluation via **VA** (Validity), **EX** (Exact Match), and later **TS** (True Semantic). [10], [18], [19]  
 - Systematic comparison of **few-shot prompting vs parameter-efficient fine-tuning**.  
 - Emphasis on **safe SQL execution**, **reproducibility**, and **transparent experimental logging**.
 
@@ -51,19 +51,19 @@ This architecture document explains not only *how* the system is implemented, bu
 - Record the commit hash (`git rev-parse --short HEAD`) before installs/runs for reproducibility.  
 - Install from `requirements.txt`, restart the runtime, then rerun the notebook from the top to ensure a clean C-extension state.
 
-## 1.5 Inference-Time Few-Shot Prompting (No Training)
+## 1.5 Inference-Time Few-Shot Prompting (No Training) [6], [3]
 
 - Few-shot prompting is applied **only at inference time**; the LLM (Meta Llama-3-8B-Instruct) is loaded once and reused.  
 - Prompt structure: system instruction + textual schema + *k* NLQ→SQL exemplar pairs + one held-out NLQ.  
 - No gradient updates, adapters, or fine-tuning are used; any uplift vs zero-shot is attributable solely to prompt conditioning and post-processing.
 
-## 1.6 Schema Grounding Strategy
+## 1.6 Schema Grounding Strategy [1], [8], [9]
 
 - Schema is dynamically extracted from `INFORMATION_SCHEMA` and textualized as `table(col1, col2, ...)`.  
 - Column order is heuristically prioritised: primary keys first, then identifier/name-like fields (name, id, line, code, number) to reduce column-selection ambiguity.  
 - This is a lightweight inductive bias at the prompt level; model parameters remain unchanged.
 
-## 1.7 Post-Processing and Safety
+## 1.7 Post-Processing and Safety [13], [2], [10]
 
 - SQL extraction: regex/pattern matching to keep only the first `SELECT ... ;` before execution.  
 - Read-only enforcement: block destructive tokens (DROP/DELETE/ALTER/CREATE/UPDATE/INSERT).  
@@ -210,13 +210,13 @@ This project uses **Llama-3-8B-Instruct** because:
 - Its 8B size makes it viable for **4-bit quantized inference** on a T4/A100 GPU in Colab.  
 - It aligns with the experimental setups seen in NL2SQL research using LLaMA-based backbones.
 
-### 5.2 Technical Justification for 4-bit Quantization
+### 5.2 Technical Justification for 4-bit Quantization [12], [11], [4], [5]
 
 Using **BitsAndBytes 4-bit NF4 quantization** enables:
 
 - ~4× memory reduction  
 - Feasible inference in constrained GPU environments  
-- Maintaining competitive accuracy (as shown in Dettmers et al.)
+ - Maintaining competitive accuracy while fitting academic GPU memory limits
 
 This also matches planned **QLoRA fine-tuning**, which requires the model to be loaded in 4-bit.
 
@@ -232,7 +232,7 @@ This also matches planned **QLoRA fine-tuning**, which requires the model to be 
 - Pad tokenizer if needed; set deterministic generation parameters for evaluation.  
 - Smoke test prompt: `"Reply with only the word OK."` confirms model load + generation.
 
-### 5.5 Deterministic Baseline Generation
+### 5.5 Deterministic Baseline Generation [10], [20], [18]
 
 - For VA/EX baselines, use **deterministic decoding**: `do_sample=False`, unset `temperature/top_p`, modest `max_new_tokens` for SQL, and `pad_token_id=eos_token_id`.  
 - Rationale: removes sampling noise so differences in VA/EX reflect prompt/model changes, not randomness; keeps outputs comparable across runs.  
@@ -273,6 +273,6 @@ This architecture is intentionally designed for:
 - Backbone: `meta-llama/Meta-Llama-3-8B-Instruct` (gated).
 - Quantization: 4-bit (NF4) via bitsandbytes; enables Colab GPU feasibility and QLoRA compatibility.
 - Auth: gated access via Hugging Face token (`notebook_login()` or env token; pass `token=True` on load).
-- Inference: chat template (`apply_chat_template`), deterministic decoding (`temperature=0`) for reproducible evaluation, `device_map="auto"` (GPU-backed).
+- Inference: chat template (`apply_chat_template`), deterministic decoding (`do_sample=False`, no sampling parameters) for reproducible evaluation, `device_map="auto"` (GPU-backed).
 - Why 4-bit: reduces memory footprint with minimal capability loss, aligning with parameter-efficient training practice and enabling 8B models on modest GPUs (T4).
 - Notes: deterministic decoding and chat template use are required for consistent VA/EX evaluation and align with Ojuri et al.’s methodology. we want changes in metrics to reflect prompt/model choices, not randomness. Setting do_sample=False and removing temperature/top_p makes outputs repeatable run-to-run.
