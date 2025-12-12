@@ -252,4 +252,4 @@ This architecture is intentionally designed for:
 - Auth: gated access via Hugging Face token (`notebook_login()` or env token; pass `token=True` on load).
 - Inference: chat template (`apply_chat_template`), deterministic decoding (`temperature=0`) for reproducible evaluation, `device_map="auto"` (GPU-backed).
 - Why 4-bit: reduces memory footprint with minimal capability loss, aligning with parameter-efficient training practice and enabling 8B models on modest GPUs (T4).
-- Notes: deterministic decoding and chat template use are required for consistent VA/EX evaluation and align with Ojuri et al.’s methodology.
+- Notes: deterministic decoding and chat template use are required for consistent VA/EX evaluation and align with Ojuri et al.’s methodology. we want changes in metrics to reflect prompt/model choices, not randomness. Setting do_sample=False and removing temperature/top_p makes outputs repeatable run-to-run.
