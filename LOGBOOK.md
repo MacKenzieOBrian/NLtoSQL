@@ -9,7 +9,7 @@
 - Next Steps: Gather diverse sources beyond seed paper; justify frameworks in outline; share draft with supervisor.
 
 **Reflection (2025-09-29)**  
-This was the formal starting point: I used the supervisor meeting to stop the project drifting into a “broad LLM essay” and instead anchor it in a concrete, testable system. The reading on agentic NL→SQL, PEFT, QLoRA and ReAct wasn’t just background—at this stage it was about identifying which methods were feasible under dissertation constraints (time, compute, reproducibility). The main weakness here was I initially over-invested in contextual material rather than mapping sources directly to an implementable pipeline. The key positive outcome was that I left this week with a clear understanding of how methods relate (prompting → agent loops → fine-tuning) and a plan to broaden beyond one seed paper so the literature review would be defensible and not derivative.
+This was the formal starting point: I used the supervisor meeting to stop the project drifting into a “broad LLM essay” and instead anchor it in a concrete, testable system. The reading on agentic NL→SQL, PEFT, QLoRA and ReAct wasn’t just background—at this stage it was about identifying which methods were feasible under dissertation constraints (time, compute, reproducibility). The key positive outcome was that I left this week with a clear understanding of how methods relate (prompting → agent loops → fine-tuning) and a plan to broaden beyond one seed paper so the literature review would be defensible and not derivative.
 
 ## 2025-10-06
 - Activities: Expanded outline (~2000 words); leveraged cited studies for state-of-the-art; started ethics application; set up OneDrive/Teams for sharing.
@@ -18,7 +18,7 @@ This was the formal starting point: I used the supervisor meeting to stop the pr
 - Next Steps: Broaden sources to differentiate from seed paper; log all references in Zotero; complete ethics submission.
 
 **Reflection (2025-10-06)**  
-The big achievement this week was structuring the dissertation foundation: outline expansion, ethics prep, and establishing tooling for collaboration (OneDrive/Teams). This mattered because I was building a “research workflow” rather than just a code repo. The main challenge—over-reliance on a seed paper—was important to recognise early, because it’s a common failure mode: a project becomes a rephrasing of one reference rather than an independent evaluation. The supervisor’s suggestion of Zotero was also a turning point: it made citation discipline realistic, which is crucial later when justifying design decisions (not just describing them). In hindsight, this week is where the project began transitioning from reading to accountable deliverables.
+The big achievement this week was structuring the dissertation foundation: outline expansion, ethics prep, and establishing tooling for collaboration (OneDrive/Teams). This mattered because I was building a “research workflow” rather than just a code repo. The main challenge—over-reliance on a seed paper—was important to recognise early. The supervisor’s suggestion of Zotero was also a turning point: it made citation discipline realistic, which is crucial later when justifying design decisions (not just describing them). In hindsight, this week is where the project began transitioning from reading to accountable deliverables.
 
 ## 2025-10-13
 - Activities: Submitted final ethics application; added ~500 words linking literature to implementation; adjusted tone per lecture review.
@@ -27,7 +27,7 @@ The big achievement this week was structuring the dissertation foundation: outli
 - Next Steps: Revisit state-of-the-art to add critical discussion; map literature to implementation plan; ensure IEEE style via Zotero; add cover page.
 
 **Reflection (2025-10-13)**  
-Submitting ethics was a major gating step: it forced me to formalise what data I would use and how I would evaluate, and it reduced uncertainty about what I’m “allowed” to do. The challenge—being too descriptive in state-of-the-art—was a signal that I needed to start writing like an evaluator: comparing trade-offs, not listing methods. The most valuable outcome was the emerging bridge between literature and implementation: the work started to shift from “what exists” to “what I will test and why.” Zotero’s impact here is easy to underestimate; it’s part of the reproducibility and academic integrity story because it makes source tracking systematic.
+Submitting ethics forced me to formalise what data I would use and how I would evaluate, and it reduced uncertainty about what I’m “allowed” to do. The challenge—being too descriptive in state-of-the-art—was a signal that I needed to start writing like an evaluator: comparing trade-offs, not listing methods.
 
 ## 2025-10-20
 - Activities: Refined outline per supervisor comments; added open-source vs proprietary comparison; created SMART objectives and MoSCoW; drafted 13-week timeline; documented evaluation metrics (VA/EX/TS); noted Colab as fallback for hardware limits.
@@ -45,7 +45,7 @@ This week is where the dissertation became an engineering-research plan rather t
 - Next Steps: Verify Cloud SQL data integrity; load Llama-3-8B in 4-bit; baseline prompt tests; record hardware specs; finish reading Ojuri/ReAct.
 
 **Reflection (2025-10-27)**  
-This was a practical pivot week. Moving from SQLite to Cloud SQL was not just a technical detail; it was about aligning the environment with MySQL syntax and realistic evaluation. The secure connector pattern (Cloud SQL connector + SQLAlchemy creator) was a foundational design decision because it allowed reproducible DB access across Colab/local without fragile networking hacks. The challenge was that early credentials handling was messy (hardcoded secrets), which is a known anti-pattern, but the benefit was speed: it let me validate the architecture quickly before tightening security. The key insight was recognising that the “colab-llm” reference repo couldn’t be used as-is—this project needed custom evaluation, safety constraints, and eventually fine-tuning/agent integration.
+This was a practical pivot week. The secure connector pattern (Cloud SQL connector + SQLAlchemy creator) was a foundational design decision because it allowed reproducible DB access across Colab/local. The challenge was that early credentials handling was messy (hardcoded secrets), which is a known anti-pattern, but the benefit was speed: it let me validate the architecture quickly before tightening security. The key insight was recognising that the “colab-llm” reference repo couldn’t be used as-is—this project needed custom evaluation, safety constraints, and eventually fine-tuning/agent integration.
 
 ## 2025-11-03
 - Activities: Built Colab scaffold with connector, safe_connection, schema introspection, QueryRunner; ran smoke tests on customers table.
@@ -54,7 +54,7 @@ This was a practical pivot week. Moving from SQLite to Cloud SQL was not just a 
 - Next Steps: Load/evaluate models; read ReAct/Ojuri plus new sources; assemble 200-sample dataset.
 
 **Reflection (2025-11-03)**  
-This is when the system became testable end-to-end. Building the connector, schema introspection, and QueryRunner meant I had the minimum viable experimental platform: I could execute SQL safely, log outcomes, and inspect schema programmatically. That’s a huge step because VA cannot be measured without reliable execution. The challenge (hardcoded credentials + coursework slowing progress) highlights a real research constraint: time fragmentation. The insight that QueryRunner provides the “Act” analogue for a future ReAct loop is key—it shows early architectural foresight rather than building throwaway code. Overall, this week turned the project into something I could actually run experiments on.
+This is when the system became testable end-to-end. Building the connector, schema introspection, and QueryRunner meant I had the minimum viable experimental platform: I could execute SQL safely, log outcomes, and inspect schema programmatically. That’s a huge step because VA cannot be measured without reliable execution. The insight that QueryRunner provides the “Act” analogue for a future ReAct loop is key—it shows early architectural foresight rather than building throwaway code. Overall, this week turned the project into something I could actually run experiments on.
 
 ## 2025-11-10
 - Activities: Regrouped after coursework; reviewed timeline to enter data prep phase.
@@ -63,8 +63,7 @@ This is when the system became testable end-to-end. Building the connector, sche
 - Next Steps: Deepen fine-tuning/ReAct understanding; start data generation planning.
 
 **Reflection (2025-11-10)**  
-This week was a reset into the research plan after other coursework. The main challenge was moving from infrastructure into conceptual tasks like dataset design and agent planning, which require stronger grounding in papers to avoid building the wrong thing. The insight—that fine-tuning is likely superior to few-shot for domain-specific NL→SQL—was important, but I treated it as a hypothesis rather than a conclusion. The methodological takeaway here is that “theory-first” is a valid strategy: it prevents wasted engineering on an evaluation design that doesn’t align with the literature.
-
+This week was a reset into the research plan after other coursework. The main challenge was moving from infrastructure into conceptual tasks like dataset design and agent planning, which require stronger grounding in papers to avoid building the wrong thing. The insight—that fine-tuning is likely superior to few-shot for domain-specific NL→SQL—was important, but I treated it as a hypothesis rather than a conclusion. 
 ## 2025-11-17
 - Activities: Completed plumbing for QLoRA; curated ~100 NLQ-SQL pairs; structured dataset with schema+NLQ+SQL text field; aligned QueryRunner with ReAct Act.
 - Challenges: Bitsandbytes/model loading unstable on Colab GPUs; Colab struggled with large model; uncertainty if QLoRA setup is at fault.
@@ -72,7 +71,7 @@ This week was a reset into the research plan after other coursework. The main ch
 - Next Steps: Load generated dataset for SFT; load target open-source model and expand training data.
 
 **Reflection (2025-11-17)**  
-Here I started preparing for QLoRA in earnest: dataset structuring and 4-bit feasibility work. The major challenge was the reality of Colab GPU fragility: bitsandbytes and quantisation can be unstable depending on runtime versions and binaries. This is exactly the kind of reproducibility issue dissertation work must document. The insight that QLoRA feasibility depends on careful quantisation setup is central because it justifies why dependency pinning becomes a research requirement, not just an engineering preference. Also, aligning QueryRunner with ReAct’s “Act” concept shows that the work wasn’t siloed—execution and evaluation were being designed with future agent experiments in mind.
+Here I started preparing for QLoRA in earnest: dataset structuring and 4-bit feasibility work. The major challenge was the reality of Colab GPU fragility: bitsandbytes and quantisation can be unstable depending on runtime versions and binaries. The insight that QLoRA feasibility depends on careful quantisation setup is central because it justifies why dependency pinning becomes a research requirement, not just an engineering preference. Also, aligning QueryRunner with ReAct’s “Act” concept shows that the work wasn’t siloed—execution and evaluation were being designed with future agent experiments in mind.
 
 ## 2025-12-02
 - Activities: Reviewed current notebook scaffold (GCP auth, connector, QueryRunner, schema helpers, Llama-3-8B load). Drafted project structure plan in .md files (ARCHITECTURE.md, CONFIG.md, DATA.md, NOTES.md, scripts for data prep/train/eval/agent). Completed generation of 200 NL-SQL pairs using GPT-5 and ClassicModels context.
@@ -80,7 +79,7 @@ Here I started preparing for QLoRA in earnest: dataset structuring and 4-bit fea
 - Next Steps: Implement few-shot prompt baseline against ClassicModels.
 
 **Reflection (2025-12-02)**  
-This week consolidated the project into a documented structure and produced the primary evaluation dataset (200 NLQ–SQL pairs). The key methodological insight was recognising that a few-shot baseline should be demonstrated before fine-tuning. This matters academically because without a baseline, any fine-tuning uplift can’t be contextualised. I also began formalising the repository documentation (ARCHITECTURE/CONFIG/DATA/NOTES) to support reproducibility and examiner transparency: the dissertation should not rely on “trust me, it worked once.” This is the point where the project started to look like a research artefact rather than a notebook experiment.
+This week consolidated the project into a documented structure and produced the primary evaluation dataset (200 NLQ–SQL pairs). The key methodological insight was recognising that a few-shot baseline should be demonstrated before fine-tuning. This matters academically because without a baseline, any fine-tuning uplift can’t be contextualised. I also began formalising the repository documentation (ARCHITECTURE/CONFIG/DATA/NOTES) 
 
 ## 2025-12-04
 - Activities: Set VS Code terminal env vars/ADC so the notebook connects locally; ran `validate_test_set` on all 200 ClassicModels queries—Success: 200, Failures: 0.
@@ -89,7 +88,7 @@ This week consolidated the project into a documented structure and produced the 
 - Next Steps: Pin deps/requirements, run few-shot baseline with metrics/screenshots, then start QLoRA prep and training.
 
 **Reflection (2025-12-04)**  
-This was a crucial validation milestone: running `validate_test_set` across all 200 queries and getting 200/200 success confirmed that the benchmark SQL is executable and the DB schema matches expectations. That result protects the validity of later evaluation: if EX fails later, it’s not because the gold SQL is broken or the database is inconsistent. The challenge—local VS Code environment configuration—shows why documenting environment setup is essential. The main insight is simple but huge: “the test set executes cleanly end-to-end,” which establishes trust in the evaluation harness before bringing in LLM variability.
+This was a crucial validation milestone: running `validate_test_set` across all 200 queries and getting 200/200 success confirmed that the benchmark SQL is executable and the DB schema matches expectations. That result protects the validity of later evaluation: if EX fails later, it’s not because the gold SQL is broken or the database is inconsistent. 
 
 ## 2025-12-05
 - Activities: Pinned deps in requirements.txt, updated notebook/script installs to use it; pushed changes. Verified the updated install cell in the clean notebook. Confirmed validation remains green.
@@ -98,7 +97,7 @@ This was a crucial validation milestone: running `validate_test_set` across all 
 - Next Steps: Build/run the few-shot baseline (log VA/EX with prompts/screenshots), then start QLoRA hyperparam locking and SFT prep.
 
 **Reflection (2025-12-05)**  
-Pinning dependencies in requirements.txt and verifying installs in a clean environment is a research-quality step, not just a dev step. It addresses Colab/local drift, which can silently change outputs, performance, and even model loading behaviour. The challenge with VS Code caching is an example of why experimental pipelines need version control discipline and clear “clean run” procedures. The insight is that reproducibility is an active job: you don’t get it for free, especially across Colab sessions. This week increased confidence that results can be rerun.
+Pinning dependencies in requirements.txt and verifying installs in a clean environment is a research-quality step, not just a dev step. It addresses Colab/local drift, which can silently change outputs, performance, and even model loading behaviour. The challenge with VS Code caching is an example of why experimental pipelines need version control discipline and clear “clean run” procedures. The insight is that reproducibility is an active job, especially across Colab sessions. This week increased confidence that results can be rerun.
 
 ## 2025-12-06
 - Activities: Synced Colab with repo, pulled latest pins; fixed connector/cryptography pins and NumPy mismatch; set ADC/quota project; ran installs via requirements.txt. Notebook installs now point at requirements.txt; Config now includes env var examples.
@@ -107,7 +106,7 @@ Pinning dependencies in requirements.txt and verifying installs in a clean envir
 - Next Steps: Run few-shot baseline on Colab GPU with current stack; record VA/EX and screenshots; then move to QLoRA SFT prep (hyperparams/logging) if set up is correct. 
 
 **Reflection (2025-12-06)**  
-This week was about hardening Colab workflow reliability: pulling repo changes, resolving dependency mismatches (connector/cryptography/NumPy), and addressing GCP quota project settings. These problems are common in cloud notebook research and directly threaten reproducibility if ignored. The insight—pull before install, set env vars explicitly—became part of operational hygiene. Methodologically, this week strengthened the “experimental apparatus”: if the apparatus is unstable, performance comparisons are meaningless.
+This week was about hardening Colab workflow reliability: pulling repo changes, resolving dependency mismatches (connector/cryptography/NumPy). These problems are common in cloud notebook research and directly threaten reproducibility if ignored. The insight—pull before install, set env vars explicitly—became part of operational hygiene. Methodologically, this week strengthened the “experimental apparatus”: if the apparatus is unstable, performance comparisons are meaningless.
 
 ## 2025-12-07
 - Activities: Documented gated-model loading (HF token, access approval), 4-bit NF4 setup, and dependency pin rationale in CONFIG/ARCHITECTURE. Verified validation still 200/200.
@@ -116,7 +115,7 @@ This week was about hardening Colab workflow reliability: pulling repo changes, 
 - Next Steps: Run few-shot NL→SQL baseline on Colab GPU with current stack; capture VA/EX and prompts; begin QLoRA SFT prep with pinned toolchain.
 
 **Reflection (2025-12-07)**  
-Documenting gated-model loading and 4-bit NF4 setup was necessary because it is both a reproducibility and feasibility issue. Without explicit documentation, another person (or future me) would not be able to replicate the model-loading stage, especially with Hugging Face access controls. The challenge is that gating + Colab drift introduces non-determinism in whether the setup works at all; the mitigation is careful sequencing (token → install → restart → load). The insight that deterministic decoding + chat template + quantised load are needed for consistent evaluation became a key methodological principle: baseline numbers must reflect method choices, not randomness.
+Documenting gated-model loading and 4-bit NF4 setup was necessary because it is both a reproducibility and feasibility issue. Without explicit documentation, another person (or future me) would not be able to replicate the model-loading stage, especially with Hugging Face access controls. The insight that deterministic decoding + chat template + quantised load are needed for consistent evaluation became a key methodological principle: baseline numbers must reflect method choices, not randomness.
 
 ## 2025-12-12
 - Activities: Added `triton==2.2.0` to requirements and pushed; refreshed Colab workflow to always reclone clean (`rm -rf /content/NLtoSQL`, `git clone`) confirmed 4-bit Llama-3-8B-Instruct loads on `cuda:0` with deterministic defaults
@@ -138,7 +137,7 @@ This is the turning point where the project produces a credible few-shot baselin
 
 ---
 
-### Reflection: November → December arc (talking-to-supervisor style)
+# Reflection: November → December arc 
 
 **November: turning the project into something testable**  
 I started by making the infrastructure bulletproof: Cloud SQL via the Connector + SQLAlchemy with a `creator` hook and `safe_connection`, then schema helpers (tables + columns) and QueryRunner as the controlled executor. The priority was portability (Colab/local), security (no IP allowlisting), and the ability to run lots of queries safely. At that stage I wasn’t chasing model performance—I was making sure VA/EX would be trustworthy.
@@ -157,3 +156,16 @@ I built a reproducible harness first (so VA is trustworthy), pinned deps to make
 
 **Where this leaves the project now**  
 We have a proven DB executor (QueryRunner), a validated 200-item test set, reproducible model loading (4-bit, gated access handled), and a working few-shot baseline with deterministic settings and post-processing that hits VA/EX on representative cases. Next: run the full 200-item evaluation with the fixed prompt/post-processing, log VA/EX + commit/prompt/hardware, then move to QLoRA SFT using this as the comparison point.
+
+---
+
+## Papers & Justifications (ready-to-drop wording)
+
+- **Few-shot baseline first** — Following Brown et al. (2020) and Mosbach et al. (2023), few-shot prompting is treated as an inference-time baseline that does not modify model parameters. Ojuri et al. (2025) argue prompt-based baselines are necessary to quantify the true contribution of agents or fine-tuning. Consequently, this project implements a schema-grounded few-shot NL→SQL baseline prior to any parameter-efficient fine-tuning (QLoRA).  
+- **Schema grounding** — Prior work shows schema grounding is critical for Text-to-SQL (Li et al., 2023; Zhu et al., 2024; Hong et al., 2025; RESDSQL). The schema is dynamically extracted from INFORMATION_SCHEMA and embedded directly in the prompt; columns are ordered to prioritise identifiers/PKs as a lightweight inductive bias without changing model parameters.  
+- **Deterministic decoding for VA/EX** — For VA/EX evaluation, deterministic decoding (`do_sample=False`) removes sampling noise so differences reflect prompt/model changes, consistent with benchmark practice (Zhong et al., 2020; Gao et al., 2025; Ojuri et al., 2025).  
+- **Post-processing (SQL extraction + minimal projection)** — Constrained/execution-aware handling is standard (PICARD; ExCoT; Ojuri et al., 2025). Outputs are reduced to a single `SELECT ...;` and minimal projection for list-style queries to ensure executability and comparability; this does not alter model weights.  
+- **Execution harness** — Following Spider and VA/EX/TS practice (Yu et al., 2018; Zhong et al., 2020; Ojuri et al., 2025), generated queries are executed against a live DB via QueryRunner, which logs success/error/metadata for reproducible evaluation.  
+- **4-bit + QLoRA feasibility** — Parameter-efficient methods (Ding et al., 2023; Goswami et al., 2024) show 4-bit NF4 + QLoRA retain performance while fitting academic GPUs; this keeps baselines and later fine-tuning on the same stack.  
+- **Agent readiness** — The current harness prepares for ReAct-style agents (Yao et al., 2023; Xi et al., 2025); QueryRunner is the “Act” tool, enabling iterative reasoning later.  
+- **Canonical sentence to reuse** — “In this project, ‘few-shot learning’ refers exclusively to inference-time prompt conditioning using exemplar NLQ–SQL pairs; the underlying language model parameters remain fixed throughout all baseline experiments (Brown et al., 2020; Mosbach et al., 2023).”
