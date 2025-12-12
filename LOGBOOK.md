@@ -86,7 +86,7 @@
 - Next Steps: Build/run the schema-grounded few-shot baseline, log VA/EX with fixed prompt template and generation settings; record hardware/commit/prompt version for reproducibility.
 
 ## 2025-12-14
-- Observation: Zero-shot outputs executed (VA) but often misaligned with gold SQL (EX gaps).
-- Intervention: Introduced inference-time few-shot exemplars and stricter prompts; added SQL post-processing to extract the first `SELECT ... ;` and enforce minimal projection for list-style queries.
-- Outcome: Higher syntactic correctness and better column selection (identifier-first ordering reduced confusion between productLine vs textDescription); representative cases reached VA=True and EX=True without changing model weights.
-- Rationale: All improvements come from prompt conditioning, schema ordering, and post-processing; the model remains frozen to isolate methodological effects.
+- Activities: Added inference-time few-shot prompt pipeline (system + schema + k exemplars + NLQ), enforced deterministic decoding, and implemented SQL post-processing (extract first `SELECT ...;`, minimal projection for list-style queries). Kept schema columns ordered (PKs/name-like first) in the prompt.
+- Challenges: Zero-shot outputs were executable (VA) but misaligned with gold SQL (EX gaps); model occasionally echoed instructions or over-selected columns.
+- Insights: Few-shot exemplars + ordered schema + post-processing improved syntactic correctness and column choice (e.g., productLine over textDescription), achieving VA=True and EX=True on representative cases without changing model weights. Improvements stem from prompt conditioning and heuristics only.
+- Next Steps: Run the full 200-sample VA/EX baseline with the fixed prompt/post-processing; log commit/prompt version/hardware; consider tightening heuristics only if misalignments persist.
