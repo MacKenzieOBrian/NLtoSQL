@@ -85,3 +85,8 @@
 - Insights: For VA/EX baselines, use deterministic generation (no sampling params, small `max_new_tokens`, set `pad_token_id=eos_token_id`); sampling is only for exploratory runs.
 - Next Steps: Build/run the schema-grounded few-shot baseline, log VA/EX with fixed prompt template and generation settings; record hardware/commit/prompt version for reproducibility.
 
+## 2025-12-14
+- Observation: Zero-shot outputs executed (VA) but often misaligned with gold SQL (EX gaps).
+- Intervention: Introduced inference-time few-shot exemplars and stricter prompts; added SQL post-processing to extract the first `SELECT ... ;` and enforce minimal projection for list-style queries.
+- Outcome: Higher syntactic correctness and better column selection (identifier-first ordering reduced confusion between productLine vs textDescription); representative cases reached VA=True and EX=True without changing model weights.
+- Rationale: All improvements come from prompt conditioning, schema ordering, and post-processing; the model remains frozen to isolate methodological effects.

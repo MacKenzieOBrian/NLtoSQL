@@ -23,3 +23,13 @@
 
 ## Validation
 - Use the notebook helper `validate_test_set("data/classicmodels_test_200.json")` to run the 200 queries against the live DB and spot any failures. Use `limit=` for a quick smoke test. Latest runs: 200/200 success (VS Code + ADC, and Colab after env/ADC setup).
+
+## Benchmark Usage (how data is used)
+- `data/classicmodels_test_200.json` serves as the evaluation benchmark and the source of few-shot exemplars (sampled).  
+- Exemplars are used **only for prompt conditioning** during inference; they are not training data.  
+- This keeps model parameters frozen; differences between zero-shot and few-shot runs reflect prompt conditioning, not learning.
+
+## Validation Process
+- Gold SQL in the test set is validated against the live ClassicModels DB to ensure reference correctness and avoid false negatives in EX scoring.  
+- VA/EX are computed by executing generated SQL via QueryRunner and comparing to validated gold SQL.  
+- Schema caches and column ordering (PKs first, then identifier/name-like columns) are used at prompt time to reduce column-selection ambiguity.

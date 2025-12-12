@@ -73,6 +73,8 @@ Workflow:
 - Model: `meta-llama/Meta-Llama-3-8B-Instruct` (gated).
 - Auth: Hugging Face token required. Request access on the model page. In notebooks, run `from huggingface_hub import notebook_login; notebook_login()` or set `HUGGINGFACE_HUB_TOKEN`/`HF_TOKEN` and pass `token=True` on load.
 - Loading: 4-bit (NF4) quantization via bitsandbytes, `device_map="auto"` (GPU-backed), use chat template (`apply_chat_template`), pad-token fallback to EOS if needed, deterministic decoding (`temperature=0`) for reproducible evaluation.
+- Usage: strictly **inference-only**. No fine-tuning, adapters, or other parameter updates are applied; few-shot is prompt conditioning only.
+- Generation: deterministic baselines (`do_sample=False`, no `temperature/top_p`) to keep VA/EX reproducible; set seeds for exemplar selection and log commit hash/timestamps.
 
 ## Few-Shot Baseline Run (for VA/EX)
 - Build prompt: schema summary + 2–4 NLQ→SQL exemplars + new NLQ (fixed template/versioned).  
