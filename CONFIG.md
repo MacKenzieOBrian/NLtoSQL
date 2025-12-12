@@ -9,6 +9,8 @@ This document provides configuration details required to reproduce all experimen
 - Cloud SQL access requirements  
 - HuggingFace model access  
 
+Quick reading note: everything here is geared to inference-time prompting first (few-shot baseline) with the model frozen, so any gains are from prompt design and post-processing, not from training. Pins + seeds + deterministic decoding are the guardrails for reproducibility.
+
 ## 2. Environment Variables
 
 The following variables must be defined **before** running the notebook:
@@ -46,7 +48,6 @@ Workflow:
 - Base: `meta-llama/Meta-Llama-3-8B-Instruct`
 - Tokenizer: same.
 
-
 ## QLoRA idea as my understanding (see definitions below)
 - 4-bit quantization.
 - LoRA r/alpha/dropout: TBD (e.g., r 16–64). Target attention/MLP.
@@ -80,7 +81,8 @@ Workflow:
 - Evaluation: run generated SQL through QueryRunner against `data/classicmodels_test_200.json`; compute VA/EX.  
 - Provenance: log commit hash, prompt version, generation params, and hardware in notebook + LOGBOOK to mirror Ojuri-style academic reporting.
 
-## Dependency Compatibility Note
-- NumPy 2.x + Colab preinstalls can conflict with pinned C-extensions. Pins that avoid the binary mismatch:
-  - `numpy==1.26.4`
-  - `pandas==2.2.1`
+## Reproducibility and Inference-Only Guardrails
+- Model usage is **strictly inference-time**: no fine-tuning, adapters, or parameter updates during baselines.  
+- Fix seeds for exemplar selection and keep decoding deterministic so VA/EX shifts reflect prompt changes, not randomness.  
+- Capture run metadata (commit, prompt template, hardware) alongside outputs to make results re-runnable for the dissertation.
+

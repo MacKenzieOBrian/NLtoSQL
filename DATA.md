@@ -1,5 +1,7 @@
 # DATA (what I need to track)
 
+Quick recap for the reader: the ClassicModels test set anchors both evaluation and few-shot exemplars. Exemplars are only for **prompt conditioning** at inference; nothing here is used to train or update weights. Validation against the live DB keeps VA/EX honest.
+
 ## Datasets
 - Train: NLQ-SQL pairs for classicmodels with joins/aggregations/filters/single-table coverage. Include schema bits in the text field for SFT.
 - Test: 200 NLQ-SQL pairs held out for VA/EX/TS.
@@ -23,3 +25,13 @@
 
 ## Validation
 - Use the notebook helper `validate_test_set("data/classicmodels_test_200.json")` to run the 200 queries against the live DB and spot any failures. Use `limit=` for a quick smoke test. Latest runs: 200/200 success (VS Code + ADC, and Colab after env/ADC setup).
+
+## Benchmark Usage (how data is used)
+- `data/classicmodels_test_200.json` serves as the evaluation benchmark and the source of few-shot exemplars (sampled).  
+- Exemplars are used **only for prompt conditioning** during inference; they are not training data.  
+- This keeps model parameters frozen; differences between zero-shot and few-shot runs reflect prompt conditioning, not learning.
+
+## Validation Process
+- Gold SQL in the test set is validated against the live ClassicModels DB to ensure reference correctness and avoid false negatives in EX scoring.  
+- VA/EX are computed by executing generated SQL via QueryRunner and comparing to validated gold SQL.  
+- Schema caches and column ordering (PKs first, then identifier/name-like columns) are used at prompt time to reduce column-selection ambiguity.
