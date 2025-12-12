@@ -1,7 +1,6 @@
 # Logbook
 
 > Format per day: Activities, Challenges, Insights, Next Steps. Backfilled earlier entries from provided oldlogbook.txt.
-> Conversational recap: since November I’ve been moving from “plumbing and papers” to a reproducible NL→SQL baseline—secure DB access, schema-grounded prompting, few-shot at inference time only, deterministic decoding, and lightweight post-processing so any VA/EX gains are methodological, not parametric.
 
 ## 2025-09-29
 - Activities: Met supervisor to align scope; drafted project outline; read core references on agentic NL-to-SQL; captured framework notes.
@@ -87,7 +86,29 @@
 - Next Steps: Build/run the schema-grounded few-shot baseline, log VA/EX with fixed prompt template and generation settings; record hardware/commit/prompt version for reproducibility.
 
 ## 2025-12-14
-- Activities: Built the inference-time few-shot pipeline end-to-end (schema + k exemplars + NLQ), tightened prompts to demand minimal columns, and added post-processing to strip everything except the first `SELECT ... ;` and to enforce minimal projection on “list all …” questions.
-- Challenges: Zero-shot was executable but misaligned with gold SQL; the model sometimes echoed instructions or picked verbose columns (e.g., `textDescription` instead of `productLine`); early generations carried “assistant” residue that broke SQL parsing.
-- Insights: Ordering schema with PK/name-like columns first plus exemplars and a small projection heuristic flips VA/EX to True on the representative “product lines” case without touching weights—proof that uplift is from prompt conditioning and cleanup, not training.
-- Next Steps: Run the full 200-sample VA/EX sweep with the fixed prompt/post-processing; log commit/prompt/hardware; keep this as the baseline before any QLoRA fine-tuning.
+- Activities: Added inference-time few-shot prompt pipeline (system + schema + k exemplars + NLQ), enforced deterministic decoding, and implemented SQL post-processing (extract first `SELECT ...;`, minimal projection for list-style queries). Kept schema columns ordered (PKs/name-like first) in the prompt.
+- Challenges: Zero-shot outputs were executable (VA) but misaligned with gold SQL (EX gaps); model occasionally echoed instructions or over-selected columns.
+- Insights: Few-shot exemplars + ordered schema + post-processing improved syntactic correctness and column choice (e.g., productLine over textDescription), achieving VA=True and EX=True on representative cases without changing model weights. Improvements stem from prompt conditioning and heuristics only.
+- Next Steps: Run the full 200-sample VA/EX baseline with the fixed prompt/post-processing; log commit/prompt version/hardware. 
+
+---
+
+### Reflection: November → December arc (talking-to-supervisor style)
+
+**November: turning the project into something testable**  
+I started by making the infrastructure bulletproof: Cloud SQL via the Connector + SQLAlchemy with a `creator` hook and `safe_connection`, then schema helpers (tables + columns) and QueryRunner as the controlled executor. The priority was portability (Colab/local), security (no IP allowlisting), and the ability to run lots of queries safely. At that stage I wasn’t chasing model performance—I was making sure VA/EX would be trustworthy.
+
+**Mid–late November: from plumbing to data + feasibility**  
+Once execution was stable, I tackled feasibility: 4-bit/QLoRA plumbing and curating NLQ–SQL pairs. For an 8B model on Colab, NF4 is the difference between “possible” and “not possible,” and QLoRA is the realistic fine-tuning path. I also locked down the dataset format (schema + NLQ + SQL) so I wouldn’t have to rework it later when moving from prompting to SFT.
+
+**Early December: reproducibility + benchmark validation**  
+I validated the entire 200-query ClassicModels set against the live DB (200/200) to prove the gold SQL and DB config are sound—so future EX failures are on the model/prompt, not the data. I pinned deps in `requirements.txt` to fight Colab drift (NumPy/pandas/cryptography quirks) and documented the unglamorous but critical hygiene (fresh clone, env vars, ADC/quota setup, kernel restarts).
+
+**December: model access + “baseline before fine-tune”**  
+I sorted HF gating for Llama-3-8B-Instruct, loaded it in 4-bit NF4 (aligned with future QLoRA), and paused to build a clean few-shot baseline before any fine-tuning. The few-shot prompt is system + schema + k exemplars + NLQ, deterministic decoding (`do_sample=False`, no sampling params), with post-processing to extract a single `SELECT ...;` and enforce minimal projection for “list all …” questions. No weights were changed—improvements come strictly from prompt conditioning and light heuristics. The productLine vs textDescription case is the proof point: executable SQL, VA/EX = True after minimal projection.
+
+**Why this is academically sound**  
+I built a reproducible harness first (so VA is trustworthy), pinned deps to make runs re-runnable, used few-shot prompting as an inference-only baseline (transparent before QLoRA), kept decoding deterministic to remove randomness, and added minimal post-processing as standard NL→SQL hygiene (safety + executability). 
+
+**Where this leaves the project now**  
+We have a proven DB executor (QueryRunner), a validated 200-item test set, reproducible model loading (4-bit, gated access handled), and a working few-shot baseline with deterministic settings and post-processing that hits VA/EX on representative cases. Next: run the full 200-item evaluation with the fixed prompt/post-processing, log VA/EX + commit/prompt/hardware, then move to QLoRA SFT using this as the comparison point.
