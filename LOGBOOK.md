@@ -79,4 +79,9 @@
 - Insights: Deterministic decoding + chat template + 4-bit load are required for reproducible eval and future QLoRA on Colab GPUs.
 - Next Steps: Run few-shot NL→SQL baseline on Colab GPU with current stack; capture VA/EX and prompts; begin QLoRA SFT prep with pinned toolchain.
 
+## 2025-12-12
+- Activities: Added `triton==2.2.0` to requirements and pushed; refreshed Colab workflow to always reclone clean (`rm -rf /content/NLtoSQL`, `git clone`) and install pins, then restart runtime; confirmed 4-bit Llama-3-8B-Instruct loads on `cuda:0` with deterministic defaults; captured the fresh-clone cell for notebooks.
+- Challenges: Hit NameError by using `tok` before assignment; saw sampling warnings when mixing `do_sample=False` with `temperature/top_p`.
+- Insights: For VA/EX baselines, use deterministic generation (no sampling params, small `max_new_tokens`, set `pad_token_id=eos_token_id`); sampling is only for exploratory runs.
+- Next Steps: Build/run the schema-grounded few-shot baseline, log VA/EX with fixed prompt template and generation settings; record hardware/commit/prompt version for reproducibility.
 

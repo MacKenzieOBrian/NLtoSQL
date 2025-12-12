@@ -23,13 +23,13 @@ The following variables must be defined **before** running the notebook:
 
 ## 3. Runtime / Notebook Setup (Colab)
 - Runtime: GPU-enabled (T4/A100), Python 3.12.  
-- GitHub: clone https://github.com/MacKenzieOBrian/NLtoSQL inside `/content` and keep in sync (`git pull`).  
+- GitHub: start each session with a **fresh clone** in `/content` (`rm -rf /content/NLtoSQL && git clone ...`) to avoid stale files; record commit hash (`git rev-parse --short HEAD`).  
 - Missing files (requirements.txt, JSON test set, .md docs): pull from repo; notebook cells reference these files.  
 - After installs: **restart runtime** to clear stale C-extensions from Colab base images.
 
 ## 4. Python Dependencies
 Pinned in `requirements.txt`. Critical pins and reasons:
-- `torch==2.2.2`, `transformers==4.37.2`, `bitsandbytes==0.42.0`, `pandas==2.2.1`
+- `torch==2.2.2`, `transformers==4.37.2`, `bitsandbytes==0.42.0`, `triton==2.2.0`, `pandas==2.2.1`
 - `numpy==1.26.4` — fixes the binary incompatibility error (`ValueError: numpy.dtype size changed...`) seen with newer NumPy wheels.
 
 Workflow:

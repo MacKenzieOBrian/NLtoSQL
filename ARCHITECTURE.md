@@ -25,7 +25,7 @@ This architecture document explains not only *how* the system is implemented, bu
 ## 1.1 Execution Environment & Dependency Discipline
 
 - **Environment**: Google Colab GPU runtime (T4/A100), Python 3.12, repo synced from https://github.com/MacKenzieOBrian/NLtoSQL.  
-- **Dependencies**: Pinned via `requirements.txt` to stabilize binaries: `torch==2.2.2`, `transformers==4.37.2`, `bitsandbytes==0.42.0`, `pandas==2.2.1`, and `numpy==1.26.4` to resolve the NumPy C-extension incompatibility.  
+- **Dependencies**: Pinned via `requirements.txt` to stabilize binaries: `torch==2.2.2`, `transformers==4.37.2`, `bitsandbytes==0.42.0`, `triton==2.2.0`, `pandas==2.2.1`, and `numpy==1.26.4` (fixes NumPy C-extension incompatibility).  
 - **Process**: Install, then **restart runtime** to clear conflicting preinstalled extensions; verify NumPy/Pandas/Torch alignment.  
 - **Missing files**: requirements, JSON test set, and docs are synced from the GitHub project; notebook cells rely on these paths.
 
@@ -42,6 +42,12 @@ This architecture document explains not only *how* the system is implemented, bu
 - **Scope**: Single-schema ClassicModels MySQL DB; focus on SELECT-only NL-to-SQL.  
 - **Assumptions**: Live DB connectivity is available; HF access to the gated Llama-3-8B-Instruct is granted.  
 - **Risks & mitigations**: HF gate → request access and cache token in env (fallback to an open model if blocked); Colab binary drift → pin deps and restart runtime; DB safety → QueryRunner blocks DDL/DML substrings and logs violations.
+
+## 1.4 Operational Hygiene (Colab)
+
+- Always start with a **fresh clone** in `/content` (`rm -rf /content/NLtoSQL && git clone ...`) to avoid stale notebooks/deps.  
+- Record the commit hash (`git rev-parse --short HEAD`) before installs/runs for reproducibility.  
+- Install from `requirements.txt`, restart the runtime, then rerun the notebook from the top to ensure a clean C-extension state.
 
 ---
 
@@ -204,6 +210,12 @@ This also matches planned **QLoRA fine-tuning**, which requires the model to be 
 - Load with `BitsAndBytesConfig` (NF4) and `device_map="auto"` to fit on the GPU.  
 - Pad tokenizer if needed; set deterministic generation parameters for evaluation.  
 - Smoke test prompt: `"Reply with only the word OK."` confirms model load + generation.
+
+### 5.5 Deterministic Baseline Generation
+
+- For VA/EX baselines, use **deterministic decoding**: `do_sample=False`, unset `temperature/top_p`, modest `max_new_tokens` for SQL, and `pad_token_id=eos_token_id`.  
+- Rationale: removes sampling noise so differences in VA/EX reflect prompt/model changes, not randomness; keeps outputs comparable across runs.  
+- Sampling (temperature/top_p) is reserved for exploratory prompts, not baseline reporting.
 
 ## 6. End-to-End Smoke Tests
 
