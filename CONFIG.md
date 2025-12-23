@@ -1,19 +1,21 @@
-## 1. Overview
+# Configuration & Reproducibility
 
-This document provides configuration details required to reproduce all experiments in the project, including:
+This document describes how to reproduce experiments (baseline prompting now; agent + QLoRA planned). It is written to support dissertation-quality runs: fixed dependencies, deterministic decoding, and traceable run metadata.
 
-- Environment variables  
-- Authentication steps  
-- Hardware/GPU assumptions  
-- Python dependencies  
-- Cloud SQL access requirements  
-- HuggingFace model access  
+## Quickstart (Colab baseline)
 
-Quick reading note: everything here is geared to inference-time prompting first (few-shot baseline) with the model frozen, so any gains are from prompt design and post-processing, not from training. Pins + seeds + deterministic decoding are the guardrails for reproducibility.
+1. Use a GPU runtime (T4/A100).
+2. Fresh clone the repo into `/content` (recommended) and record the commit hash.
+3. Install pinned deps from `requirements.txt`, then restart the runtime.
+4. Authenticate:
+   - GCP: `google.colab.auth.authenticate_user()` (or ADC locally)
+   - Hugging Face: `notebook_login()` or `HF_TOKEN`
+5. Run: `notebooks/02_baseline_prompting_eval.ipynb`
+6. Outputs are saved under `results/baseline/` (gitignored by default; see `results/README.md`).
 
-## 2. Environment Variables
+## Environment variables
 
-The following variables must be defined **before** running the notebook:
+Set these before running notebooks (or enter when prompted):
 
 | Variable | Purpose | Example |
 |----------|---------|---------|
@@ -21,83 +23,45 @@ The following variables must be defined **before** running the notebook:
 | `DB_USER` | MySQL username | `root` |
 | `DB_PASS` | MySQL password | — |
 | `DB_NAME` | Database name | `classicmodels` |
-| `HF_TOKEN` | HuggingFace access token for gated models | `REDACTED_HF_TOKEN` |
+| `HF_TOKEN` | Hugging Face access token (gated models) | `REDACTED` |
 
-## 3. Runtime / Notebook Setup (Colab)
-- Runtime: GPU-enabled (T4/A100), Python 3.12.  
-- GitHub: start each session with a **fresh clone** in `/content` (`rm -rf /content/NLtoSQL && git clone ...`) to avoid stale files; record commit hash (`git rev-parse --short HEAD`).  
-- Missing files (requirements.txt, JSON test set, .md docs): pull from repo; notebook cells reference these files.  
-- After installs: **restart runtime** to clear stale C-extensions from Colab base images.
+## Dependencies
 
-## 4. Python Dependencies
-Pinned in `requirements.txt`. Critical pins and reasons:
-- `torch==2.2.2`, `transformers==4.37.2`, `bitsandbytes==0.42.0`, `triton==2.2.0`, `pandas==2.2.1`
-- `numpy==1.26.4` — fixes the binary incompatibility error (`ValueError: numpy.dtype size changed...`) seen with newer NumPy wheels.
+Pinned in `requirements.txt` to avoid Colab binary drift. The most failure-prone pins are `numpy`, `pandas`, `torch`, `triton`, and `bitsandbytes`.
 
-Workflow:
-1) `pip install -r requirements.txt`  
-2) Restart runtime  
-3) Verify versions: NumPy, Pandas, Torch align (avoids C-extension crashes).  
+Recommended Colab flow:
+1. `pip install -r requirements.txt`
+2. Restart runtime
+3. Re-run notebook from the top
 
-## 5. Hugging Face Authentication (Gated Models)
-- Use `from huggingface_hub import notebook_login; notebook_login()` or set `HF_TOKEN`.  
-- Meta-Llama-3-8B-Instruct is **gated**: token + approved access on the model page are both required.  
-- 403 after login usually means authorization pending; request access with affiliation (university/independent).
+## Authentication
 
-## Models
-- Base: `meta-llama/Meta-Llama-3-8B-Instruct`
-- Tokenizer: same.
+### Google Cloud (Cloud SQL)
+- Colab: `from google.colab import auth; auth.authenticate_user()`
+- Local: `gcloud auth application-default login` (ADC) or a service account key (avoid committing secrets).
 
-## QLoRA idea as my understanding (see definitions below)
-- 4-bit quantization.
-- LoRA r/alpha/dropout: TBD (e.g., r 16–64). Target attention/MLP.
-- SFT on curated NLQ-SQL; batch/gradacc tuned to VRAM; log peak VRAM + runtime; capture seed.
+### Hugging Face (gated model)
+- Meta Llama 3 Instruct is gated: access approval + token are both required.
+- Use `from huggingface_hub import notebook_login; notebook_login()` or set `HF_TOKEN`.
 
-## Core QLoRA knobs
-- **Quantization (4-bit)**: Store model weights in 4-bit to fit on smaller GPUs; compute still uses higher precision (e.g., bfloat16).
-- **LoRA rank (r)**: Size of the low-rank adapter matrices; higher r = more capacity, more VRAM. Common range 16–64.
-- **Alpha (LoRA alpha)**: Scaling factor for the adapter; larger alpha amplifies the adapter contribution. Often set to 2–4× r.
-- **Dropout**: Probability of dropping adapter activations during training to reduce overfitting; small values (e.g., 0.05–0.1) are typical.
-- **Target modules**: Which layers get adapters (e.g., attention projections, MLP projections). Needs to match model architecture.
-- **Grad checkpointing**: Trades compute for memory by re-computing activations on backward pass; useful to fit bigger models.
-- **Batch size / Grad accumulation**: Effective batch = micro-batch × grad accum steps; adjust to stay under VRAM limits.
-- **Learning rate / Scheduler**: Small LR for SFT (e.g., 5e-5 to 2e-4); cosine/linear schedulers are common.
-- **Max seq length**: Truncation length for inputs; longer costs more VRAM.
-- **Warmup steps**: Small ramp-up of LR to stabilize early training.
-- **Seed**: For reproducibility; log it with run configs.
+## Baseline prompting settings
 
-## Prompting
-- Few-shot baseline: schema + table blurbs + 2–4 exemplars + NLQ.
-- ReAct: tool description, schema context, and running Thought/Action/Observation trace.
+- Model: `meta-llama/Meta-Llama-3-8B-Instruct` (token gated)
+- Loading: 4-bit NF4 where possible (fits Colab GPUs, aligns with planned QLoRA)
+- Decoding: deterministic for reporting (`do_sample=False`, bounded `max_new_tokens`, `pad_token_id=eos_token_id`)
 
-## Model Access & Loading
-- Model: `meta-llama/Meta-Llama-3-8B-Instruct` (gated).
-- Auth: Hugging Face token required. Request access on the model page. In notebooks, run `from huggingface_hub import notebook_login; notebook_login()` or set `HUGGINGFACE_HUB_TOKEN`/`HF_TOKEN` and pass `token=True` on load.
-- Loading: 4-bit (NF4) quantization via bitsandbytes, `device_map="auto"` (GPU-backed), use chat template (`apply_chat_template`), pad-token fallback to EOS if needed, deterministic decoding (`temperature=0`) for reproducible evaluation.
+## Reproducibility checklist (log per run)
 
-## Few-Shot Baseline Run (for VA/EX)
-- Build prompt: schema summary + 2–4 NLQ→SQL exemplars + new NLQ (fixed template/versioned).  
-- Generation: deterministic (`do_sample=False`, omit `temperature/top_p`, modest `max_new_tokens`, set `pad_token_id=eos_token_id`).  
-- Evaluation: run generated SQL through QueryRunner against `data/classicmodels_test_200.json`; compute VA/EX.  
-- Provenance: log commit hash, prompt version, generation params, and hardware in notebook + LOGBOOK to mirror Ojuri-style academic reporting.
+Record alongside results:
+- git commit hash
+- model id + quantization settings
+- prompt template version (and any post-processing toggles)
+- `k` (few-shot exemplars), random seed, benchmark version/hash
+- GPU type/runtime notes (Colab)
 
-## Reproducibility and Inference-Only Guardrails
-- Model usage is **strictly inference-time**: no fine-tuning, adapters, or parameter updates during baselines.  
-- Fix seeds for exemplar selection and keep decoding deterministic so VA/EX shifts reflect prompt changes, not randomness.  
-- Capture run metadata (commit, prompt template, hardware) alongside outputs to make results re-runnable for the dissertation.
+## QLoRA (planned)
 
-## Batch Evaluation Cell (Cell 15)
-Cell 15 operationalises the evaluation loop over the benchmark test set, producing per-item outputs and aggregate **VA**/**EX** rates, and saving results for later error analysis. This is standard Text-to-SQL evaluation hygiene: execute predicted SQL to compute VA, and compute EX as a strict string baseline, with semantic/result-based checks planned as a follow-up. [10], [18], [19]
-
-- **Runs**: start with `limit=20`, then `limit=50`, then full `limit=None` (200 items) once stable.  
-- **Outputs**: JSON files such as `results_zero_shot_20.json` and `results_few_shot_k3_20.json` containing NLQ, gold SQL, raw SQL, post-processed SQL, VA, EX, and any DB error.  
-- **Interpreting low EX**: EX is intentionally strict; many queries that are semantically correct will not be counted as EX if they differ only by aliasing, equivalent joins/subqueries, or harmless extra columns. Use VA for executability, and treat result-equivalence/TS as the more meaningful next metric. [18], [10]
-
-### Baseline Results (full 200-item run)
-- Zero-shot (`k=0`): `VA=0.810`, `EX=0.000` → saved to `results_zero_shot_200.json`  
-- Few-shot (`k=3`): `VA=0.865`, `EX=0.250` → saved to `results_few_shot_k3_200.json`  
-
-Repo structure note:
-- The refactored baseline notebook `notebooks/02_baseline_prompting_eval.ipynb` saves outputs under `results/baseline/` by default (see `.gitignore` / `results/README.md`).
-
-Interpretation: the uplift in VA/EX is attributable to inference-time prompt conditioning and post-processing (weights unchanged). EX should still be treated as a conservative baseline; a TS-style result-equivalence check is recommended for semantic correctness. [10], [18], [20]
+This project will compare prompting vs QLoRA SFT later. Key knobs to report in the dissertation:
+- LoRA rank `r`, `alpha`, dropout, target modules
+- batch size + grad accumulation, max seq length, LR/scheduler, warmup
+- quantization config (4-bit NF4) and dtype

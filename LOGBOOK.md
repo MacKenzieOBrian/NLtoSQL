@@ -1,6 +1,14 @@
 # Logbook
 
-> Format per day: Activities, Challenges, Insights, Next Steps. Backfilled earlier entries from provided oldlogbook.txt.
+Purpose: maintain a chronological record of decisions, experiments, results, and next steps for dissertation traceability.
+
+Suggested format per entry:
+- Activities (what was done)
+- Challenges (what blocked/failed)
+- Insights (what was learned)
+- Next Steps (what to do next, testable)
+
+Older entries were backfilled from earlier notes during repo clean-up.
 
 ## 2025-09-29
 - Activities: Met supervisor to align scope; drafted project outline; read core references on agentic NL-to-SQL; captured framework notes.
@@ -158,7 +166,7 @@ I built a reproducible harness first (so VA is trustworthy), pinned deps to make
 We have a proven DB executor (QueryRunner), a validated 200-item test set, reproducible model loading (4-bit, gated access handled), and a working few-shot baseline with deterministic settings and post-processing that hits VA/EX on representative cases. Next: run the full 200-item evaluation with the fixed prompt/post-processing, log VA/EX + commit/prompt/hardware, then move to QLoRA SFT using this as the comparison point.
 
 ## 2025-12-23
-- Activities: Implemented and ran the batch evaluation loop (Cell 15) for both zero-shot (`k=0`) and few-shot (`k=3`), first on small subsets (`limit=1`, `limit=20`) and then on the full benchmark (`n=200`). Saved per-item outputs to JSON for reproducibility and error analysis: `results_zero_shot_200.json`, `results_few_shot_k3_200.json`.
+- Activities: Implemented and ran the batch evaluation loop for both zero-shot (`k=0`) and few-shot (`k=3`), first on small subsets (`limit=1`, `limit=20`) and then on the full benchmark (`n=200`). The baseline runner is now `notebooks/02_baseline_prompting_eval.ipynb`, writing outputs under `results/baseline/` (gitignored by default).
 - Challenges: Batch inference is slow (LLM generation dominates runtime). EX stayed low relative to VA because string-level matching is strict: aliasing, equivalent joins/subqueries, and harmless extra columns can flip EX to False even when the query is semantically correct.
 - Insights: Few-shot prompting improves both executability and strict match: zero-shot reached `VA=0.810`, `EX=0.000`; few-shot reached `VA=0.865`, `EX=0.250` (i.e., +5.5pp VA and +25pp EX) with frozen weights. This supports using VA as an “apparatus check” and treating EX as a conservative baseline, complemented by semantic/result-based evaluation (TS). [10], [18], [19]
 - Next Steps: Add a result-equivalence check on a subset (execute both gold and predicted SQL and compare result sets) as a proxy for TS; refine the “minimal projection” heuristic so it only fires for genuinely simple list-intent questions (avoid harming prompts like “List all offices with city and country”); then rerun the 200-item evaluation and report deltas transparently.
