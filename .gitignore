@@ -5,3 +5,5 @@ __pycache__/
 
 # Common notebook outputs/artifacts
 results_*.json
+results/
+!results/README.md
