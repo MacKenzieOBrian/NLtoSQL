@@ -97,4 +97,7 @@ Cell 15 operationalises the evaluation loop over the benchmark test set, produci
 - Zero-shot (`k=0`): `VA=0.810`, `EX=0.000` → saved to `results_zero_shot_200.json`  
 - Few-shot (`k=3`): `VA=0.865`, `EX=0.250` → saved to `results_few_shot_k3_200.json`  
 
+Repo structure note:
+- The refactored baseline notebook `notebooks/02_baseline_prompting_eval.ipynb` saves outputs under `results/baseline/` by default (see `.gitignore` / `results/README.md`).
+
 Interpretation: the uplift in VA/EX is attributable to inference-time prompt conditioning and post-processing (weights unchanged). EX should still be treated as a conservative baseline; a TS-style result-equivalence check is recommended for semantic correctness. [10], [18], [20]
