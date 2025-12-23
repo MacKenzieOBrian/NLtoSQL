@@ -35,3 +35,8 @@ Quick recap for the reader: the ClassicModels test set anchors both evaluation a
 - Gold SQL in the test set is validated against the live ClassicModels DB to ensure reference correctness and avoid false negatives in EX scoring.  
 - VA/EX are computed by executing generated SQL via QueryRunner and comparing to validated gold SQL.  
 - Schema caches and column ordering (PKs first, then identifier/name-like columns) are used at prompt time to reduce column-selection ambiguity.
+
+## Evaluation Outputs (artifacts produced by Cell 15)
+- The evaluation loop saves per-item results to JSON (e.g., `results_zero_shot_20.json`, `results_few_shot_k3_20.json`).  
+- Each item records: `nlq`, `gold_sql`, `raw_sql`, `pred_sql` (post-processed), plus `va`, `ex`, and any DB error message.  
+- Note on interpretation: **EX is intentionally strict**; semantically equivalent SQL can score EX=False due to aliasing or alternative query formulations. These files are saved so failures can be analysed and (later) compared via result-equivalence/TS rather than only string match. [18], [10]

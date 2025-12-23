@@ -23,6 +23,10 @@
 - Metrics: VA (syntax), EX (correctness on live classicmodels), TS (distilled DB consistency). Aim EX > 80, TS > 70.
 - Distilled DBs: schema-identical with varied data for TS.
 
+## Interpreting EX vs VA (important)
+- VA is an “apparatus” metric: the query executed against the live DB without error.  
+- EX is intentionally strict: semantically equivalent SQL often scores EX=False due to aliasing, different join formulations, or extra projected columns. Treat EX as a conservative baseline, and plan TS/result-equivalence checks for a fairer semantic assessment. [18], [10]
+
 ## Security/Ops
 - Secrets via env/prompt for now; move to Secret Manager later. Tools stay read-only.
 - Log GPU model, VRAM peak/avg, and runtimes for QLoRA runs in CONFIG + LOGBOOK.

@@ -86,3 +86,9 @@ Workflow:
 - Fix seeds for exemplar selection and keep decoding deterministic so VA/EX shifts reflect prompt changes, not randomness.  
 - Capture run metadata (commit, prompt template, hardware) alongside outputs to make results re-runnable for the dissertation.
 
+## Batch Evaluation Cell (Cell 15)
+Cell 15 operationalises the evaluation loop over the benchmark test set, producing per-item outputs and aggregate **VA**/**EX** rates, and saving results for later error analysis. This is standard Text-to-SQL evaluation hygiene: execute predicted SQL to compute VA, and compute EX as a strict string baseline, with semantic/result-based checks planned as a follow-up. [10], [18], [19]
+
+- **Runs**: start with `limit=20`, then `limit=50`, then full `limit=None` (200 items) once stable.  
+- **Outputs**: JSON files such as `results_zero_shot_20.json` and `results_few_shot_k3_20.json` containing NLQ, gold SQL, raw SQL, post-processed SQL, VA, EX, and any DB error.  
+- **Interpreting low EX**: EX is intentionally strict; many queries that are semantically correct will not be counted as EX if they differ only by aliasing, equivalent joins/subqueries, or harmless extra columns. Use VA for executability, and treat result-equivalence/TS as the more meaningful next metric. [18], [10]
