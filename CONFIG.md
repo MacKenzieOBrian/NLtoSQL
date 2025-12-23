@@ -92,3 +92,9 @@ Cell 15 operationalises the evaluation loop over the benchmark test set, produci
 - **Runs**: start with `limit=20`, then `limit=50`, then full `limit=None` (200 items) once stable.  
 - **Outputs**: JSON files such as `results_zero_shot_20.json` and `results_few_shot_k3_20.json` containing NLQ, gold SQL, raw SQL, post-processed SQL, VA, EX, and any DB error.  
 - **Interpreting low EX**: EX is intentionally strict; many queries that are semantically correct will not be counted as EX if they differ only by aliasing, equivalent joins/subqueries, or harmless extra columns. Use VA for executability, and treat result-equivalence/TS as the more meaningful next metric. [18], [10]
+
+### Baseline Results (full 200-item run)
+- Zero-shot (`k=0`): `VA=0.810`, `EX=0.000` → saved to `results_zero_shot_200.json`  
+- Few-shot (`k=3`): `VA=0.865`, `EX=0.250` → saved to `results_few_shot_k3_200.json`  
+
+Interpretation: the uplift in VA/EX is attributable to inference-time prompt conditioning and post-processing (weights unchanged). EX should still be treated as a conservative baseline; a TS-style result-equivalence check is recommended for semantic correctness. [10], [18], [20]

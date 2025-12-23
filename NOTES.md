@@ -27,6 +27,12 @@
 - VA is an “apparatus” metric: the query executed against the live DB without error.  
 - EX is intentionally strict: semantically equivalent SQL often scores EX=False due to aliasing, different join formulations, or extra projected columns. Treat EX as a conservative baseline, and plan TS/result-equivalence checks for a fairer semantic assessment. [18], [10]
 
+## Baseline Snapshot (n=200)
+- Zero-shot (`k=0`): `VA=0.810`, `EX=0.000`  
+- Few-shot (`k=3`): `VA=0.865`, `EX=0.250`  
+
+Takeaway: few-shot prompting + schema grounding + post-processing increases executability and strict-match rate, but EX remains conservative; use error analysis + result-equivalence to assess semantic correctness before drawing conclusions about “true” accuracy. [10], [18], [19]
+
 ## Security/Ops
 - Secrets via env/prompt for now; move to Secret Manager later. Tools stay read-only.
 - Log GPU model, VRAM peak/avg, and runtimes for QLoRA runs in CONFIG + LOGBOOK.

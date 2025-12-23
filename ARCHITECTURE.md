@@ -258,6 +258,12 @@ This also matches planned **QLoRA fine-tuning**, which requires the model to be 
 - **Experimental control**: Few-shot prompts and QLoRA adapters are pluggable; the evaluation harness stays fixed to isolate model/prompt effects.  
 - **Traceability**: Thought/Action/Observation traces, prompts, SQL strings, and execution metadata are logged for later dissertation analysis.
 
+### Current Baseline Results (n=200)
+- Zero-shot (`k=0`): `VA=0.810`, `EX=0.000`  
+- Few-shot (`k=3`): `VA=0.865`, `EX=0.250`  
+
+Interpretation: EX is a conservative string baseline and is expected to undercount semantically correct queries (aliasing and equivalent rewrites). VA confirms executability; TS/result-equivalence is the next step to evaluate semantic correctness more fairly. [10], [18], [19], [20]
+
 ## 9. Summary
 This architecture is intentionally designed for:
 

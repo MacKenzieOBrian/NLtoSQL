@@ -40,3 +40,9 @@ Quick recap for the reader: the ClassicModels test set anchors both evaluation a
 - The evaluation loop saves per-item results to JSON (e.g., `results_zero_shot_20.json`, `results_few_shot_k3_20.json`).  
 - Each item records: `nlq`, `gold_sql`, `raw_sql`, `pred_sql` (post-processed), plus `va`, `ex`, and any DB error message.  
 - Note on interpretation: **EX is intentionally strict**; semantically equivalent SQL can score EX=False due to aliasing or alternative query formulations. These files are saved so failures can be analysed and (later) compared via result-equivalence/TS rather than only string match. [18], [10]
+
+### Current Baseline Artifacts (n=200)
+- `results_zero_shot_200.json`: `VA=0.810`, `EX=0.000` (k=0)  
+- `results_few_shot_k3_200.json`: `VA=0.865`, `EX=0.250` (k=3)  
+
+These files are the primary evidence bundle for the dissertation baseline: they support aggregate reporting, reproducibility (timestamp/seed/params), and qualitative error analysis (e.g., schema hallucinations vs strict EX mismatches). [10], [18], [19]
