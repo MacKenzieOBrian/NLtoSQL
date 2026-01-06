@@ -2,6 +2,15 @@
 
 This document describes how to reproduce experiments (baseline prompting now; agent + QLoRA planned). It is written to support dissertation-quality runs: fixed dependencies, deterministic decoding, and traceable run metadata.
 
+## Project structure (why it changed)
+
+The repo is intentionally split into:
+- `nl2sql/` (importable “experiment harness”): stable, reviewable code for DB access, safe execution, prompting, and evaluation.
+- `notebooks/` (Colab runners): orchestrate runs, save artifacts, and generate dissertation tables/figures without duplicating core logic.
+- `data/` (benchmarks) and `results/` (run outputs): keep inputs and outputs separate; `results/` is gitignored by default to avoid committing large artifacts by accident.
+
+This makes runs easier to reproduce: the notebook becomes a thin runner, while evaluation logic lives in version-controlled modules.
+
 ## Quickstart (Colab baseline)
 
 1. Use a GPU runtime (T4/A100).

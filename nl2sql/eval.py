@@ -46,6 +46,7 @@ class EvalItem:
 def eval_run(
     *,
     test_set: list[dict[str, Any]],
+    exemplar_pool: list[dict[str, Any]] | None = None,
     k: int,
     engine: Engine,
     model: Any,
@@ -58,6 +59,7 @@ def eval_run(
     max_new_tokens: int = 128,
     postprocess: Callable[[str, str], str] = enforce_minimal_projection,
     run_metadata: Optional[dict[str, Any]] = None,
+    avoid_exemplar_leakage: bool = True,
 ) -> list[EvalItem]:
     rng = random.Random(seed)
     items = test_set[:limit] if limit else test_set
@@ -69,7 +71,19 @@ def eval_run(
         nlq = item["nlq"]
         gold_sql = item["sql"]
 
-        exemplars = rng.sample(test_set, k) if k > 0 else []
+        pool = exemplar_pool if exemplar_pool is not None else test_set
+        if avoid_exemplar_leakage:
+            pool = [
+                ex
+                for ex in pool
+                if not (ex.get("nlq") == nlq and ex.get("sql") == gold_sql)
+            ]
+        if k > 0:
+            if len(pool) < k:
+                raise ValueError(f"Exemplar pool too small: k={k} but pool has {len(pool)} items")
+            exemplars = rng.sample(pool, k)
+        else:
+            exemplars = []
         messages = make_few_shot_messages(schema=schema_summary, exemplars=exemplars, nlq=nlq)
 
         raw_sql = generate_sql_from_messages(
@@ -115,9 +129,12 @@ def eval_run(
         }
         if run_metadata:
             payload["run_metadata"] = run_metadata
+        payload["exemplar_policy"] = (
+            "custom_pool" if exemplar_pool is not None else "benchmark_pool"
+        )
+        payload["avoid_exemplar_leakage"] = bool(avoid_exemplar_leakage)
 
         save_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         print("Saved:", str(save_path))
 
     return out
-
