@@ -22,6 +22,13 @@ This makes runs easier to reproduce: the notebook becomes a thin runner, while e
 5. Run: `notebooks/02_baseline_prompting_eval.ipynb`
 6. Outputs are saved under `results/baseline/` (gitignored by default; see `results/README.md`).
 
+## Quickstart (QLoRA)
+
+1. Build a training set that does not overlap the 200-item benchmark:
+   - Run `notebooks/04_build_training_set.ipynb` to generate and DB-validate `data/train/classicmodels_train_200.jsonl`.
+2. Fine-tune and evaluate adapters:
+   - Run `notebooks/05_qlora_train_eval.ipynb` (saves adapters to `results/adapters/` and eval JSONs to `results/qlora/`).
+
 ## Environment variables
 
 Set these before running notebooks (or enter when prompted):
