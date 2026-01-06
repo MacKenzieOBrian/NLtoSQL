@@ -180,5 +180,5 @@ We have a proven DB executor (QueryRunner), a validated 200-item test set, repro
 ## 2026-01-07
 - Activities: Re-ran the full 200-item baseline in Colab using `notebooks/02_baseline_prompting_eval.ipynb` and recorded updated metrics.
 - Insights: Zero-shot remained stable while few-shot improved on strict EX under the current prompt + post-processing + evaluation harness.
-- Results: Zero-shot `VA=0.810`, `EX=0.000`; Few-shot (`k=3`) `VA=0.855`, `EX=0.325`.
+- Results (VA + EM): Zero-shot `VA=0.810`, `EM=0.000`; Few-shot (`k=3`) `VA=0.855`, `EM=0.325`.
 - Next Steps: Build a non-test training set for QLoRA SFT and run fine-tuning in a dedicated Colab notebook, then re-evaluate on the same 200-item test set.

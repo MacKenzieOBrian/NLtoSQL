@@ -12,9 +12,9 @@ The system is structured around four components:
 3. **Schema introspection & representation pipeline** for LLM prompting.  
 4. **Model inference and evaluation pipeline**, including few-shot prompting and later QLoRA fine-tuning.
 
-The design explicitly follows the methodological recommendations of **Ojuri et al. (2025)**, specifically:
+The design follows the methodological recommendations of **Ojuri et al. (2025)**, specifically:
 
-- Evaluation via **VA** (Validity), **EX** (Exact Match), and later **TS** (True Semantic). [10], [18], [19]  
+- Evaluation via **VA** (Validity), **EX** (Execution Accuracy), and later **TS** (Test-Suite Accuracy). [10], [18], [19]  
 - Systematic comparison of **few-shot prompting vs parameter-efficient fine-tuning**.  
 - Emphasis on **safe SQL execution**, **reproducibility**, and **transparent experimental logging**.
 
@@ -272,8 +272,9 @@ This also matches planned **QLoRA fine-tuning**, which requires the model to be 
 ## 8. Evaluation Architecture (VA / EX, TS planned)
 
 - **VA (Validity)**: Checks if generated SQL executes; driven by QueryRunner success/error metadata.  
-- **EX (Exact Match)**: Normalized SQL string comparison against gold SQL for the 200-sample test set.  
-- **TS (True Semantic)**: Planned; result-equivalence on distilled DB variants to catch semantically wrong-but-executable SQL.  
+- **EM (Exact Match)**: Normalized SQL string comparison against gold SQL (useful, but conservative).  
+- **EX (Execution Accuracy)**: Compare results by executing predicted SQL and gold SQL against the database and checking whether they return the same output (Ojuri-style “execution accuracy”).  
+- **TS (Test-Suite / True Semantic)**: Planned; result-equivalence across multiple distilled DB variants (Zhong et al., 2020).  
 - **Experimental control**: Few-shot prompts and QLoRA adapters are pluggable; the evaluation harness stays fixed to isolate model/prompt effects.  
 - **Traceability**: Thought/Action/Observation traces, prompts, SQL strings, and execution metadata are logged for later dissertation analysis.
 - **Evaluation hygiene (few-shot)**: for dissertation-quality evaluation, few-shot exemplars should come from a non-test exemplar pool (or at minimum exclude the evaluated item); if any benchmark leakage is allowed as an explicit experimental condition, it must be stated clearly in reporting.
@@ -282,7 +283,7 @@ This also matches planned **QLoRA fine-tuning**, which requires the model to be 
 - Zero-shot (`k=0`): `VA=0.810`, `EX=0.000`  
 - Few-shot (`k=3`): `VA=0.865`, `EX=0.250`  
 
-Interpretation: EX is a conservative string baseline and is expected to undercount semantically correct queries (aliasing and equivalent rewrites). VA confirms executability; TS/result-equivalence is the next step to evaluate semantic correctness more fairly. [10], [18], [19], [20]
+Interpretation: EM is a strict string baseline and will undercount semantically correct SQL. VA confirms executability; EX (execution accuracy) and TS-style evaluation are the fairer semantic checks.
 
 ## 9. Summary
 This architecture is intentionally designed for:

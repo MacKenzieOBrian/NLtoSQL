@@ -66,6 +66,13 @@ Recommended Colab flow:
 - Loading: 4-bit NF4 where possible (fits Colab GPUs, aligns with planned QLoRA)
 - Decoding: deterministic for reporting (`do_sample=False`, bounded `max_new_tokens`, `pad_token_id=eos_token_id`)
 
+## Evaluation metrics (Ojuri-style)
+
+- **VA (Validity)**: predicted SQL executes successfully (syntactic/engine validity check).
+- **EM (Exact Match)**: normalized SQL string match vs gold SQL (strict, conservative).
+- **EX (Execution Accuracy)**: execute predicted SQL and compare its result set to the gold SQL result set.
+- **TS (Test-Suite Accuracy)**: planned; compare predicted vs gold results across multiple distilled DB variants.
+
 ## Reproducibility checklist (log per run)
 
 Record alongside results:

@@ -29,6 +29,6 @@ The dissertation goal is to measure (and explain) performance differences betwee
 ## Evaluation metrics
 
 - **VA (Validity)**: predicted SQL executes successfully (via `QueryRunner`).
-- **EX (Exact Match)**: normalized string match vs gold SQL (strict, conservative).
-- **TS / result-equivalence**: planned next metric (execute gold vs predicted and compare result sets).
-
+- **EM (Exact Match)**: normalized SQL string match vs gold SQL (strict, conservative).
+- **EX (Execution Accuracy)**: execute predicted SQL and compare results to the gold SQL results (Ojuri-style execution accuracy).
+- **TS / test-suite accuracy**: planned next metric (compare results across distilled DB variants).

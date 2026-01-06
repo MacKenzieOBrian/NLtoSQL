@@ -5,7 +5,7 @@ This project’s evaluation is anchored on a **fixed benchmark** of NLQ→SQL pa
 ## Current benchmark (ClassicModels-200)
 
 - File: `data/classicmodels_test_200.json`
-- Purpose: held-out evaluation for VA/EX now, TS/result-equivalence later.
+- Purpose: held-out evaluation for VA/EM/EX now, TS later.
 - Status: gold SQL validated to execute successfully on the live ClassicModels DB.
 
 ### Record format
@@ -58,4 +58,4 @@ Baseline notebooks write JSON artifacts under `results/` (gitignored by default)
 - `results/baseline/results_zero_shot_200.json`
 - `results/baseline/results_few_shot_k3_200.json`
 
-Each output contains per-item fields (`nlq`, `gold_sql`, `raw_sql`, `pred_sql`, `va`, `ex`, `error`) plus aggregate rates and run metadata (seed/k/timestamp/commit).
+Each output contains per-item fields (`nlq`, `gold_sql`, `raw_sql`, `pred_sql`, `va`, `em`, `ex`, `error`) plus aggregate rates and run metadata (seed/k/timestamp/commit).

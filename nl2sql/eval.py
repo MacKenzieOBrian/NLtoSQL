@@ -7,8 +7,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+import sqlalchemy
 from sqlalchemy.engine import Engine
 
+from .db import safe_connection
 from .llm import generate_sql_from_messages
 from .postprocess import enforce_minimal_projection, normalize_sql
 from .prompting import make_few_shot_messages
@@ -27,8 +29,10 @@ class EvalItem:
     raw_sql: str
     pred_sql: str
     va: bool
+    em: bool
     ex: bool
     error: Optional[str]
+    gold_error: Optional[str]
 
     def to_jsonable(self) -> dict[str, Any]:
         return {
@@ -38,9 +42,77 @@ class EvalItem:
             "raw_sql": self.raw_sql,
             "pred_sql": self.pred_sql,
             "va": self.va,
+            "em": self.em,
             "ex": self.ex,
             "error": self.error,
+            "gold_error": self.gold_error,
         }
+
+
+FORBIDDEN_TOKENS = [
+    "drop ",
+    "delete ",
+    "truncate ",
+    "alter ",
+    "create ",
+    "update ",
+    "insert ",
+]
+
+
+def _safety_check(sql: str) -> None:
+    lowered = (sql or "").strip().lower()
+    if not lowered:
+        raise ValueError("Empty SQL string")
+    for token in FORBIDDEN_TOKENS:
+        if token in lowered:
+            raise ValueError(f"Destructive SQL token detected: {token.strip()}")
+
+
+def execute_fetch(
+    *,
+    engine: Engine,
+    sql: str,
+    max_rows: int = 10000,
+) -> tuple[bool, list[str] | None, list[tuple] | None, str | None]:
+    try:
+        _safety_check(sql)
+        with safe_connection(engine) as conn:
+            result = conn.execute(sqlalchemy.text(sql))
+            cols = list(result.keys())
+            rows = result.fetchmany(max_rows + 1)
+        if len(rows) > max_rows:
+            return False, cols, None, f"Result set too large (> {max_rows} rows) for comparison"
+        return True, cols, [tuple(r) for r in rows], None
+    except Exception as e:
+        return False, None, None, str(e)
+
+
+def execution_accuracy(
+    *,
+    engine: Engine,
+    pred_sql: str,
+    gold_sql: str,
+    max_compare_rows: int = 10000,
+) -> tuple[bool, str | None, str | None]:
+    pred_ok, pred_cols, pred_rows, pred_err = execute_fetch(
+        engine=engine, sql=pred_sql, max_rows=max_compare_rows
+    )
+    gold_ok, gold_cols, gold_rows, gold_err = execute_fetch(
+        engine=engine, sql=gold_sql, max_rows=max_compare_rows
+    )
+
+    if not gold_ok:
+        return False, pred_err, gold_err
+    if not pred_ok:
+        return False, pred_err, gold_err
+
+    if pred_cols != gold_cols:
+        return False, "Column mismatch", None
+
+    from collections import Counter
+
+    return Counter(pred_rows) == Counter(gold_rows), None, None
 
 
 def eval_run(
@@ -60,6 +132,7 @@ def eval_run(
     postprocess: Callable[[str, str], str] = enforce_minimal_projection,
     run_metadata: Optional[dict[str, Any]] = None,
     avoid_exemplar_leakage: bool = True,
+    max_compare_rows: int = 10000,
 ) -> list[EvalItem]:
     rng = random.Random(seed)
     items = test_set[:limit] if limit else test_set
@@ -95,7 +168,13 @@ def eval_run(
         pred_sql = postprocess(raw_sql, nlq)
 
         meta = qr.run(pred_sql, capture_df=False)
-        ex = normalize_sql(pred_sql) == normalize_sql(gold_sql)
+        em = normalize_sql(pred_sql) == normalize_sql(gold_sql)
+        ex, ex_pred_err, ex_gold_err = execution_accuracy(
+            engine=engine,
+            pred_sql=pred_sql,
+            gold_sql=gold_sql,
+            max_compare_rows=max_compare_rows,
+        )
 
         out.append(
             EvalItem(
@@ -105,14 +184,17 @@ def eval_run(
                 raw_sql=raw_sql,
                 pred_sql=pred_sql,
                 va=bool(meta.success),
+                em=bool(em),
                 ex=bool(ex),
-                error=meta.error,
+                error=meta.error or ex_pred_err,
+                gold_error=ex_gold_err,
             )
         )
 
     va_rate = sum(r.va for r in out) / max(len(out), 1)
+    em_rate = sum(r.em for r in out) / max(len(out), 1)
     ex_rate = sum(r.ex for r in out) / max(len(out), 1)
-    print(f"k={k} | n={len(out)} | VA={va_rate:.3f} | EX={ex_rate:.3f}")
+    print(f"k={k} | n={len(out)} | VA={va_rate:.3f} | EM={em_rate:.3f} | EX={ex_rate:.3f}")
 
     if save_path:
         save_path = Path(save_path)
@@ -124,6 +206,7 @@ def eval_run(
             "limit": limit,
             "n": len(out),
             "va_rate": va_rate,
+            "em_rate": em_rate,
             "ex_rate": ex_rate,
             "results": [r.to_jsonable() for r in out],
         }
