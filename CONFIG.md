@@ -2,6 +2,8 @@
 
 This document describes how to reproduce experiments (baseline prompting now; agent + QLoRA planned). It is written to support dissertation-quality runs: fixed dependencies, deterministic decoding, and traceable run metadata.
 
+For the “why” behind key choices (metrics, splits, safety, reproducibility), see `DECISIONS.md`.
+
 ## Project structure (why it changed)
 
 The repo is intentionally split into:
@@ -66,6 +68,13 @@ Recommended Colab flow:
 - Loading: 4-bit NF4 where possible (fits Colab GPUs, aligns with planned QLoRA)
 - Decoding: deterministic for reporting (`do_sample=False`, bounded `max_new_tokens`, `pad_token_id=eos_token_id`)
 
+## Evaluation metrics (Ojuri-style)
+
+- **VA (Validity)**: predicted SQL executes successfully (syntactic/engine validity check).
+- **EM (Exact Match)**: normalized SQL string match vs gold SQL (strict, conservative).
+- **EX (Execution Accuracy)**: execute predicted SQL and compare its result set to the gold SQL result set.
+- **TS (Test-Suite Accuracy)**: planned; compare predicted vs gold results across multiple distilled DB variants.
+
 ## Reproducibility checklist (log per run)
 
 Record alongside results:
@@ -81,3 +90,7 @@ This project will compare prompting vs QLoRA SFT later. Key knobs to report in t
 - LoRA rank `r`, `alpha`, dropout, target modules
 - batch size + grad accumulation, max seq length, LR/scheduler, warmup
 - quantization config (4-bit NF4) and dtype
+
+## Why these choices
+
+See `DECISIONS.md` (kept separate so this file stays a “how to run” checklist).

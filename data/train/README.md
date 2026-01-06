@@ -24,3 +24,8 @@ Use `notebooks/04_build_training_set.ipynb` to:
 
 The resulting file is consumed by `notebooks/05_qlora_train_eval.ipynb`.
 
+## Why “mixed difficulty”
+
+Fine-tuning on only complex joins can hurt basic SQL reliability, while training on only trivial queries does not teach the model the multi-table reasoning needed for enterprise-style questions. A mixed set provides broad coverage with a small dataset (e.g., 200 examples), and the difficulty buckets are used only to steer coverage.
+
+For the broader rationale (splits/metrics/repro), see `DECISIONS.md`.

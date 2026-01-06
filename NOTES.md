@@ -1,6 +1,6 @@
-# Notes (decisions, assumptions, TODOs)
+# Notes (open questions / TODOs)
 
-This file is intentionally less formal than `ARCHITECTURE.md`/`CONFIG.md`. It captures “why we did it this way” and what still needs to be done before dissertation write-up.
+This file is intentionally short and action-oriented. The main decision rationale lives in `DECISIONS.md`.
 
 ## Current structure (how work is organised)
 
@@ -8,28 +8,22 @@ This file is intentionally less formal than `ARCHITECTURE.md`/`CONFIG.md`. It ca
 - Notebooks in `notebooks/` orchestrate runs and generate dissertation artifacts.
 - Outputs go to `results/` (gitignored by default; commit only curated artifacts).
 
-## Baselines first (before agents or fine-tuning)
+## Immediate TODOs
 
-- Goal: establish a transparent prompting baseline before adding more powerful methods.
-- Definition: “few-shot” = inference-time exemplars only (weights frozen).
-- Control: deterministic decoding and fixed seeds for repeatable VA/EX runs.
-
-## Evaluation hygiene (important)
-
-- VA is an apparatus check (does it execute?).
-- EX is strict string match (conservative; undercounts semantically correct SQL).
-- Next metric: result-equivalence / TS proxy (execute gold vs pred and compare results).
-- Few-shot exemplar policy: for dissertation-quality evaluation, exemplars must come from a **non-test** pool and must not include the evaluated item.
+- Re-run baselines after metric changes and archive JSON artifacts (VA/EM/EX) from Colab.
+- Add TS-style evaluation (distilled DB variants + denotation comparison).
+- Create an exemplar pool separate from the test benchmark for few-shot runs (train/dev split).
 
 ## Agent plan (ReAct-style)
 
 - QueryRunner is the tool: Action = execute candidate SQL; Observation = errors/row counts/columns.
 - Log traces for analysis: prompt, intermediate SQL, error messages, final SQL.
 
-## QLoRA plan (later)
+## QLoRA TODOs
 
-- Use 4-bit NF4 loading to keep training feasible on academic GPUs.
-- Log: LoRA config + VRAM + runtime + seed + dataset version.
+- Decide train size beyond 200 (if needed) and document (manual + synthetic mix).
+- Add a small dev split for hyperparameter selection (separate from test).
+- Log final QLoRA hyperparams and training compute (steps, LR, seq length, GPU).
 
 ## Reproducibility checklist (what to always record)
 

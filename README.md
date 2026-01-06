@@ -14,11 +14,14 @@ The dissertation goal is to measure (and explain) performance differences betwee
 - `notebooks/`: Colab notebooks that *run* experiments and produce dissertation-ready artifacts.
 - `data/`: benchmark JSON (currently `data/classicmodels_test_200.json`).
 - `results/`: local outputs (JSON runs, figures). Gitignored by default; see `results/README.md`.
-- `ARCHITECTURE.md`: design justification and system flow.
+- `DECISIONS.md`: decision record (what/why/where) for dissertation writing.
+- `ARCHITECTURE.md`: condensed system overview.
+- `ARCHITECTURE_DETAILS.md`: full architecture notes (appendix).
 - `CONFIG.md`: runtime setup, env vars, and reproducibility checklist.
 - `DATA.md`: dataset conventions and evaluation hygiene.
-- `LOGBOOK.md`: chronological project log.
-- `NOTES.md`: working notes and decisions.
+- `LOGBOOK.md`: condensed project log.
+- `LOGBOOK_REFLECTIONS.md`: full log + reflections (appendix).
+- `NOTES.md`: open questions / TODOs.
 
 ## Quickstart (Colab baseline)
 
@@ -26,9 +29,14 @@ The dissertation goal is to measure (and explain) performance differences betwee
 2. Open and run: `notebooks/02_baseline_prompting_eval.ipynb`
 3. Outputs are written to `results/baseline/` (gitignored by default).
 
+## Quickstart (QLoRA)
+
+1. Generate a strict, DB-validated training set: `notebooks/04_build_training_set.ipynb` → `data/train/classicmodels_train_200.jsonl`
+2. Fine-tune + evaluate adapters: `notebooks/05_qlora_train_eval.ipynb`
+
 ## Evaluation metrics
 
 - **VA (Validity)**: predicted SQL executes successfully (via `QueryRunner`).
-- **EX (Exact Match)**: normalized string match vs gold SQL (strict, conservative).
-- **TS / result-equivalence**: planned next metric (execute gold vs predicted and compare result sets).
-
+- **EM (Exact Match)**: normalized SQL string match vs gold SQL (strict, conservative).
+- **EX (Execution Accuracy)**: execute predicted SQL and compare results to the gold SQL results (Ojuri-style execution accuracy).
+- **TS / test-suite accuracy**: planned next metric (compare results across distilled DB variants).
