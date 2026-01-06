@@ -172,7 +172,13 @@ We have a proven DB executor (QueryRunner), a validated 200-item test set, repro
 - Next Steps: Add a result-equivalence check on a subset (execute both gold and predicted SQL and compare result sets) as a proxy for TS; refine the “minimal projection” heuristic so it only fires for genuinely simple list-intent questions (avoid harming prompts like “List all offices with city and country”); then rerun the 200-item evaluation and report deltas transparently.
 
 ## 2026-01-06
-- Activities: Refactored the baseline evaluation into importable modules (`nl2sql/`) and created a Colab runner notebook (`notebooks/02_baseline_prompting_eval.ipynb`) to produce `results/baseline/` artifacts consistently. Added an exemplar-leakage guard in the few-shot evaluation loop.
-- Challenges: Keeping notebook outputs off GitHub by default (to avoid accidental large commits) means baseline result JSONs must be downloaded from Colab or explicitly un-ignored for curated artifacts.
+- Activities: Refactored the baseline evaluation into importable modules (`nl2sql/`) and created a Colab runner notebook (`notebooks/02_baseline_prompting_eval.ipynb`) to produce `results/baseline/`. Seperated the project from one big notebook to a bunch of functions that the notebook now uses, improves readability and modularity.
+- Challenges: Keeping notebook outputs off GitHub by default (to avoid accidental large commits) means baseline result JSONs must be downloaded from Colab.
 - Insights: Separating “runner notebooks” from the evaluation harness reduces copy/paste drift and makes it easier to compare future methods (ReAct, QLoRA) against the same baseline code path.
 - Next Steps: Re-run the full baseline (`k=0`, `k=3`, `n=200`) with the refactored notebook to regenerate and archive the baseline JSON outputs; then start QLoRA fine-tuning with the same evaluation harness for comparability.
+
+## 2026-01-07
+- Activities: Re-ran the full 200-item baseline in Colab using `notebooks/02_baseline_prompting_eval.ipynb` and recorded updated metrics.
+- Insights: Zero-shot remained stable while few-shot improved on strict EX under the current prompt + post-processing + evaluation harness.
+- Results: Zero-shot `VA=0.810`, `EX=0.000`; Few-shot (`k=3`) `VA=0.855`, `EX=0.325`.
+- Next Steps: Build a non-test training set for QLoRA SFT and run fine-tuning in a dedicated Colab notebook, then re-evaluate on the same 200-item test set.

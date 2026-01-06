@@ -37,6 +37,21 @@ Current notebook runs support this workflow by passing an exemplar pool (planned
 - Deduplicate near-identical NLQs and ensure coverage across query patterns.
 - Log dataset changes (hash/version) in `LOGBOOK.md`.
 
+## Training set creation (LLM-assisted, strict)
+
+For QLoRA, the training set must be **separate** from the benchmark test set. This is standard experimental hygiene: if training data overlaps the test benchmark, evaluation is no longer a fair measure of generalisation.
+
+Recommended workflow (Colab):
+1. Generate candidate NLQ→SQL pairs with an LLM.
+2. Enforce constraints: **single SELECT only**, no destructive tokens, schema-grounded.
+3. Validate each SQL by executing it against the live ClassicModels DB (VA must be True).
+4. Remove any NLQs that overlap `data/classicmodels_test_200.json` (and deduplicate).
+5. Save to `data/train/classicmodels_train_200.jsonl`.
+
+This workflow is implemented in `notebooks/04_build_training_set.ipynb`.
+
+The default configuration targets a mixed difficulty distribution (easy/medium/hard). Difficulty is approximated from the SQL structure (joins, grouping/having, subqueries) and is used only to ensure coverage, not as a research metric.
+
 ## Outputs produced by evaluation
 
 Baseline notebooks write JSON artifacts under `results/` (gitignored by default):
