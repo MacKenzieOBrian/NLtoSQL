@@ -50,6 +50,8 @@ Recommended workflow (Colab):
 
 This workflow is implemented in `notebooks/04_build_training_set.ipynb`.
 
+The default configuration targets a mixed difficulty distribution (easy/medium/hard). Difficulty is approximated from the SQL structure (joins, grouping/having, subqueries) and is used only to ensure coverage, not as a research metric.
+
 ## Outputs produced by evaluation
 
 Baseline notebooks write JSON artifacts under `results/` (gitignored by default):
