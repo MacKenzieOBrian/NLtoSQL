@@ -18,6 +18,25 @@ The design explicitly follows the methodological recommendations of **Ojuri et a
 - Systematic comparison of **few-shot prompting vs parameter-efficient fine-tuning**.  
 - Emphasis on **safe SQL execution**, **reproducibility**, and **transparent experimental logging**.
 
+## 1.0 Repository layout (implementation map)
+
+This document describes the *conceptual* architecture. The current implementation is organised as:
+
+- `nl2sql/`: reusable experiment code
+  - `nl2sql/db.py`: Cloud SQL Connector + SQLAlchemy engine creation
+  - `nl2sql/schema.py`: schema introspection + schema-to-text representation
+  - `nl2sql/query_runner.py`: safe, read-only query execution + metadata logging
+  - `nl2sql/prompting.py`: prompt template + message construction
+  - `nl2sql/llm.py`: SQL extraction + deterministic generation wrapper
+  - `nl2sql/postprocess.py`: SQL normalization + “minimal projection” heuristic
+  - `nl2sql/eval.py`: batch evaluation loop (VA/EX now; TS planned)
+- `notebooks/`: experiment runners (Colab)
+  - `notebooks/02_baseline_prompting_eval.ipynb`: baseline VA/EX for zero-shot vs few-shot
+- `data/`: benchmark(s), currently `data/classicmodels_test_200.json`
+- `results/`: local outputs (gitignored by default; see `results/README.md`)
+
+This separation is intentional: notebooks orchestrate runs and produce figures/tables, while `nl2sql/` keeps the evaluation logic stable and reviewable.
+
 
 ---
 
@@ -257,6 +276,7 @@ This also matches planned **QLoRA fine-tuning**, which requires the model to be 
 - **TS (True Semantic)**: Planned; result-equivalence on distilled DB variants to catch semantically wrong-but-executable SQL.  
 - **Experimental control**: Few-shot prompts and QLoRA adapters are pluggable; the evaluation harness stays fixed to isolate model/prompt effects.  
 - **Traceability**: Thought/Action/Observation traces, prompts, SQL strings, and execution metadata are logged for later dissertation analysis.
+- **Evaluation hygiene (few-shot)**: for dissertation-quality evaluation, few-shot exemplars should come from a non-test exemplar pool (or at minimum exclude the evaluated item); if any benchmark leakage is allowed as an explicit experimental condition, it must be stated clearly in reporting.
 
 ### Current Baseline Results (n=200)
 - Zero-shot (`k=0`): `VA=0.810`, `EX=0.000`  
@@ -278,4 +298,4 @@ This architecture is intentionally designed for:
 - Auth: gated access via Hugging Face token (`notebook_login()` or env token; pass `token=True` on load).
 - Inference: chat template (`apply_chat_template`), deterministic decoding (`do_sample=False`, no sampling parameters) for reproducible evaluation, `device_map="auto"` (GPU-backed).
 - Why 4-bit: reduces memory footprint with minimal capability loss, aligning with parameter-efficient training practice and enabling 8B models on modest GPUs (T4).
-- Notes: deterministic decoding and chat template use are required for consistent VA/EX evaluation and align with Ojuri et al.’s methodology. we want changes in metrics to reflect prompt/model choices, not randomness. Setting do_sample=False and removing temperature/top_p makes outputs repeatable run-to-run.
+- Notes: deterministic decoding and chat template use are required for consistent VA/EX evaluation and align with Ojuri et al.’s methodology; metric changes should reflect prompt/model choices, not sampling randomness.

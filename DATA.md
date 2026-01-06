@@ -1,48 +1,46 @@
-# DATA (what I need to track)
+# Data & Benchmarks
 
-Quick recap for the reader: the ClassicModels test set anchors both evaluation and few-shot exemplars. Exemplars are only for **prompt conditioning** at inference; nothing here is used to train or update weights. Validation against the live DB keeps VA/EX honest.
+This project’s evaluation is anchored on a **fixed benchmark** of NLQ→SQL pairs over ClassicModels. The dissertation focuses on reproducible comparisons between prompting/agents/fine-tuning, so dataset discipline matters as much as model choice.
 
-## Datasets
-- Train: NLQ-SQL pairs for classicmodels with joins/aggregations/filters/single-table coverage. Include schema bits in the text field for SFT.
-- Test: 200 NLQ-SQL pairs held out for VA/EX/TS.
-- Distilled DBs: schema-identical classicmodels variants with different data for TS.
-- Schema cache: JSON dump from `list_tables` + `get_table_columns` for prompts.
-- Current artifact: `data/classicmodels_test_200.json` (static, hand-curated coverage; no generator needed).
+## Current benchmark (ClassicModels-200)
 
-## Format
-- JSON or Parquet (HF-friendly).
-- Fields: `nlq`, `sql`, optional `schema_context`, optional `text` (schema + NLQ + SQL).
+- File: `data/classicmodels_test_200.json`
+- Purpose: held-out evaluation for VA/EX now, TS/result-equivalence later.
+- Status: gold SQL validated to execute successfully on the live ClassicModels DB.
 
-## How to build it
-- Source: classicmodels MySQL schema.
-- Coverage: one-to-many/many-to-many joins, SUM/COUNT/AVG, filters, ORDER BY/LIMIT, GROUP/HAVING.
-- Synthetic boost (optional): use a stronger model; document prompts/filters if I do. For now, the 200 test pairs are fixed in JSON.
-- QC: lint SQL, validate on live DB, dedup similar questions.
+### Record format
 
-## Tracking
-- Record dataset versions/hashes/generation scripts in LOGBOOK + commits.
-- Note any manual edits or filters I apply.
+Each item is a JSON object:
+- `nlq`: natural language question
+- `sql`: gold MySQL query (SELECT-only)
 
-## Validation
-- Use the notebook helper `validate_test_set("data/classicmodels_test_200.json")` to run the 200 queries against the live DB and spot any failures. Use `limit=` for a quick smoke test. Latest runs: 200/200 success (VS Code + ADC, and Colab after env/ADC setup).
+Optional fields may be added later (e.g., difficulty tags, tables used, notes).
 
-## Benchmark Usage (how data is used)
-- `data/classicmodels_test_200.json` serves as the evaluation benchmark and the source of few-shot exemplars (sampled).  
-- Exemplars are used **only for prompt conditioning** during inference; they are not training data.  
-- This keeps model parameters frozen; differences between zero-shot and few-shot runs reflect prompt conditioning, not learning.
+## Few-shot exemplars (evaluation hygiene)
 
-## Validation Process
-- Gold SQL in the test set is validated against the live ClassicModels DB to ensure reference correctness and avoid false negatives in EX scoring.  
-- VA/EX are computed by executing generated SQL via QueryRunner and comparing to validated gold SQL.  
-- Schema caches and column ordering (PKs first, then identifier/name-like columns) are used at prompt time to reduce column-selection ambiguity.
+Few-shot prompting uses NLQ→SQL exemplars **only for inference-time conditioning** (no training).
 
-## Evaluation Outputs (artifacts produced by Cell 15)
-- The evaluation loop saves per-item results to JSON (e.g., `results_zero_shot_20.json`, `results_few_shot_k3_20.json`).  
-- Each item records: `nlq`, `gold_sql`, `raw_sql`, `pred_sql` (post-processed), plus `va`, `ex`, and any DB error message.  
-- Note on interpretation: **EX is intentionally strict**; semantically equivalent SQL can score EX=False due to aliasing or alternative query formulations. These files are saved so failures can be analysed and (later) compared via result-equivalence/TS rather than only string match. [18], [10]
+For dissertation-quality evaluation, exemplars should come from a **separate exemplar pool** (e.g., a train split or a curated exemplar bank) and must not leak the test item.
 
-### Current Baseline Artifacts (n=200)
-- `results_zero_shot_200.json`: `VA=0.810`, `EX=0.000` (k=0)  
-- `results_few_shot_k3_200.json`: `VA=0.865`, `EX=0.250` (k=3)  
+Current notebook runs support this workflow by passing an exemplar pool (planned); if exemplars are drawn from the benchmark itself, document it explicitly as an experimental condition.
 
-These files are the primary evidence bundle for the dissertation baseline: they support aggregate reporting, reproducibility (timestamp/seed/params), and qualitative error analysis (e.g., schema hallucinations vs strict EX mismatches). [10], [18], [19]
+## Planned datasets
+
+- Train (for QLoRA SFT): NLQ→SQL pairs with broad coverage (joins, aggregations, grouping/having, filters, sorting/limit).
+- Distilled DB variants (for TS): schema-identical ClassicModels with different data so semantic equivalence can be tested beyond string match.
+- Schema cache (optional): JSON dump of schema introspection for faster prompt building and reproducible schema context.
+
+## Validation & QC
+
+- Validate gold SQL by executing against the live DB (to avoid false negatives).
+- Lint/format SQL consistently (so EX normalization is not trivially broken by whitespace).
+- Deduplicate near-identical NLQs and ensure coverage across query patterns.
+- Log dataset changes (hash/version) in `LOGBOOK.md`.
+
+## Outputs produced by evaluation
+
+Baseline notebooks write JSON artifacts under `results/` (gitignored by default):
+- `results/baseline/results_zero_shot_200.json`
+- `results/baseline/results_few_shot_k3_200.json`
+
+Each output contains per-item fields (`nlq`, `gold_sql`, `raw_sql`, `pred_sql`, `va`, `ex`, `error`) plus aggregate rates and run metadata (seed/k/timestamp/commit).
