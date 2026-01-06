@@ -2,6 +2,8 @@
 
 This project’s evaluation is anchored on a **fixed benchmark** of NLQ→SQL pairs over ClassicModels. The dissertation focuses on reproducible comparisons between prompting/agents/fine-tuning, so dataset discipline matters as much as model choice.
 
+For the “why” behind the split and metric choices, see `DECISIONS.md`.
+
 ## Current benchmark (ClassicModels-200)
 
 - File: `data/classicmodels_test_200.json`
@@ -52,6 +54,9 @@ This workflow is implemented in `notebooks/04_build_training_set.ipynb`.
 
 The default configuration targets a mixed difficulty distribution (easy/medium/hard). Difficulty is approximated from the SQL structure (joins, grouping/having, subqueries) and is used only to ensure coverage, not as a research metric.
 
+Important limitation to record in the dissertation:
+- DB validation (VA=True) guarantees executability, but it does not prove the NLQ and SQL are semantically aligned. For LLM-assisted datasets, you should manually spot-check a sample (e.g., 20–50 items) and fix/reject mismatches, and document that QC step.
+
 ## Outputs produced by evaluation
 
 Baseline notebooks write JSON artifacts under `results/` (gitignored by default):
@@ -59,3 +64,7 @@ Baseline notebooks write JSON artifacts under `results/` (gitignored by default)
 - `results/baseline/results_few_shot_k3_200.json`
 
 Each output contains per-item fields (`nlq`, `gold_sql`, `raw_sql`, `pred_sql`, `va`, `em`, `ex`, `error`) plus aggregate rates and run metadata (seed/k/timestamp/commit).
+
+Metric note (Ojuri alignment):
+- `em`/`em_rate` is exact string match (useful for debugging, but conservative).
+- `ex`/`ex_rate` is execution accuracy by result comparison (runs predicted + gold SQL and compares outputs).

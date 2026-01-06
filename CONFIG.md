@@ -2,6 +2,8 @@
 
 This document describes how to reproduce experiments (baseline prompting now; agent + QLoRA planned). It is written to support dissertation-quality runs: fixed dependencies, deterministic decoding, and traceable run metadata.
 
+For the “why” behind key choices (metrics, splits, safety, reproducibility), see `DECISIONS.md`.
+
 ## Project structure (why it changed)
 
 The repo is intentionally split into:
@@ -88,3 +90,7 @@ This project will compare prompting vs QLoRA SFT later. Key knobs to report in t
 - LoRA rank `r`, `alpha`, dropout, target modules
 - batch size + grad accumulation, max seq length, LR/scheduler, warmup
 - quantization config (4-bit NF4) and dtype
+
+## Why these choices
+
+See `DECISIONS.md` (kept separate so this file stays a “how to run” checklist).
