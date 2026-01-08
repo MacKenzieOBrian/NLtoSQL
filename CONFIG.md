@@ -2,8 +2,6 @@
 
 This document describes how to reproduce experiments (baseline prompting now; agent + QLoRA planned). It is written to support dissertation-quality runs: fixed dependencies, deterministic decoding, and traceable run metadata.
 
-For the “why” behind key choices (metrics, splits, safety, reproducibility), see `DECISIONS.md`.
-
 ## Project structure (why it changed)
 
 The repo is intentionally split into:
@@ -23,11 +21,16 @@ This makes runs easier to reproduce: the notebook becomes a thin runner, while e
    - Hugging Face: `notebook_login()` or `HF_TOKEN`
 5. Run: `notebooks/02_baseline_prompting_eval.ipynb`
 6. Outputs are saved under `results/baseline/` (gitignored by default; see `results/README.md`).
+   - If you want these outputs on GitHub, remove/adjust the `results/` rule in `.gitignore` and commit curated JSONs.
 
 ## Quickstart (QLoRA)
 
 1. Build a training set that does not overlap the 200-item benchmark:
-   - Run `notebooks/04_build_training_set.ipynb` to generate and DB-validate `data/train/classicmodels_train_200.jsonl`.
+   - Run `notebooks/04_build_training_set.ipynb` to generate an LLM-assisted training set and then filter it strictly:
+     - SELECT-only output
+     - no overlap with `data/classicmodels_test_200.json`
+     - SQL must execute on the live ClassicModels DB (VA=True)
+   - Output: `data/train/classicmodels_train_200.jsonl`
 2. Fine-tune and evaluate adapters:
    - Run `notebooks/05_qlora_train_eval.ipynb` (saves adapters to `results/adapters/` and eval JSONs to `results/qlora/`).
 
@@ -41,7 +44,6 @@ Set these before running notebooks (or enter when prompted):
 | `DB_USER` | MySQL username | `root` |
 | `DB_PASS` | MySQL password | — |
 | `DB_NAME` | Database name | `classicmodels` |
-| `HF_TOKEN` | Hugging Face access token (gated models) | `REDACTED` |
 
 ## Dependencies
 
@@ -90,7 +92,3 @@ This project will compare prompting vs QLoRA SFT later. Key knobs to report in t
 - LoRA rank `r`, `alpha`, dropout, target modules
 - batch size + grad accumulation, max seq length, LR/scheduler, warmup
 - quantization config (4-bit NF4) and dtype
-
-## Why these choices
-
-See `DECISIONS.md` (kept separate so this file stays a “how to run” checklist).

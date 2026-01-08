@@ -50,7 +50,7 @@ Recommended workflow (Colab):
 4. Remove any NLQs that overlap `data/classicmodels_test_200.json` (and deduplicate).
 5. Save to `data/train/classicmodels_train_200.jsonl`.
 
-This workflow is implemented in `notebooks/04_build_training_set.ipynb`.
+This workflow is implemented in `notebooks/04_build_training_set.ipynb`. It exists to make fine-tuning results defensible: the notebook enforces *leakage prevention* (train vs test), *executability* (VA), and basic *safety* (SELECT-only).
 
 The default configuration targets a mixed difficulty distribution (easy/medium/hard). Difficulty is approximated from the SQL structure (joins, grouping/having, subqueries) and is used only to ensure coverage, not as a research metric.
 
