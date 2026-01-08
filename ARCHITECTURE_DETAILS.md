@@ -291,7 +291,7 @@ Interpretation: EM is a strict string baseline and will undercount semantically 
 
 - **Benchmark leakage** (training items or few-shot exemplars overlap the test set) → enforce leakage checks, keep separate train/test files, log exemplar policy in result JSONs.
 - **DB state dependence** (EX/TS depend on the database contents) → keep a reproducible DB source (ClassicModels dump + schema), record instance/version, and prefer deterministic execution.
-- **LLM-assisted training noise** (generated NLQ/SQL may be mismatched) → execute to ensure VA, then manually spot-check a sample and document QC.
+- **Training-set noise** (NLQ/SQL may be mismatched) → execute to ensure VA, then manually spot-check a sample and document QC.
 
 ## 9. Summary
 This architecture is intentionally designed for:

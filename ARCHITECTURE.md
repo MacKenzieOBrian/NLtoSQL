@@ -13,9 +13,9 @@ Build a reproducible NL→SQL evaluation pipeline over ClassicModels to compare:
 ## Repo structure (why)
 
 - `nl2sql/`: stable, importable evaluation harness (DB, schema, safety, prompting, metrics).
-- `notebooks/`: Colab runners (experiments and artifacts).
+- `notebooks/`: Colab runners (experiments and outputs).
 - `data/`: benchmark test set + training set.
-- `results/`: run outputs (gitignored by default; curate dissertation artifacts intentionally).
+- `results/`: run outputs (gitignored by default; curate dissertation outputs intentionally).
 
 Rationale: keep evaluation logic stable and reviewable while notebooks remain thin runners. See `DECISIONS.md`.
 
@@ -29,5 +29,4 @@ Rationale: keep evaluation logic stable and reviewable while notebooks remain th
 ## Validity risks (and mitigations)
 
 - Leakage (train/test overlap or exemplars leak test items) → leakage checks + explicit exemplar policy logging.
-- LLM-assisted training noise → DB validation + manual spot-check sample and document QC.
-
+- Training-set noise (NLQ/SQL mismatches) → DB validation + manual spot-check sample and document QC.

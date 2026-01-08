@@ -11,7 +11,7 @@ The dissertation goal is to measure (and explain) performance differences betwee
 ## What’s in the repo
 
 - `nl2sql/`: reusable “experiment harness” code (DB access, schema text, prompting, generation, evaluation).
-- `notebooks/`: Colab notebooks that *run* experiments and produce dissertation-ready artifacts.
+- `notebooks/`: Colab notebooks that *run* experiments and produce dissertation-ready outputs.
 - `data/`: benchmark JSON (currently `data/classicmodels_test_200.json`).
 - `results/`: local outputs (JSON runs, figures). Gitignored by default; see `results/README.md`.
 - `DECISIONS.md`: decision record (what/why/where) for dissertation writing.
@@ -32,7 +32,7 @@ The dissertation goal is to measure (and explain) performance differences betwee
 
 ## Quickstart (QLoRA)
 
-1. Generate a strict, DB-validated training set: `notebooks/04_build_training_set.ipynb` → `data/train/classicmodels_train_200.jsonl`
+1. Validate (and optionally edit) the provided training set: `notebooks/04_build_training_set.ipynb` checks `data/train/classicmodels_train_200.jsonl` against the live DB and the fixed 200-item benchmark.
 2. Fine-tune + evaluate adapters: `notebooks/05_qlora_train_eval.ipynb`
 
 ## Evaluation metrics

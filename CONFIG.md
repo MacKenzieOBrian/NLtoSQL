@@ -6,8 +6,8 @@ This document describes how to reproduce experiments (baseline prompting now; ag
 
 The repo is intentionally split into:
 - `nl2sql/` (importable “experiment harness”): stable, reviewable code for DB access, safe execution, prompting, and evaluation.
-- `notebooks/` (Colab runners): orchestrate runs, save artifacts, and generate dissertation tables/figures without duplicating core logic.
-- `data/` (benchmarks) and `results/` (run outputs): keep inputs and outputs separate; `results/` is gitignored by default to avoid committing large artifacts by accident.
+- `notebooks/` (Colab runners): orchestrate runs, save outputs, and generate dissertation tables/figures without duplicating core logic.
+- `data/` (benchmarks) and `results/` (run outputs): keep inputs and outputs separate; `results/` is gitignored by default to avoid committing large outputs by accident.
 
 This makes runs easier to reproduce: the notebook becomes a thin runner, while evaluation logic lives in version-controlled modules.
 
@@ -26,11 +26,12 @@ This makes runs easier to reproduce: the notebook becomes a thin runner, while e
 ## Quickstart (QLoRA)
 
 1. Build a training set that does not overlap the 200-item benchmark:
-   - Run `notebooks/04_build_training_set.ipynb` to generate an LLM-assisted training set and then filter it strictly:
+   - The repo includes a starter training file at `data/train/classicmodels_train_200.jsonl`.
+   - Run `notebooks/04_build_training_set.ipynb` to validate it strictly:
      - SELECT-only output
-     - no overlap with `data/classicmodels_test_200.json`
+     - no overlap with `data/classicmodels_test_200.json` (exact NLQ match check)
      - SQL must execute on the live ClassicModels DB (VA=True)
-   - Output: `data/train/classicmodels_train_200.jsonl`
+   - If any rows fail, edit `data/train/classicmodels_train_200.jsonl` and re-run validation.
 2. Fine-tune and evaluate adapters:
    - Run `notebooks/05_qlora_train_eval.ipynb` (saves adapters to `results/adapters/` and eval JSONs to `results/qlora/`).
 

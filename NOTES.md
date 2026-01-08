@@ -1,33 +1,17 @@
-# Notes (open questions / TODOs)
+# Notes / TODOs
 
-This file is intentionally short and action-oriented. The main decision rationale lives in `DECISIONS.md`.
+## Immediate next step (after baselines)
 
-## Current structure (how work is organised)
+- Run `notebooks/04_build_training_set.ipynb` to validate `data/train/classicmodels_train_200.jsonl` (VA + leakage + SELECT-only).
+- Run `notebooks/05_qlora_train_eval.ipynb` to fine-tune adapters and evaluate on the fixed 200-item benchmark.
+- Compare QLoRA vs baseline using the saved JSON outputs under `results/`.
 
-- Implementation lives in `nl2sql/` (DB, schema, prompting, eval).
-- Notebooks in `notebooks/` orchestrate runs and generate dissertation artifacts.
-- Outputs go to `results/` (gitignored by default; commit only curated artifacts).
+## Quality control to document (dissertation)
 
-## Immediate TODOs
+- Manual spot-check: verify a sample of NLQ→SQL pairs are semantically aligned (VA alone is not enough).
+- Record run metadata: commit hash, model id, hyperparams, GPU type/runtime, and any prompt template changes.
 
-- Re-run baselines after metric changes and archive JSON artifacts (VA/EM/EX) from Colab.
-- Add TS-style evaluation (distilled DB variants + denotation comparison).
-- Create an exemplar pool separate from the test benchmark for few-shot runs (train/dev split).
+## Planned extensions
 
-## Agent plan (ReAct-style)
-
-- QueryRunner is the tool: Action = execute candidate SQL; Observation = errors/row counts/columns.
-- Log traces for analysis: prompt, intermediate SQL, error messages, final SQL.
-
-## QLoRA TODOs
-
-- Decide train size beyond 200 (if needed) and document (manual + synthetic mix).
-- Add a small dev split for hyperparameter selection (separate from test).
-- Log final QLoRA hyperparams and training compute (steps, LR, seq length, GPU).
-
-## Reproducibility checklist (what to always record)
-
-- git commit hash, notebook name, run timestamp
-- model id + loading config
-- seed, `k`, prompt version, post-processing toggles
-- dataset version/hash
+- Add TS (test-suite accuracy) using distilled ClassicModels variants (schema-identical, different data).
+- Add an agentic/refinement mode (tool-using SQL correction loop) and evaluate it with the same harness.

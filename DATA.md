@@ -43,27 +43,25 @@ After QLoRA fine-tuning, evaluating with both `k=0` and `k>0` is still meaningfu
 - Deduplicate near-identical NLQs and ensure coverage across query patterns.
 - Log dataset changes (hash/version) in `LOGBOOK.md`.
 
-## Training set creation (LLM-assisted, strict)
+## Training set workflow (curated, strict)
 
 For QLoRA, the training set must be **separate** from the benchmark test set. This is standard experimental hygiene: if training data overlaps the test benchmark, evaluation is no longer a fair measure of generalisation.
 
-Recommended workflow (Colab):
-1. Generate candidate NLQ→SQL pairs with an LLM.
-2. Enforce constraints: **single SELECT only**, no destructive tokens, schema-grounded.
-3. Validate each SQL by executing it against the live ClassicModels DB (VA must be True).
-4. Remove any NLQs that overlap `data/classicmodels_test_200.json` (and deduplicate).
-5. Save to `data/train/classicmodels_train_200.jsonl`.
+This repo includes a starter training set at `data/train/classicmodels_train_200.jsonl`. Use `notebooks/04_build_training_set.ipynb` to validate that file against:
+- *leakage prevention* (train vs test exact-NLQ overlap)
+- *executability* (VA)
+- basic *safety* (SELECT-only)
 
-This workflow is implemented in `notebooks/04_build_training_set.ipynb`. It exists to make fine-tuning results defensible: the notebook enforces *leakage prevention* (train vs test), *executability* (VA), and basic *safety* (SELECT-only).
+If you want to extend/modify the training set, edit the JSONL file directly and re-run `notebooks/04_build_training_set.ipynb` until all rows execute successfully.
 
 The default configuration targets a mixed difficulty distribution (easy/medium/hard). Difficulty is approximated from the SQL structure (joins, grouping/having, subqueries) and is used only to ensure coverage, not as a research metric.
 
 Important limitation to record in the dissertation:
-- DB validation (VA=True) guarantees executability, but it does not prove the NLQ and SQL are semantically aligned. For LLM-assisted datasets, you should manually spot-check a sample (e.g., 20–50 items) and fix/reject mismatches, and document that QC step.
+- DB validation (VA=True) guarantees executability, but it does not prove the NLQ and SQL are semantically aligned. You should manually spot-check a sample (e.g., 20–50 items), fix/reject mismatches, and document that QC step.
 
 ## Outputs produced by evaluation
 
-Baseline notebooks write JSON artifacts under `results/` (gitignored by default):
+Baseline notebooks write JSON outputs under `results/` (gitignored by default):
 - `results/baseline/results_zero_shot_200.json`
 - `results/baseline/results_few_shot_k3_200.json`
 

@@ -1,10 +1,10 @@
-This folder is where Colab notebooks write evaluation artifacts (JSON runs, tables, figures).
+This folder is where Colab notebooks write evaluation outputs (JSON runs, tables, figures).
 
 By default, `results/` is gitignored to avoid accidentally committing large outputs.
-If you want to version key artifacts for the dissertation (e.g., baseline `results_*.json` or figures),
+If you want to version key outputs for the dissertation (e.g., baseline `results_*.json` or figures),
 remove or adjust the `results/` rule in `.gitignore`.
 
-## Recommended dissertation artifacts to keep
+## Recommended dissertation outputs to keep
 
 - Baseline JSONs: `results/baseline/results_zero_shot_200.json`, `results/baseline/results_few_shot_k3_200.json`
 - QLoRA JSONs: `results/qlora/results_zero_shot_200.json`, `results/qlora/results_few_shot_k3_200.json`

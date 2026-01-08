@@ -13,14 +13,15 @@ JSON Lines (one object per line):
 {"nlq":"…","sql":"SELECT …;"}
 ```
 
-## How to build (strict, LLM-assisted)
+## How to validate / maintain (strict)
 
-Use `notebooks/04_build_training_set.ipynb` to:
-- generate candidate NLQ→SQL pairs with an LLM
+This repo includes a starter training set at `data/train/classicmodels_train_200.jsonl`.
+
+Use `notebooks/04_build_training_set.ipynb` to validate that file:
 - enforce SELECT-only output
+- reject any exact NLQs that overlap the benchmark test NLQs
 - validate each SQL by executing it against the live ClassicModels DB (VA must be True)
-- reject any NLQs that overlap the benchmark test NLQs
-- deduplicate and target a mixed difficulty distribution (easy/medium/hard)
+- deduplicate by NLQ
 
 The resulting file is consumed by `notebooks/05_qlora_train_eval.ipynb`.
 

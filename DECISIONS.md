@@ -42,14 +42,14 @@ This is the single place to understand **what decisions were made, why, and wher
 | Colab as primary runtime | GPU availability + consistent environment for repeated runs | `CONFIG.md`, `notebooks/` |
 | Pinned dependencies | Prevents Colab binary drift changing results | `requirements.txt` |
 | Deterministic decoding for baselines | Avoids sampling noise in VA/EM/EX comparisons | `nl2sql/llm.py`, baseline notebooks |
-| Outputs under `results/` (gitignored) | Prevents accidental large commits; curate dissertation artifacts intentionally | `.gitignore`, `results/README.md` |
+| Outputs under `results/` (gitignored) | Prevents accidental large commits; curate dissertation outputs intentionally | `.gitignore`, `results/README.md` |
 
 ## Training data (QLoRA)
 
 | Decision | Why | Where |
 |---|---|---|
-| LLM-assisted generation + DB validation | Scales data creation while ensuring VA=True | `notebooks/04_build_training_set.ipynb` |
-| Mixed difficulty targets | Broad coverage (easy/medium/hard) with a small dataset | `notebooks/04_build_training_set.ipynb` |
+| Curated training set + DB validation | Keeps the workflow simple while ensuring VA=True and preventing leakage | `data/train/classicmodels_train_200.jsonl`, `notebooks/04_build_training_set.ipynb` |
+| Mixed difficulty coverage | Broad coverage (easy/medium/hard) with a small dataset | `data/train/classicmodels_train_200.jsonl` |
 
 ## What to cite in the dissertation
 
