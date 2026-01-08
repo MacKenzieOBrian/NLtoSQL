@@ -34,6 +34,12 @@ This makes runs easier to reproduce: the notebook becomes a thin runner, while e
 2. Fine-tune and evaluate adapters:
    - Run `notebooks/05_qlora_train_eval.ipynb` (saves adapters to `results/adapters/` and eval JSONs to `results/qlora/`).
 
+Evaluation note:
+- The QLoRA notebook evaluates the fine-tuned adapters in two inference modes:
+  - `k=0` (no exemplars): measures what fine-tuning achieves on its own.
+  - `k=3` (few-shot exemplars): measures whether prompt conditioning still adds uplift on top of fine-tuning.
+This mirrors the dissertation question: prompt-only vs fine-tuning, and their interaction.
+
 ## Environment variables
 
 Set these before running notebooks (or enter when prompted):

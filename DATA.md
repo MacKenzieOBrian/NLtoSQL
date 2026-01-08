@@ -26,6 +26,10 @@ For dissertation-quality evaluation, exemplars should come from a **separate exe
 
 Current notebook runs support this workflow by passing an exemplar pool (planned); if exemplars are drawn from the benchmark itself, document it explicitly as an experimental condition.
 
+After QLoRA fine-tuning, evaluating with both `k=0` and `k>0` is still meaningful:
+- `k=0` isolates the effect of training adapters.
+- `k>0` tests whether few-shot prompting provides additional gains on top of fine-tuning.
+
 ## Planned datasets
 
 - Train (for QLoRA SFT): NLQ→SQL pairs with broad coverage (joins, aggregations, grouping/having, filters, sorting/limit).

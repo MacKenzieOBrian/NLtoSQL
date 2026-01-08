@@ -41,3 +41,9 @@ The dissertation goal is to measure (and explain) performance differences betwee
 - **EM (Exact Match)**: normalized SQL string match vs gold SQL (strict, conservative).
 - **EX (Execution Accuracy)**: execute predicted SQL and compare results to the gold SQL results (Ojuri-style execution accuracy).
 - **TS / test-suite accuracy**: planned next metric (compare results across distilled DB variants).
+
+## Why we evaluate baselines vs QLoRA
+
+- **Baseline runs** (zero-shot and few-shot) change only the *prompt*; the model weights stay fixed. They show how far prompt engineering alone can go.
+- **QLoRA runs** train adapters on ClassicModels pairs, changing the model’s behaviour. We then re-evaluate on the same 200-item test set to measure generalisation uplift.
+- We evaluate QLoRA with both `k=0` and `k=3` to separate gains from **training** vs gains from **adding exemplars** at inference time.

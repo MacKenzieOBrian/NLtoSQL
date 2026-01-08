@@ -10,6 +10,15 @@ This is the single place to understand **what decisions were made, why, and wher
 | Fixed ~200-item test benchmark | Small enough for repeated controlled experiments; large enough to observe patterns | `data/classicmodels_test_200.json` |
 | Strict train/test separation | Prevents leakage; preserves validity of generalisation claims | `notebooks/04_build_training_set.ipynb`, `data/train/README.md` |
 
+## Why we run (k=0) and (k=3) in multiple phases
+
+| Phase | What changes | Why it matters |
+|---|---|---|
+| Baseline, `k=0` | Prompt only (no exemplars); weights fixed | Establishes a “prompt-only” floor. |
+| Baseline, `k=3` | Prompt includes exemplars; weights fixed | Measures inference-time prompt conditioning uplift without training. |
+| QLoRA, `k=0` | Weights changed via adapters; no exemplars | Measures training uplift on its own (closest to “fine-tuned model only”). |
+| QLoRA, `k=3` | Adapters + exemplars | Tests whether prompting still helps after fine-tuning; useful for selecting a final deployment mode and for dissertation analysis. |
+
 ## Metrics (Ojuri-aligned)
 
 | Metric | Decision | Why | Where |
@@ -46,4 +55,3 @@ This is the single place to understand **what decisions were made, why, and wher
 
 - Metrics and evaluation framing: Ojuri et al. (VA / execution accuracy / test-suite accuracy).
 - Test-suite accuracy concept: Zhong et al. (2020) style denotation comparison across DB variants.
-
