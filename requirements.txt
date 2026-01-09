@@ -1,4 +1,5 @@
-torch==2.3.1
+# NOTE (Colab): keep the preinstalled CUDA-enabled PyTorch.
+# If you run locally, install a compatible `torch` build separately.
 transformers==4.44.2
 accelerate==0.33.0
 bitsandbytes==0.43.3
@@ -12,4 +13,3 @@ pymysql==1.1.0
 cryptography==42.0.5
 pandas==2.2.1
 numpy==1.26.4
-triton==2.3.1
