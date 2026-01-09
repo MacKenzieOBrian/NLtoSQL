@@ -10,6 +10,15 @@ This is the single place to understand **what decisions were made, why, and wher
 | Fixed ~200-item test benchmark | Small enough for repeated controlled experiments; large enough to observe patterns | `data/classicmodels_test_200.json` |
 | Strict train/test separation | Prevents leakage; preserves validity of generalisation claims | `notebooks/04_build_training_set.ipynb`, `data/train/README.md` |
 
+## Why we run (k=0) and (k=3) in multiple phases
+
+| Phase | What changes | Why it matters |
+|---|---|---|
+| Baseline, `k=0` | Prompt only (no exemplars); weights fixed | Establishes a “prompt-only” floor. |
+| Baseline, `k=3` | Prompt includes exemplars; weights fixed | Measures inference-time prompt conditioning uplift without training. |
+| QLoRA, `k=0` | Weights changed via adapters; no exemplars | Measures training uplift on its own (closest to “fine-tuned model only”). |
+| QLoRA, `k=3` | Adapters + exemplars | Tests whether prompting still helps after fine-tuning; useful for selecting a final deployment mode and for dissertation analysis. |
+
 ## Metrics (Ojuri-aligned)
 
 | Metric | Decision | Why | Where |
@@ -33,17 +42,16 @@ This is the single place to understand **what decisions were made, why, and wher
 | Colab as primary runtime | GPU availability + consistent environment for repeated runs | `CONFIG.md`, `notebooks/` |
 | Pinned dependencies | Prevents Colab binary drift changing results | `requirements.txt` |
 | Deterministic decoding for baselines | Avoids sampling noise in VA/EM/EX comparisons | `nl2sql/llm.py`, baseline notebooks |
-| Outputs under `results/` (gitignored) | Prevents accidental large commits; curate dissertation artifacts intentionally | `.gitignore`, `results/README.md` |
+| Outputs under `results/` (gitignored) | Prevents accidental large commits; curate dissertation outputs intentionally | `.gitignore`, `results/README.md` |
 
 ## Training data (QLoRA)
 
 | Decision | Why | Where |
 |---|---|---|
-| LLM-assisted generation + DB validation | Scales data creation while ensuring VA=True | `notebooks/04_build_training_set.ipynb` |
-| Mixed difficulty targets | Broad coverage (easy/medium/hard) with a small dataset | `notebooks/04_build_training_set.ipynb` |
+| Curated training set + DB validation | Keeps the workflow simple while ensuring VA=True and preventing leakage | `data/train/classicmodels_train_200.jsonl`, `notebooks/04_build_training_set.ipynb` |
+| Mixed difficulty coverage | Broad coverage (easy/medium/hard) with a small dataset | `data/train/classicmodels_train_200.jsonl` |
 
 ## What to cite in the dissertation
 
 - Metrics and evaluation framing: Ojuri et al. (VA / execution accuracy / test-suite accuracy).
 - Test-suite accuracy concept: Zhong et al. (2020) style denotation comparison across DB variants.
-

@@ -2,14 +2,12 @@
 
 This document describes how to reproduce experiments (baseline prompting now; agent + QLoRA planned). It is written to support dissertation-quality runs: fixed dependencies, deterministic decoding, and traceable run metadata.
 
-For the “why” behind key choices (metrics, splits, safety, reproducibility), see `DECISIONS.md`.
-
 ## Project structure (why it changed)
 
 The repo is intentionally split into:
 - `nl2sql/` (importable “experiment harness”): stable, reviewable code for DB access, safe execution, prompting, and evaluation.
-- `notebooks/` (Colab runners): orchestrate runs, save artifacts, and generate dissertation tables/figures without duplicating core logic.
-- `data/` (benchmarks) and `results/` (run outputs): keep inputs and outputs separate; `results/` is gitignored by default to avoid committing large artifacts by accident.
+- `notebooks/` (Colab runners): orchestrate runs, save outputs, and generate dissertation tables/figures without duplicating core logic.
+- `data/` (benchmarks) and `results/` (run outputs): keep inputs and outputs separate; `results/` is gitignored by default to avoid committing large outputs by accident.
 
 This makes runs easier to reproduce: the notebook becomes a thin runner, while evaluation logic lives in version-controlled modules.
 
@@ -23,13 +21,25 @@ This makes runs easier to reproduce: the notebook becomes a thin runner, while e
    - Hugging Face: `notebook_login()` or `HF_TOKEN`
 5. Run: `notebooks/02_baseline_prompting_eval.ipynb`
 6. Outputs are saved under `results/baseline/` (gitignored by default; see `results/README.md`).
+   - If you want these outputs on GitHub, remove/adjust the `results/` rule in `.gitignore` and commit curated JSONs.
 
 ## Quickstart (QLoRA)
 
 1. Build a training set that does not overlap the 200-item benchmark:
-   - Run `notebooks/04_build_training_set.ipynb` to generate and DB-validate `data/train/classicmodels_train_200.jsonl`.
+   - The repo includes a starter training file at `data/train/classicmodels_train_200.jsonl`.
+   - Run `notebooks/04_build_training_set.ipynb` to validate it strictly:
+     - SELECT-only output
+     - no overlap with `data/classicmodels_test_200.json` (exact NLQ match check)
+     - SQL must execute on the live ClassicModels DB (VA=True)
+   - If any rows fail, edit `data/train/classicmodels_train_200.jsonl` and re-run validation.
 2. Fine-tune and evaluate adapters:
    - Run `notebooks/05_qlora_train_eval.ipynb` (saves adapters to `results/adapters/` and eval JSONs to `results/qlora/`).
+
+Evaluation note:
+- The QLoRA notebook evaluates the fine-tuned adapters in two inference modes:
+  - `k=0` (no exemplars): measures what fine-tuning achieves on its own.
+  - `k=3` (few-shot exemplars): measures whether prompt conditioning still adds uplift on top of fine-tuning.
+This mirrors the dissertation question: prompt-only vs fine-tuning, and their interaction.
 
 ## Environment variables
 
@@ -41,7 +51,6 @@ Set these before running notebooks (or enter when prompted):
 | `DB_USER` | MySQL username | `root` |
 | `DB_PASS` | MySQL password | — |
 | `DB_NAME` | Database name | `classicmodels` |
-| `HF_TOKEN` | Hugging Face access token (gated models) | `REDACTED` |
 
 ## Dependencies
 
@@ -90,7 +99,3 @@ This project will compare prompting vs QLoRA SFT later. Key knobs to report in t
 - LoRA rank `r`, `alpha`, dropout, target modules
 - batch size + grad accumulation, max seq length, LR/scheduler, warmup
 - quantization config (4-bit NF4) and dtype
-
-## Why these choices
-
-See `DECISIONS.md` (kept separate so this file stays a “how to run” checklist).

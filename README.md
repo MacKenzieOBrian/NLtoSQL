@@ -11,7 +11,7 @@ The dissertation goal is to measure (and explain) performance differences betwee
 ## What’s in the repo
 
 - `nl2sql/`: reusable “experiment harness” code (DB access, schema text, prompting, generation, evaluation).
-- `notebooks/`: Colab notebooks that *run* experiments and produce dissertation-ready artifacts.
+- `notebooks/`: Colab notebooks that *run* experiments and produce dissertation-ready outputs.
 - `data/`: benchmark JSON (currently `data/classicmodels_test_200.json`).
 - `results/`: local outputs (JSON runs, figures). Gitignored by default; see `results/README.md`.
 - `DECISIONS.md`: decision record (what/why/where) for dissertation writing.
@@ -25,13 +25,14 @@ The dissertation goal is to measure (and explain) performance differences betwee
 
 ## Quickstart (Colab baseline)
 
-1. Set env vars in Colab (or enter when prompted): `INSTANCE_CONNECTION_NAME`, `DB_USER`, `DB_PASS`, `DB_NAME`, `HF_TOKEN`.
+1. Set env vars in Colab enter when prompted: `INSTANCE_CONNECTION_NAME`, `DB_USER`, `DB_PASS`, `DB_NAME`, `HF_TOKEN`.
 2. Open and run: `notebooks/02_baseline_prompting_eval.ipynb`
 3. Outputs are written to `results/baseline/` (gitignored by default).
+   - If you want these outputs on GitHub, remove/adjust the `results/` rule in `.gitignore` and commit curated JSONs.
 
 ## Quickstart (QLoRA)
 
-1. Generate a strict, DB-validated training set: `notebooks/04_build_training_set.ipynb` → `data/train/classicmodels_train_200.jsonl`
+1. Validate (and optionally edit) the provided training set: `notebooks/04_build_training_set.ipynb` checks `data/train/classicmodels_train_200.jsonl` against the live DB and the fixed 200-item benchmark.
 2. Fine-tune + evaluate adapters: `notebooks/05_qlora_train_eval.ipynb`
 
 ## Evaluation metrics
@@ -40,3 +41,9 @@ The dissertation goal is to measure (and explain) performance differences betwee
 - **EM (Exact Match)**: normalized SQL string match vs gold SQL (strict, conservative).
 - **EX (Execution Accuracy)**: execute predicted SQL and compare results to the gold SQL results (Ojuri-style execution accuracy).
 - **TS / test-suite accuracy**: planned next metric (compare results across distilled DB variants).
+
+## Why we evaluate baselines vs QLoRA
+
+- **Baseline runs** (zero-shot and few-shot) change only the *prompt*; the model weights stay fixed. They show how far prompt engineering alone can go.
+- **QLoRA runs** train adapters on ClassicModels pairs, changing the model’s behaviour. We then re-evaluate on the same 200-item test set to measure generalisation uplift.
+- We evaluate QLoRA with both `k=0` and `k=3` to separate gains from **training** vs gains from **adding exemplars** at inference time.
