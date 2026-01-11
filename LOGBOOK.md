@@ -12,3 +12,17 @@ This file records key project changes and why they were made (for dissertation t
 
 - Zero-shot: `VA≈0.81`, `EX≈0.00`
 - Few-shot (k=3): `VA≈0.855`, `EX≈0.325`
+
+### 2026-01-09 — Colab QLoRA fixes
+
+- Bumped `peft` to `0.17.x` and left `torch` to Colab’s CUDA build to avoid `torch.xpu` import errors.
+- Notebook now auto-selects `bf16` (Ampere+) vs `fp16` (T4) and prints GPU capability to prevent `bf16` validation crashes.
+- Forced 4-bit model loading onto GPU (`device_map={"":0}`) to stop bitsandbytes from offloading layers to CPU/disk (avoids `quantizer_bnb_4bit` errors).
+- Pushes: `f6292b9`, `8c632cb`, `886ee34`.
+
+### 2026-01-09 — QLoRA run results (ClassicModels-200)
+
+- Training (1 epoch, r=16, 4-bit): adapters saved to `results/adapters/qlora_classicmodels`.
+- Eval (k=0): `VA=0.730`, `EM=0.005`, `EX=0.030` (adapter alone underperforms baseline VA, EX still low).
+- Eval (k=3): `VA=0.860`, `EM=0.260`, `EX=0.305` (few-shot + adapters lifts VA/EX vs k=0, roughly baseline-level EX).
+- Takeaway: current QLoRA config did not beat the prompt-only baseline; most gain still comes from few-shot prompting. Next steps: try 2–3 epochs, lower LR (e.g., 1e-4), warmup, and a clean exemplar pool separate from the test set.

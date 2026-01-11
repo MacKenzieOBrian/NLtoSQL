@@ -188,3 +188,8 @@ We have a proven DB executor (QueryRunner), a validated 200-item test set, repro
 ## 2026-01-08
 - Activities: Aligned evaluation metric definitions with Ojuri et al. so EX is **execution accuracy** (result comparison) and EM is the strict string baseline; updated notebooks/docs accordingly.
 - Insights: Keeping EM alongside EX is useful for debugging prompt formatting issues, but EX is the primary correctness metric for comparison to the paper.
+
+## 2026-01-09
+- Activities: Stabilised Colab QLoRA stack (peft 0.17, device_map pinned to GPU, auto bf16/fp16 switch). Ran QLoRA (r=16, 1 epoch, 4-bit) on ClassicModels-200; saved adapters to `results/adapters/qlora_classicmodels`.
+- Results: k=0 → VA 0.73 / EX 0.03 (worse than baseline); k=3 → VA 0.86 / EX 0.305 (near baseline few-shot EX). Interpretation: adapters alone aren’t learning enough; prompting still carries most of the performance.
+- Next experiments: more epochs (2–3), slightly lower LR (≈1e-4) with warmup, ensure exemplar pool is separate from the test set; consider r=32 if GPU allows.
