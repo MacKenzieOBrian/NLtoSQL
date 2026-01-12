@@ -1,0 +1,169 @@
+# Model Adaptation Strategies
+
+This project evaluates several model adaptation strategies for NL-to-SQL conversion. The goal is to compare prompting, fine-tuning, and agentic refinement under the same dataset and evaluation metrics, replicating the methodology of Ojuri et al. (2025) using only open-source components.
+
+For each strategy, the following are provided:
+- Conceptual summary
+- Where it is implemented in this repository
+- Code-level pattern (to clarify how it is done)
+- Decision rationale
+- Relevant literature links
+
+---
+
+## 1. Zero-Shot Prompting
+
+### Concept
+Zero-shot prompting provides only the natural language query and schema context. No examples are given. This measures the base model’s inherent ability to ground SQL without adaptation.
+
+### Implemented In
+- `notebooks/02_baseline_prompting_eval.ipynb`
+- Uses shared evaluation utilities in `nl2sql/`
+
+### Code Pattern
+```python
+prompt = f"""You are an assistant that writes SQL.
+Schema:
+{schema_text}
+
+Question: {question}
+SQL:"""
+
+inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+outputs = model.generate(**inputs, max_new_tokens=256)
+sql = tokenizer.decode(outputs[0], skip_special_tokens=True)
+```
+
+**Decision Rationale**  
+Used as a baseline to understand how much structure the model already possesses prior to fine-tuning. This enables a controlled comparison of performance deltas across adaptation strategies.
+
+**Literature**  
+ICL introduced in (Brown et al., 2020), but zero-shot performance is typically limited for schema-grounded tasks.
+
+---
+
+## 2. Few-Shot Prompting
+
+### Concept
+Few-shot prompting uses a small number of NL→SQL exemplars inside the prompt to demonstrate target patterns. This leverages in-context learning without modifying weights.
+
+### Implemented In
+- `notebooks/02_baseline_prompting_eval.ipynb`
+
+### Code Pattern
+```python
+exemplars = "".join(
+    f"Question: {ex['nl']}\nSQL: {ex['sql']}\n\n"
+    for ex in examples[:k]
+)
+
+prompt = f"""You are an assistant that writes SQL.
+Schema:
+{schema_text}
+
+Examples:
+{exemplars}
+Question: {question}
+SQL:"""
+```
+
+**Decision Rationale**  
+Chosen to evaluate whether in-context learning alone can yield acceptable execution accuracy for NL-to-SQL. Few-shot prompting is simple to deploy and requires no training cycle.
+
+**Literature**  
+Few-shot ICL is effective for some structured tasks but tends to lack consistency for domain-specific SQL generation (Mosbach et al., 2023).
+
+---
+
+## 3. QLoRA Fine-Tuning (Supervised)
+
+### Concept
+Fine-tuning adapts the model weights using supervised NL→SQL examples. QLoRA reduces VRAM by quantizing the base model to 4-bit and training low-rank adapters.
+
+### Implemented In
+- `notebooks/04_build_training_set.ipynb`
+- `notebooks/05_qlora_train_eval.ipynb`
+
+### Code Pattern
+```python
+bnb_config = BitsAndBytesConfig(load_in_4bit=True)
+
+model = AutoModelForCausalLM.from_pretrained(
+    BASE_MODEL_NAME,
+    quantization_config=bnb_config,
+    device_map="auto",
+)
+
+peft_config = LoraConfig(
+    r=8, lora_alpha=32,
+    target_modules=["q_proj", "v_proj"],
+    task_type="CAUSAL_LM"
+)
+
+model = get_peft_model(model, peft_config)
+
+def format_example(example):
+    return f"Question: {example['nl']}\nSQL: {example['sql']}"
+
+# dataset mapping → supervised tokens
+```
+
+**Decision Rationale**  
+Full fine-tuning of 7B+ models is infeasible on Colab (typically >60GB VRAM requirement). QLoRA reduces VRAM to ~8-12GB enabling training on consumer hardware.
+
+**Literature**  
+PEFT and QLoRA introduced in (Ding et al., 2023), allowing efficient domain adaptation under resource constraints.
+
+---
+
+## 4. Agentic Refinement (ReAct-style)
+
+### Concept
+Agentic refinement interleaves:
+
+- Thought → reasoning plan  
+- Action → execute SQL  
+- Observation → error/result feedback  
+- Refinement → new SQL attempt
+
+This reduces logical and syntactic errors by allowing iterative self-correction.
+
+### Implemented In
+- Supported by DB execution layer in `nl2sql/`
+- Planned for integration in `notebooks/03_agentic_eval.ipynb` (future)
+- Query execution provided by `QueryRunner`
+
+### Code Pattern
+```python
+for _ in range(MAX_STEPS):
+    history = model_step(history, observation)
+    sql = extract_sql(history)
+
+    try:
+        rows = query_runner.run(sql)
+        observation = f"SUCCESS: {len(rows)} rows"
+    except Exception as e:
+        observation = f"ERROR: {e}"
+
+    if termination_condition(history, observation):
+        break
+```
+
+**Decision Rationale**  
+Selected to replicate the methodology of Ojuri et al. (2025), who demonstrated significant improvements in execution accuracy using agent-based refinement over single-shot decoding.
+
+**Literature**  
+ReAct framework introduced in (Yao et al., 2023); applied to NL→SQL in (Ojuri et al., 2025).
+
+---
+
+## Summary of Strategy Differences
+
+| Strategy          | Modifies Weights | Requires Training | Iterative | Expected Consistency |
+|-------------------|------------------|-------------------|-----------|----------------------|
+| Zero-Shot         | No               | No                | No        | Low                  |
+| Few-Shot          | No               | No                | No        | Medium               |
+| QLoRA Fine-Tune   | Yes (Adapters)   | Yes               | No        | High                 |
+| ReAct Agent       | Optional         | No                | Yes       | Highest              |
+
+The combination of QLoRA fine-tuning + ReAct refinement represents the closest open-source analogue to the proprietary GPT-4 agent in Ojuri et al. (2025).
