@@ -4,6 +4,5 @@ __pycache__/
 *.py[cod]
 
 # Common notebook outputs/artifacts
-results_*.json
-results/*
-!results/README.md
+# Keep results in git for reproducibility (baseline/qlora/agent runs)
+# If you want to ignore large artifacts later, add explicit patterns (e.g., results/**/*.ckpt)
