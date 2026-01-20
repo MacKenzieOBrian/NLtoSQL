@@ -1,7 +1,10 @@
 """
 LLM loading helpers.
 Refs: Hugging Face Transformers 4-bit NF4 + BitsAndBytes loading
-(https://huggingface.co/docs/transformers/main_classes/quantization).
+(https://huggingface.co/docs/transformers/main_classes/quantization),
+PEFT/QLoRA examples (https://huggingface.co/docs/peft/),
+BitsAndBytes docs (https://github.com/TimDettmers/bitsandbytes).
+
 """
 
 from __future__ import annotations

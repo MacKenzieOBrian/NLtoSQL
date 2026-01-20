@@ -1,7 +1,9 @@
 """
 Prompt builders.
 Refs: schema-grounded prompting practice from NL→SQL surveys
-(https://arxiv.org/abs/2410.06011) and few-shot patterns. 
+(https://arxiv.org/abs/2410.06011) and few-shot ICL patterns
+(e.g., https://arxiv.org/abs/2005.14165). We build system/schema/exemplar/NLQ
+messages, guard leakage, and order schema text for better column choice.
 """
 
 from __future__ import annotations

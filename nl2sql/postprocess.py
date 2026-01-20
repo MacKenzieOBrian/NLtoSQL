@@ -1,6 +1,8 @@
 """
 Post-processing for model SQL text.
-Refs: common NL→SQL cleanup needed after generating 
+Refs: common NL→SQL cleanup after generation; HF generation tips:
+https://huggingface.co/docs/transformers/en/main_classes/text_generation
+
 """
 
 from __future__ import annotations
