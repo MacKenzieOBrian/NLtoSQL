@@ -1,12 +1,7 @@
 """
 Prompt builders.
 Refs: schema-grounded prompting practice from NL→SQL surveys
-(https://arxiv.org/abs/2410.06011) and few-shot patterns from standard ICL
-literature (e.g., https://arxiv.org/abs/2005.14165 for ICL framing). Implementation
-is our own: build system/schema/exemplar/NLQ prompts, guard against leakage, order
-schema text for better column choice.
-
-# Notebooks use this to build the exact chat messages fed into the model.
+(https://arxiv.org/abs/2410.06011) and few-shot patterns. 
 """
 
 from __future__ import annotations

@@ -1,12 +1,9 @@
 """
 Evaluation helpers (VA/EM/EX).
-Refs: execution-based metrics common in NL→SQL (e.g., Spider/EMNLP'20 TS:
+Refs: execution-based metrics common in NL→SQL work (e.g., Spider/EMNLP'20 TS:
 https://aclanthology.org/2020.emnlp-main.29/) and Ojuri et al. style VA/EX.
-SQLAlchemy result comparison pattern follows standard execution docs:
-https://docs.sqlalchemy.org/en/20/core/connections.html#sqlalchemy.engine.Connection.execute.
-This is our own implementation: execute SQL, compare results, compute validity.
 
-# Thin glue for notebooks: compute VA/EX/EM on SQL produced by prompt/QLoRA/agent runs.
+ execute SQL, compare results, compute validity.
 """
 
 from __future__ import annotations
