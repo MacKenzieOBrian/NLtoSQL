@@ -8,6 +8,7 @@ BitsAndBytes docs (https://github.com/TimDettmers/bitsandbytes).
 # Used here: consistent 4-bit Llama-3 load with deterministic decoding for eval.
 # Extraction helper grabs the first SELECT from generated text.
 # All wiring is ours: picking NF4, setting do_sample=False, and keeping decoding stable across runs.
+# What these are: Transformers is the model/runtime; BitsAndBytes handles GPU quantization; PEFT/QLoRA are “small adapter” fine-tuning methods to fit big models on small GPUs.
 """
 
 from __future__ import annotations
