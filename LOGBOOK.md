@@ -173,7 +173,7 @@ This is the turning point where the project produces a credible few-shot baselin
 - Take: Agentic refinement is the next lever to lift EX (and TS, when added), especially at k=0. Plan to run base vs QLoRA adapters through the loop and log traces for a sample of failures.
 
 ## 2026-02-18 — Dependency wobble fix
-- Activities: Added guard + pinned-setup cells to both `03_agentic_eval.ipynb` and `05_qlora_train_eval.ipynb` to catch the classic `numpy.dtype size changed` / missing `triton.ops` errors. Turned on a pre-setup check that bails if torch/numpy/bnb/triton are already imported. Stopped ignoring `results/` so run artifacts can be committed.
-- Challenges: Colab keeps preloading mismatched wheels; reinstalling mid-session was causing binary ABI mismatches.
-- Insights: Run the guard + setup first in a fresh GPU runtime, then restart—no more dtype errors. Adapter path confusion is now handled (falls back to base model if adapters aren’t present).
-- Next Steps: Upload or regenerate adapters before agentic eval; run full agentic pass; keep the guard pattern in any new notebooks.
+- Activities: Added simple one-cell setup (clean + pin torch/cu121 + bnb/triton) to notebooks to dodge dtype/triton errors; kept adapter load fallback. Stopped ignoring `results/` so we can commit JSONs/adapters.
+- Challenges: Colab preloads random wheels; reinstalling mid-session caused ABI mismatches.
+- Insights: Run setup first in a fresh GPU runtime, restart once, then go. If adapters are missing in Colab, we fall back to base model and print it.
+- Next Steps: Upload/regenerate adapters before agentic eval; run the loop end-to-end.
