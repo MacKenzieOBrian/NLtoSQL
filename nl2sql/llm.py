@@ -1,3 +1,11 @@
+"""
+LLM loading helpers.
+Refs: Hugging Face Transformers 4-bit NF4 + BitsAndBytes loading
+(https://huggingface.co/docs/transformers/main_classes/quantization) and
+PEFT QLoRA examples. Logic is our own thin wrapper to set deterministic decoding
+defaults for eval.
+"""
+
 from __future__ import annotations
 
 import re
@@ -46,4 +54,3 @@ def generate_sql_from_messages(
 
     sql = extract_first_select(gen_text)
     return sql if sql is not None else gen_text
-

@@ -1,3 +1,11 @@
+"""
+Schema helpers.
+Refs: schema summarisation ideas from NL→SQL prompting surveys
+(https://arxiv.org/abs/2410.06011) and the general Spider-style “list tables/columns”
+pattern. We generate ordered table/column text (PK/name-like first) to feed prompts.
+All code is ours, tuned for ClassicModels.
+"""
+
 from __future__ import annotations
 
 import re
@@ -46,4 +54,3 @@ def build_schema_summary(engine: Engine, *, db_name: str, max_cols_per_table: in
         chunks.append(f"{table}({', '.join(cols)})")
 
     return "\n".join(chunks)
-

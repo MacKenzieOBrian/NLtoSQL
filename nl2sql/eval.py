@@ -1,3 +1,10 @@
+"""
+Evaluation helpers (VA/EM/EX).
+Refs: execution-based metrics common in NL→SQL (e.g., Spider/EMNLP'20 TS:
+https://aclanthology.org/2020.emnlp-main.29/) and Ojuri et al. style VA/EX.
+This is our own implementation: execute SQL, compare results, compute validity.
+"""
+
 from __future__ import annotations
 
 import json
