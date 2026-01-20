@@ -1,3 +1,11 @@
+"""
+Schema helpers.
+Refs: schema summarisation ideas from NL→SQL prompting surveys
+(https://arxiv.org/abs/2410.06011) and SQLAlchemy metadata/inspection docs:
+https://docs.sqlalchemy.org/en/20/core/metadata.html
+
+"""
+
 from __future__ import annotations
 
 import re
@@ -46,4 +54,3 @@ def build_schema_summary(engine: Engine, *, db_name: str, max_cols_per_table: in
         chunks.append(f"{table}({', '.join(cols)})")
 
     return "\n".join(chunks)
-

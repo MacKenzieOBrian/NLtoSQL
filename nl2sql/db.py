@@ -1,3 +1,12 @@
+"""
+DB connector helpers.
+Refs:
+- Cloud SQL Connector pattern (GCP MySQL docs): https://cloud.google.com/sql/docs/mysql/connect-run
+- SQLAlchemy custom creator/engine: https://docs.sqlalchemy.org/en/20/core/engines.html#custom-dbapi-connect
+
+We keep the standard creator + engine + safe_connection pattern, adapted for ClassicModels.
+"""
+
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -41,4 +50,3 @@ def safe_connection(engine: Engine) -> Iterator[sqlalchemy.engine.Connection]:
         yield conn
     finally:
         conn.close()
-

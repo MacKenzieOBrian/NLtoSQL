@@ -1,3 +1,10 @@
+"""
+Post-processing for model SQL text.
+Refs: common NL→SQL cleanup after generation; HF generation tips:
+https://huggingface.co/docs/transformers/en/main_classes/text_generation
+
+"""
+
 from __future__ import annotations
 
 import re
@@ -28,4 +35,3 @@ def enforce_minimal_projection(sql: str, nlq: str) -> str:
     first_expr = select_part.split(",")[0].strip()
     rebuilt = re.sub(SELECT_LIST_RE, lambda _: f"SELECT {first_expr} FROM ", sql, count=1)
     return rebuilt
-

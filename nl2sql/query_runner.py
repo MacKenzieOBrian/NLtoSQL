@@ -1,3 +1,11 @@
+"""
+Safe query executor.
+Refs:
+- SQLAlchemy connection/execute docs: https://docs.sqlalchemy.org/en/20/core/connections.html
+- GCP connector examples (custom creator) and safe SELECT-only guards used in NL→SQL eval practice.
+Purpose: give the ReAct loop a controlled Act step and enforce read-only VA/EX runs.
+"""
+
 from __future__ import annotations
 
 import json
@@ -123,4 +131,3 @@ class QueryRunner:
         serializable = [h.to_jsonable() for h in self.history]
         with open(path, "w", encoding="utf-8") as f:
             json.dump(serializable, f, indent=2, default=str)
-
