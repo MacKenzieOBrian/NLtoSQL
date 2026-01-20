@@ -3,6 +3,8 @@ Post-processing for model SQL text.
 Refs: common NL→SQL cleanup after generation; HF generation tips:
 https://huggingface.co/docs/transformers/en/main_classes/text_generation
 
+# Used here: normalize whitespace/case, grab the first SELECT, and optionally enforce
+# minimal projection on list-style queries. All heuristics are ours.
 """
 
 from __future__ import annotations

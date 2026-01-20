@@ -5,6 +5,8 @@ Refs: Hugging Face Transformers 4-bit NF4 + BitsAndBytes loading
 PEFT/QLoRA examples (https://huggingface.co/docs/peft/),
 BitsAndBytes docs (https://github.com/TimDettmers/bitsandbytes).
 
+# Used here: consistent 4-bit Llama-3 load with deterministic decoding for eval.
+# Extraction helper grabs the first SELECT from generated text.
 """
 
 from __future__ import annotations

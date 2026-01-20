@@ -4,6 +4,8 @@ Refs:
 - SQLAlchemy connection/execute docs: https://docs.sqlalchemy.org/en/20/core/connections.html
 - GCP connector examples (custom creator) and safe SELECT-only guards used in NL→SQL eval practice.
 Purpose: give the ReAct loop a controlled Act step and enforce read-only VA/EX runs.
+
+# Used here: run model SQL safely (SELECT-only), capture result previews/errors, and feed ReAct/eval.
 """
 
 from __future__ import annotations

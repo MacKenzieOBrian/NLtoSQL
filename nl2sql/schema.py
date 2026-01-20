@@ -4,6 +4,7 @@ Refs: schema summarisation ideas from NL→SQL prompting surveys
 (https://arxiv.org/abs/2410.06011) and SQLAlchemy metadata/inspection docs:
 https://docs.sqlalchemy.org/en/20/core/metadata.html
 
+# Used here: build ordered table/column text (PK/name-first) to feed prompts/ReAct; logic is ours.
 """
 
 from __future__ import annotations
