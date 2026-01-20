@@ -1,8 +1,12 @@
 """
 Post-processing for model SQL text.
-Refs: common NL→SQL cleanup after generation; HF generation tips:
-https://huggingface.co/docs/transformers/en/main_classes/text_generation
+Refs: common NL→SQL cleanup (grab first SELECT, trim chatter), inspired by
+practical prompt-engineering guides (e.g., HF generation tips:
+https://huggingface.co/docs/transformers/en/main_classes/text_generation);
+code here is our own minimal heuristic
+to keep outputs executable and aligned with list-style intents.
 
+# Called from notebooks after model generate to strip noise and keep one SQL.
 """
 
 from __future__ import annotations

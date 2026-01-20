@@ -1,9 +1,13 @@
 """
 Schema helpers.
 Refs: schema summarisation ideas from NL→SQL prompting surveys
-(https://arxiv.org/abs/2410.06011) and SQLAlchemy metadata/inspection docs:
-https://docs.sqlalchemy.org/en/20/core/metadata.html
+(https://arxiv.org/abs/2410.06011) and the general Spider-style “list tables/columns”
+pattern. Also informed by SQLAlchemy metadata inspection docs:
+https://docs.sqlalchemy.org/en/20/core/metadata.html. We generate ordered table/column
+text (PK/name-like first) to feed prompts.
+All code is ours, tuned for ClassicModels.
 
+# Imported in notebooks to build the schema text fed to prompts/ReAct.
 """
 
 from __future__ import annotations
