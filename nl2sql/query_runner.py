@@ -1,8 +1,9 @@
 """
 Safe query executor.
-Refs: SQLAlchemy execution with custom engine, plus a simple SELECT-only guard.
-adapted to give the ReAct loop a controlled Act
-step and to enforce read-only evaluation for VA/EX.
+Refs:
+- SQLAlchemy connection/execute docs: https://docs.sqlalchemy.org/en/20/core/connections.html
+- GCP connector examples (custom creator) and safe SELECT-only guards used in NL→SQL eval practice.
+Purpose: give the ReAct loop a controlled Act step and enforce read-only VA/EX runs.
 """
 
 from __future__ import annotations

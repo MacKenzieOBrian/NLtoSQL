@@ -1,7 +1,9 @@
 """
 Schema helpers.
 Refs: schema summarisation ideas from NL→SQL prompting surveys
-(https://arxiv.org/abs/2410.06011). 
+(https://arxiv.org/abs/2410.06011) and SQLAlchemy metadata/inspection docs:
+https://docs.sqlalchemy.org/en/20/core/metadata.html
+
 """
 
 from __future__ import annotations

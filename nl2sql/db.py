@@ -1,10 +1,10 @@
 """
 DB connector helpers.
-Refs: Cloud SQL Connector + SQLAlchemy creator pattern (GCP MySQL docs:
-https://cloud.google.com/sql/docs/mysql/connect-run). 
+Refs:
+- Cloud SQL Connector pattern (GCP MySQL docs): https://cloud.google.com/sql/docs/mysql/connect-run
+- SQLAlchemy custom creator/engine: https://docs.sqlalchemy.org/en/20/core/engines.html#custom-dbapi-connect
 
-creator hook, engine factory, and a safe_connection context manager. Just the standard pattern adapted to ClassicModels
- instead of the example.
+We keep the standard creator + engine + safe_connection pattern, adapted for ClassicModels.
 """
 
 from __future__ import annotations
