@@ -130,3 +130,9 @@
 - Challenges: Colab preloads random wheels
 - Insights: Run setup first in a fresh GPU runtime, restart once, then go. If adapters are missing in Colab, we fall back to base model and print it.
 - Next Steps: Upload/regenerate adapters before agentic eval; run the loop end-to-end.
+
+## 2026-01-20
+- Activities: Tweaked agentic ReAct prompt (strict SELECT-only), defaulted to small 5-item slice for debugging; added refs/comments across notebooks and nl2sql modules; attempted to stage/push fixes.
+- Challenges: ReAct pipeline previously produced non-executable SQL (VA/EX=0); git index.lock prevents staging here.
+- Insights: Stricter prompt + extract + small-slice debug should surface issues before full 200-run; must stage/push locally after clearing index.lock.
+- Next Steps: Test ReAct on small slice and inspect SQL; if valid, run full set; commit/push locally (rm .git/index.lock if needed).
