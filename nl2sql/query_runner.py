@@ -5,6 +5,8 @@ Refs:
 - SELECT-only guard to mirror safe execution practices in NL→SQL eval papers.
 Purpose here: give the ReAct loop a controlled Act step and keep VA/EX runs read-only.
 All logic is ours; no third-party code copied.
+
+# Used whenever we execute model SQL; keeps destructive statements out.
 """
 
 from __future__ import annotations
