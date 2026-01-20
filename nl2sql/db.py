@@ -1,10 +1,11 @@
 """
 DB connector helpers.
 Refs: Cloud SQL Connector + SQLAlchemy creator pattern (GCP MySQL docs:
-https://cloud.google.com/sql/docs/mysql/connect-run). We keep this minimal:
-creator hook, engine factory, and a safe_connection context manager. Nothing
-here is copied verbatim; just the standard pattern adapted to our ClassicModels
-setup.
+https://cloud.google.com/sql/docs/mysql/connect-run; SQLAlchemy creator:
+https://docs.sqlalchemy.org/en/20/core/engines.html#custom-dbapi-connect).
+We keep this minimal: creator hook, engine factory, and a safe_connection
+context manager. Nothing here is copied verbatim; just the standard pattern
+adapted to our ClassicModels setup.
 
 # Used by notebooks to avoid hardcoded hosts/ports; keeps DB access in one place.
 """

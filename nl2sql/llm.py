@@ -2,8 +2,9 @@
 LLM loading helpers.
 Refs: Hugging Face Transformers 4-bit NF4 + BitsAndBytes loading
 (https://huggingface.co/docs/transformers/main_classes/quantization) and
-PEFT QLoRA examples. Logic is our own thin wrapper to set deterministic decoding
-defaults for eval.
+PEFT QLoRA examples (https://huggingface.co/docs/peft/index; bnb docs:
+https://github.com/TimDettmers/bitsandbytes). Logic is our own thin wrapper to
+set deterministic decoding defaults for eval.
 
 # Notebooks call this to get a consistent 4-bit Llama-3 load with deterministic gen settings.
 """

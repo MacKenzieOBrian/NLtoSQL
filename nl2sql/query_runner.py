@@ -3,6 +3,7 @@ Safe query executor.
 Refs:
 - SQLAlchemy creator pattern + custom execution (inspired by SQLAlchemy docs and GCP connector examples).
 - SELECT-only guard to mirror safe execution practices in NL→SQL eval papers.
+  SQLAlchemy connection/execute docs: https://docs.sqlalchemy.org/en/20/core/connections.html
 Purpose here: give the ReAct loop a controlled Act step and keep VA/EX runs read-only.
 All logic is ours; no third-party code copied.
 
