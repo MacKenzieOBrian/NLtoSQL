@@ -6,6 +6,7 @@ Refs:
 Purpose: give the ReAct loop a controlled Act step and enforce read-only VA/EX runs.
 
 # Used here: run model SQL safely (SELECT-only), capture result previews/errors, and feed ReAct/eval.
+# All execution logging/result-preview code is ours; only the pattern was borrowed.
 """
 
 from __future__ import annotations
