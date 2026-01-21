@@ -5,8 +5,7 @@ Refs: schema-grounded prompting practice from NL→SQL surveys
 (e.g., https://arxiv.org/abs/2005.14165). We build system/schema/exemplar/NLQ
 messages, guard leakage, and order schema text for better column choice.
 
-# Used here: construct the chat messages fed to the model; enforce one SELECT, minimal projection,
-# and keep exemplars/leakage under control. Logic is ours.
+#  builds the chat messages (system + schema + k exemplars + NLQ)
 """
 
 from __future__ import annotations

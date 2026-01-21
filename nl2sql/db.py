@@ -4,8 +4,8 @@ Refs:
 - Cloud SQL Connector pattern (GCP MySQL docs): https://cloud.google.com/sql/docs/mysql/connect-run
 - SQLAlchemy custom creator/engine: https://docs.sqlalchemy.org/en/20/core/engines.html#custom-dbapi-connect
 
-We follow the connector + custom creator hook pattern to keep DB access private/IAM-auth’d and pooled. The functions are our own thin wrapper for ClassicModels, keeping all connection handling in one place.
-# What these are: the GCP connector opens a secure socket to Cloud SQL; SQLAlchemy creator plugs that into an Engine so the rest of the code can just ask for connections.
+Connector + custom creator hook pattern to keep DB access private/IAM-auth’d and pooled.
+# These are: the GCP connector opens a secure socket to Cloud SQL; SQLAlchemy creator plugs that into an Engine so the rest of the code can just ask for connections.
 """
 
 from __future__ import annotations

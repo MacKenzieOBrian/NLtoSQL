@@ -6,7 +6,6 @@ Refs:
 Purpose: give the ReAct loop a controlled Act step and enforce read-only VA/EX runs.
 
 # Used here: run model SQL safely (SELECT-only), capture result previews/errors, and feed ReAct/eval.
-# All execution logging/result-preview code is ours; only the pattern was borrowed.
 # What this is: a tiny wrapper around SQLAlchemy execution that refuses DDL/DML, so the model can only read; doubles as the “Act” tool in ReAct.
 """
 

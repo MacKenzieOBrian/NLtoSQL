@@ -4,8 +4,8 @@ Refs: schema summarisation ideas from NL→SQL prompting surveys
 (https://arxiv.org/abs/2410.06011) and SQLAlchemy metadata/inspection docs:
 https://docs.sqlalchemy.org/en/20/core/metadata.html
 
-# Used here: build ordered table/column text (PK/name-first) to feed prompts/ReAct; logic is ours.
-# What this is: a small helper to introspect ClassicModels via SQLAlchemy and format it for prompts so the model sees the real tables/columns.
+# Used here: build ordered table/column text (PK/name-first) to feed prompts/ReAct
+# introspects the ClassicModels DB via SQLAlchemy, lists tables/columns (PK/name-first).
 """
 
 from __future__ import annotations

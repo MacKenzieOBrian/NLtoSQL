@@ -6,8 +6,7 @@ SQLAlchemy execution docs: https://docs.sqlalchemy.org/en/20/core/connections.ht
 
 
 # Used here: execute predicted SQL, compare to gold results, and compute VA/EX/EM.
-# This mirrors execution-based evaluation in NL→SQL literature, implemented by us.
-# What these are: VA = does it run, EX = does it return the right rows, EM = strict string match. All logic lives here; nothing is copied from the papers.
+# What these are: VA = does it run, EX = does it return the right rows, EM = strict string match. 
 """
 
 from __future__ import annotations
