@@ -136,3 +136,14 @@
 - Challenges: ReAct pipeline previously produced non-executable SQL (VA/EX=0); git index.lock prevents staging here.
 - Insights: Stricter prompt + extract + small-slice debug should surface issues before full 200-run; must stage/push locally after clearing index.lock.
 - Next Steps: Test ReAct on small slice and inspect SQL; if valid, run full set; commit/push locally (rm .git/index.lock if needed).
+
+## 2026-02-19 — ReAct zero-VA/EX root cause
+- Activities: Investigated why the first ReAct run returned VA/EX/EM = 0. Tightened ReAct instructions (“single SELECT only, no DDL/DML/comments”), hardened `extract_sql`, forced deterministic decoding, and added a small-slice quick check for adapters.
+- Challenges: Loose prompt/extraction allowed non-SELECT junk, so every execution failed—looked like “bad adapters” but was a prompting/loop issue.
+- Insights: Adapters are fine (QLoRA k=3 EX ~0.38 on full 200); ReAct failed because SQL never executed. Sanity-check on a 5-item slice and inspect SQL before full runs.
+- Next Steps: Run ReAct on the small slice; if SQL executes, switch to full set and log VA/EX; keep the tightened prompt/extraction in place.
+
+## 2026-02-20 — Column mismatch sanity check
+- Activities: Ran the quick-check cell after fixing prompt decoding; VA now true but EX flagged “column mismatch.”
+- Insight: Not a data bug—the gold SQL is fine. It’s just strict EX: the model returns columns in a different order or with extra fields (e.g., USA customers with two columns instead of one). Row sets are correct, but EX stays false when columns don’t match exactly.
+- Takeaway: For strict scoring, align projections to the gold query; the quick-check now falls back to row-set comparison so I can see when it’s “semantically fine” despite column-name/order differences.
