@@ -147,3 +147,8 @@
 - Activities: Ran the quick-check cell after fixing prompt decoding; VA now true but EX flagged “column mismatch.”
 - Insight: Not a data bug—the gold SQL is fine. It’s just strict EX: the model returns columns in a different order or with extra fields (e.g., USA customers with two columns instead of one). Row sets are correct, but EX stays false when columns don’t match exactly.
 - Takeaway: For strict scoring, align projections to the gold query; the quick-check now falls back to row-set comparison so I can see when it’s “semantically fine” despite column-name/order differences.
+
+## 2026-02-21 — ReAct alignment with Ojuri et al.
+- Activities: Stabilised the ReAct loop on a 5-item slice (tight prompt: single SELECT, no DDL/DML/comments; deterministic decode; adapter load check). Kept `test_set=full_set[:5]` by default to inspect SQL before full runs.
+- Insight: Ojuri’s “intelligent agent” uplift comes from iterative refinement; my loop is the open-source analogue (Llama-3-8B + QLoRA). Next gains likely from small knobs: result-aware retries, projection guard to cut EX column mismatches, beam+rerank on SQL-only, optional grammar check, and trace logging.
+- Plan: Run full 200 once small slice shows VA>0; report prompt vs. QLoRA vs. ReAct EX/VA. If time permits, add a TS/row-set proxy and a paired test (McNemar) between prompt vs. QLoRA vs. ReAct to mirror their statistical angle.
