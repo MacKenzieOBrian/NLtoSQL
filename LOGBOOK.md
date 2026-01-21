@@ -152,3 +152,6 @@
 - Activities: Stabilised the ReAct loop on a 5-item slice (tight prompt: single SELECT, no DDL/DML/comments; deterministic decode; adapter load check). Kept `test_set=full_set[:5]` by default to inspect SQL before full runs.
 - Insight: Ojuri’s “intelligent agent” uplift comes from iterative refinement; my loop is the open-source analogue (Llama-3-8B + QLoRA). Next gains likely from small knobs: result-aware retries, projection guard to cut EX column mismatches, beam+rerank on SQL-only, optional grammar check, and trace logging.
 - Plan: Run full 200 once small slice shows VA>0; report prompt vs. QLoRA vs. ReAct EX/VA. If time permits, add a TS/row-set proxy and a paired test (McNemar) between prompt vs. QLoRA vs. ReAct to mirror their statistical angle.
+
+**Reflection (GPU access ask)**  
+Talk to supervisor/IT about a CUDA box (≥12GB VRAM) so I can run the 4-bit pipeline locally instead of M1/Colab. Ask for a torch+cu121-compatible environment (PyTorch 2.3.1 + cu121 + bitsandbytes/triton). M1 is too slow and can’t use bnb quant; Colab works but a local GPU would speed ReAct/QLoRA experiments.
