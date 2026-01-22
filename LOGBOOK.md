@@ -165,3 +165,8 @@ Talk to supervisor/IT about a CUDA box (≥12GB VRAM) so I can run the 4-bit pip
 - Activities: Added a projection guard in ReAct (NLQ pattern → canonical minimal SELECT) and tightened the prompt (no extra columns/order unless asked). ReAct small slice now scores VA/EX/EM = 1.0 (5/5).
 - Insight: The earlier EX misses were purely projection/order/logic drift, not adapter quality. A lightweight guard plus a stricter prompt removed the extra IDs/order and hardcoded filters.
 - Next Steps: Switch `test_set = full_set` and run the full 200 for ReAct; then consider broader guards or beam+rerank if EX is still low at scale. Keep traces for a few successes/failures to include in the dissertation.
+
+## 2026-01-24 — ReAct small-slice story (prompt/guard/retry)
+- Activities: Cleaned the ReAct helper: strict prompt (no extra cols/order unless asked), prompt-stripping decode, projection guard for a few recurring patterns, and a result-aware retry (only mark success when the query actually runs). On the 5-item slice ReAct hit VA/EX/EM = 1.0.
+- Insight: The fixes that mattered were prompt tightening + prompt-stripping + minimal projection guard; adapters were fine. EX failures on the small set were all projection/order/logic drift.
+- Plan: Swap `test_set` to the full 200 and rerun ReAct. If EX drops, consider small beam+rerank on executable SQL or limited new guard rules for recurring patterns; otherwise report prompt vs QLoRA vs ReAct using the current loop.
