@@ -155,3 +155,8 @@
 
 **Reflection (GPU access ask)**  
 Talk to supervisor/IT about a CUDA box (≥12GB VRAM) so I can run the 4-bit pipeline locally instead of M1/Colab. Ask for a torch+cu121-compatible environment (PyTorch 2.3.1 + cu121 + bitsandbytes/triton). M1 is too slow and can’t use bnb quant; Colab works but a local GPU would speed ReAct/QLoRA experiments.
+
+## 2026-01-22 — ReAct small-slice now executes, EX needs projection fixes
+- Activities: Fixed ReAct decoding (strip prompt tokens) and added error logging. Small 5-item ReAct run now has VA=1.0 but EX=0.2; failures are mostly extra/misordered columns and one hardcoded filter.
+- Insights: The loop is executing; misses are projection/ordering or wrong aggregation. Prompt needs a “return exactly the requested columns in order, no extra IDs/order unless asked” reminder; exemplars should show minimal projection. Postprocess guard could drop extras for simple patterns.
+- Next Steps: Tighten ReAct prompt + add a couple of minimal-projection exemplars; optionally add a projection guard. Rerun the 5-item slice to lift EX, then switch back to the full 200-item set once the slice is clean.
