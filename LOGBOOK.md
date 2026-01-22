@@ -160,3 +160,8 @@ Talk to supervisor/IT about a CUDA box (≥12GB VRAM) so I can run the 4-bit pip
 - Activities: Fixed ReAct decoding (strip prompt tokens) and added error logging. Small 5-item ReAct run now has VA=1.0 but EX=0.2; failures are mostly extra/misordered columns and one hardcoded filter.
 - Insights: The loop is executing; misses are projection/ordering or wrong aggregation. Prompt needs a “return exactly the requested columns in order, no extra IDs/order unless asked” reminder; exemplars should show minimal projection. Postprocess guard could drop extras for simple patterns.
 - Next Steps: Tighten ReAct prompt + add a couple of minimal-projection exemplars; optionally add a projection guard. Rerun the 5-item slice to lift EX, then switch back to the full 200-item set once the slice is clean.
+
+## 2026-01-23 — Projection guard fixed small-slice ReAct
+- Activities: Added a projection guard in ReAct (NLQ pattern → canonical minimal SELECT) and tightened the prompt (no extra columns/order unless asked). ReAct small slice now scores VA/EX/EM = 1.0 (5/5).
+- Insight: The earlier EX misses were purely projection/order/logic drift, not adapter quality. A lightweight guard plus a stricter prompt removed the extra IDs/order and hardcoded filters.
+- Next Steps: Switch `test_set = full_set` and run the full 200 for ReAct; then consider broader guards or beam+rerank if EX is still low at scale. Keep traces for a few successes/failures to include in the dissertation.
