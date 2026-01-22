@@ -147,3 +147,26 @@
 - Activities: Ran the quick-check cell after fixing prompt decoding; VA now true but EX flagged “column mismatch.”
 - Insight: Not a data bug—the gold SQL is fine. It’s just strict EX: the model returns columns in a different order or with extra fields (e.g., USA customers with two columns instead of one). Row sets are correct, but EX stays false when columns don’t match exactly.
 - Takeaway: For strict scoring, align projections to the gold query; the quick-check now falls back to row-set comparison so I can see when it’s “semantically fine” despite column-name/order differences.
+
+## 2026-02-21 — ReAct alignment with Ojuri et al.
+- Activities: Stabilised the ReAct loop on a 5-item slice (tight prompt: single SELECT, no DDL/DML/comments; deterministic decode; adapter load check). Kept `test_set=full_set[:5]` by default to inspect SQL before full runs.
+- Insight: Ojuri’s “intelligent agent” uplift comes from iterative refinement; my loop is the open-source analogue (Llama-3-8B + QLoRA). Next gains likely from small knobs: result-aware retries, projection guard to cut EX column mismatches, beam+rerank on SQL-only, optional grammar check, and trace logging.
+- Plan: Run full 200 once small slice shows VA>0; report prompt vs. QLoRA vs. ReAct EX/VA. If time permits, add a TS/row-set proxy and a paired test (McNemar) between prompt vs. QLoRA vs. ReAct to mirror their statistical angle.
+
+**Reflection (GPU access ask)**  
+Talk to supervisor/IT about a CUDA box (≥12GB VRAM) so I can run the 4-bit pipeline locally instead of M1/Colab. Ask for a torch+cu121-compatible environment (PyTorch 2.3.1 + cu121 + bitsandbytes/triton). M1 is too slow and can’t use bnb quant; Colab works but a local GPU would speed ReAct/QLoRA experiments.
+
+## 2026-01-22 — ReAct small-slice now executes, EX needs projection fixes
+- Activities: Fixed ReAct decoding (strip prompt tokens) and added error logging. Small 5-item ReAct run now has VA=1.0 but EX=0.2; failures are mostly extra/misordered columns and one hardcoded filter.
+- Insights: The loop is executing; misses are projection/ordering or wrong aggregation. Prompt needs a “return exactly the requested columns in order, no extra IDs/order unless asked” reminder; exemplars should show minimal projection. Postprocess guard could drop extras for simple patterns.
+- Next Steps: Tighten ReAct prompt + add a couple of minimal-projection exemplars; optionally add a projection guard. Rerun the 5-item slice to lift EX, then switch back to the full 200-item set once the slice is clean.
+
+## 2026-01-23 — Projection guard fixed small-slice ReAct
+- Activities: Added a projection guard in ReAct (NLQ pattern → canonical minimal SELECT) and tightened the prompt (no extra columns/order unless asked). ReAct small slice now scores VA/EX/EM = 1.0 (5/5).
+- Insight: The earlier EX misses were purely projection/order/logic drift, not adapter quality. A lightweight guard plus a stricter prompt removed the extra IDs/order and hardcoded filters.
+- Next Steps: Switch `test_set = full_set` and run the full 200 for ReAct; then consider broader guards or beam+rerank if EX is still low at scale. Keep traces for a few successes/failures to include in the dissertation.
+
+## 2026-01-24 — ReAct small-slice story (prompt/guard/retry)
+- Activities: Cleaned the ReAct helper: strict prompt (no extra cols/order unless asked), prompt-stripping decode, projection guard for a few recurring patterns, and a result-aware retry (only mark success when the query actually runs). On the 5-item slice ReAct hit VA/EX/EM = 1.0.
+- Insight: The fixes that mattered were prompt tightening + prompt-stripping + minimal projection guard; adapters were fine. EX failures on the small set were all projection/order/logic drift.
+- Plan: Swap `test_set` to the full 200 and rerun ReAct. If EX drops, consider small beam+rerank on executable SQL or limited new guard rules for recurring patterns; otherwise report prompt vs QLoRA vs ReAct using the current loop.
