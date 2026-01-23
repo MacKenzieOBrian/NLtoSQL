@@ -32,7 +32,7 @@ from transformers import (
 
 from nl2sql.db import create_engine_with_connector
 from nl2sql.eval import eval_run, execution_accuracy
-from nl2sql.postprocess import enforce_minimal_projection, normalize_sql
+from nl2sql.postprocess import guarded_postprocess, normalize_sql
 from nl2sql.prompting import make_few_shot_messages
 from nl2sql.query_runner import QueryRunner
 from nl2sql.schema import build_schema_summary

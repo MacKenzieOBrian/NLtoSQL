@@ -23,7 +23,7 @@ from sqlalchemy.engine import Engine
 
 from .db import safe_connection
 from .llm import generate_sql_from_messages
-from .postprocess import enforce_minimal_projection, normalize_sql
+from .postprocess import guarded_postprocess, normalize_sql
 from .prompting import make_few_shot_messages
 from .query_runner import QueryRunner
 
@@ -140,7 +140,7 @@ def eval_run(
     save_path: str | Path | None = None,
     max_rows: int = 50,
     max_new_tokens: int = 128,
-    postprocess: Callable[[str, str], str] = enforce_minimal_projection,
+    postprocess: Callable[[str, str], str] = guarded_postprocess,
     run_metadata: Optional[dict[str, Any]] = None,
     avoid_exemplar_leakage: bool = True,
     max_compare_rows: int = 10000,

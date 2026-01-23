@@ -137,18 +137,18 @@
 - Insights: Stricter prompt + extract + small-slice debug should surface issues before full 200-run; must stage/push locally after clearing index.lock.
 - Next Steps: Test ReAct on small slice and inspect SQL; if valid, run full set; commit/push locally (rm .git/index.lock if needed).
 
-## 2026-02-19 — ReAct zero-VA/EX root cause
+## 2026-01-19 — ReAct zero-VA/EX root cause
 - Activities: Investigated why the first ReAct run returned VA/EX/EM = 0. Tightened ReAct instructions (“single SELECT only, no DDL/DML/comments”), hardened `extract_sql`, forced deterministic decoding, and added a small-slice quick check for adapters.
 - Challenges: Loose prompt/extraction allowed non-SELECT junk, so every execution failed—looked like “bad adapters” but was a prompting/loop issue.
 - Insights: Adapters are fine (QLoRA k=3 EX ~0.38 on full 200); ReAct failed because SQL never executed. Sanity-check on a 5-item slice and inspect SQL before full runs.
 - Next Steps: Run ReAct on the small slice; if SQL executes, switch to full set and log VA/EX; keep the tightened prompt/extraction in place.
 
-## 2026-02-20 — Column mismatch sanity check
+## 2026-01-20 — Column mismatch sanity check
 - Activities: Ran the quick-check cell after fixing prompt decoding; VA now true but EX flagged “column mismatch.”
 - Insight: Not a data bug—the gold SQL is fine. It’s just strict EX: the model returns columns in a different order or with extra fields (e.g., USA customers with two columns instead of one). Row sets are correct, but EX stays false when columns don’t match exactly.
 - Takeaway: For strict scoring, align projections to the gold query; the quick-check now falls back to row-set comparison so I can see when it’s “semantically fine” despite column-name/order differences.
 
-## 2026-02-21 — ReAct alignment with Ojuri et al.
+## 2026-01-21 — ReAct alignment with Ojuri et al.
 - Activities: Stabilised the ReAct loop on a 5-item slice (tight prompt: single SELECT, no DDL/DML/comments; deterministic decode; adapter load check). Kept `test_set=full_set[:5]` by default to inspect SQL before full runs.
 - Insight: Ojuri’s “intelligent agent” uplift comes from iterative refinement; my loop is the open-source analogue (Llama-3-8B + QLoRA). Next gains likely from small knobs: result-aware retries, projection guard to cut EX column mismatches, beam+rerank on SQL-only, optional grammar check, and trace logging.
 - Plan: Run full 200 once small slice shows VA>0; report prompt vs. QLoRA vs. ReAct EX/VA. If time permits, add a TS/row-set proxy and a paired test (McNemar) between prompt vs. QLoRA vs. ReAct to mirror their statistical angle.
@@ -170,3 +170,14 @@ Talk to supervisor/IT about a CUDA box (≥12GB VRAM) so I can run the 4-bit pip
 - Activities: Cleaned the ReAct helper: strict prompt (no extra cols/order unless asked), prompt-stripping decode, projection guard for a few recurring patterns, and a result-aware retry (only mark success when the query actually runs). On the 5-item slice ReAct hit VA/EX/EM = 1.0.
 - Insight: The fixes that mattered were prompt tightening + prompt-stripping + minimal projection guard; adapters were fine. EX failures on the small set were all projection/order/logic drift.
 - Plan: Swap `test_set` to the full 200 and rerun ReAct. If EX drops, consider small beam+rerank on executable SQL or limited new guard rules for recurring patterns; otherwise report prompt vs QLoRA vs ReAct using the current loop.
+
+## 2026-01-25 — ReAct full-set run: VA=1.0, EX≈0.05
+- Activities: Ran ReAct over all 200 test items with the current prompt-strip + tiny projection guard + retry. Result: VA=1.0, EX≈0.05, EM≈0.025. Output saved to `results/agent/results_react.json`.
+- Findings: SQL executes but is usually wrong-shaped: extra columns and ORDER BY, wrong joins/aggregates, hallucinated fields (customerCountry, totalAmount, o.total, orderStatus, city in orders). Projection guard only covered a few cases.
+- Next Steps: add lightweight clamps (drop ORDER BY unless the NLQ asks; trim to requested column count for simple “list/which” queries), try a 3-candidate deterministic beam+rerank (pick an executable SQL with the smallest column-count gap to gold), and strengthen the prompt for aggregates/joins (use customers.country for country filters; totals need orderdetails; no invented fields). If EX stays low, expand/retrain adapters with more supervised pairs covering country/status counts, order totals per country/status, average order totals, and top-N product sales per product line.
+
+## 2026-01-26 — Prompt/postprocess guardrails coded
+- Activities: Implemented schema-aware prompt rules (status whitelist, join routing, ranking-only ORDER/LIMIT, minimal projection) in `nl2sql/prompting.py`; added `guarded_postprocess` (first SELECT only, strip ORDER/LIMIT unless ranking asked, drop ID-like columns when not requested, minimal projection) and wired it as the default in `nl2sql/eval.py` and `scripts/run_full_pipeline.py`. Updated CONFIG and AI_PROMPTS to document the changes and cite Spider EM sensitivity and constrained decoding work.
+- Challenges: EX/EM failures were dominated by extra columns/order clauses and hallucinated fields (customerCountry, orderTotal, o.total). Needed a lightweight fix without a full SQL parser.
+- Insights: Regex-level guards plus schema-grounded prompt constraints reduce projection/column hallucinations, aligning with Spider-style EM (Yu et al., 2018) and PICARD-style constrained decoding (Scholak et al., 2021) while keeping the pipeline simple.
+- Next Steps: Re-run baseline/QLoRA with the new guards; add a 1054-aware retry if unknown-column errors persist.
