@@ -181,3 +181,9 @@ Talk to supervisor/IT about a CUDA box (≥12GB VRAM) so I can run the 4-bit pip
 - Challenges: EX/EM failures were dominated by extra columns/order clauses and hallucinated fields (customerCountry, orderTotal, o.total). Needed a lightweight fix without a full SQL parser.
 - Insights: Regex-level guards plus schema-grounded prompt constraints reduce projection/column hallucinations, aligning with Spider-style EM (Yu et al., 2018) and PICARD-style constrained decoding (Scholak et al., 2021) while keeping the pipeline simple.
 - Next Steps: Re-run baseline/QLoRA with the new guards; add a 1054-aware retry if unknown-column errors persist.
+
+## 2026-01-27 — ReAct helper tidy + warning clamp
+- Activities: Cleaned `react_sql` helper in `notebooks/03_agentic_eval.ipynb`: added HF logging silence + pad_token fix to stop generation spam, reduced candidates to 2 per step, kept schema-grounded prompt and projection guard. This stabilises the full-set loop and speeds debugging.
+- Challenges: Long runs printed repeated pad_token warnings; full 200-item loop slow without throttling candidates.
+- Insights: Small generation clamps (verbosity off, fewer candidates) make ReAct eval manageable without changing model weights.
+- Next Steps: Re-run the agentic eval on full 200; if still slow, lower `max_steps` or slice; consider logging progress every 5 items.
