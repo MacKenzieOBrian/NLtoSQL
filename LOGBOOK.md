@@ -182,18 +182,18 @@ Talk to supervisor/IT about a CUDA box (≥12GB VRAM) so I can run the 4-bit pip
 - Insights: Regex-level guards plus schema-grounded prompt constraints reduce projection/column hallucinations, aligning with Spider-style EM (Yu et al., 2018) and PICARD-style constrained decoding (Scholak et al., 2021) while keeping the pipeline simple.
 - Next Steps: Re-run baseline/QLoRA with the new guards; add a 1054-aware retry if unknown-column errors persist.
 
-## 2026-01-27 — ReAct helper tidy + warning clamp
+## 2026-01-24 — ReAct helper tidy + warning clamp
 - Activities: Cleaned `react_sql` helper in `notebooks/03_agentic_eval.ipynb`: added HF logging silence + pad_token fix to stop generation spam, reduced candidates to 2 per step, kept schema-grounded prompt and projection guard. This stabilises the full-set loop and speeds debugging.
 - Challenges: Long runs printed repeated pad_token warnings; full 200-item loop slow without throttling candidates.
 - Insights: Small generation clamps (verbosity off, fewer candidates) make ReAct eval manageable without changing model weights.
 - Next Steps: Re-run the agentic eval on full 200; if still slow, lower `max_steps` or slice; consider logging progress every 5 items.
 
-## 2026-01-28 — ReAct selection/clamp heuristic
+## 2026-01-24 — ReAct selection/clamp heuristic
 - Activities: Strengthened ReAct cell: ORDER/LIMIT stripped unless ranking is implied; projection guard applied to every candidate; pick the narrowest executable projection; progress prints every 5 items; eval loop supports slicing via LIMIT. Documented the changes in CONFIG with literature links (ReAct, PICARD, Spider EM).
 - Challenges: Full-set loop felt stalled due to verbose warnings and slow multi-candidate generation.
 - Insights: Combining schema-grounded prompting with lightweight post-gen constraints improves EM/EX without retraining and keeps runtime under control.
 - Next Steps: Run full 200 with LIMIT=None; if EX remains low, add error-aware retries using DB error messages to suggest joins.
 
-## 2026-01-29 — ReAct select-only filter + runner guard
+## 2026-01-24 — ReAct select-only filter + runner guard
 - Activities: Added a safety guard so `react_sql` skips candidates without a SELECT and always has a `QueryRunner` defined before execution checks. This prevents junk generations from being scored and avoids `runner` NameError crashes.
 - Rationale: Keeps the loop aligned with the single-SELECT contract and ensures the Act step is available—matching ReAct’s tool-usage pattern.
