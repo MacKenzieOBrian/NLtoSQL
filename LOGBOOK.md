@@ -193,3 +193,7 @@ Talk to supervisor/IT about a CUDA box (≥12GB VRAM) so I can run the 4-bit pip
 - Challenges: Full-set loop felt stalled due to verbose warnings and slow multi-candidate generation.
 - Insights: Combining schema-grounded prompting with lightweight post-gen constraints improves EM/EX without retraining and keeps runtime under control.
 - Next Steps: Run full 200 with LIMIT=None; if EX remains low, add error-aware retries using DB error messages to suggest joins.
+
+## 2026-01-29 — ReAct select-only filter + runner guard
+- Activities: Added a safety guard so `react_sql` skips candidates without a SELECT and always has a `QueryRunner` defined before execution checks. This prevents junk generations from being scored and avoids `runner` NameError crashes.
+- Rationale: Keeps the loop aligned with the single-SELECT contract and ensures the Act step is available—matching ReAct’s tool-usage pattern.
