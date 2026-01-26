@@ -198,14 +198,14 @@ Talk to supervisor/IT about a CUDA box (≥12GB VRAM) so I can run the 4-bit pip
 - Activities: Added a safety guard so `react_sql` skips candidates without a SELECT and always has a `QueryRunner` defined before execution checks. This prevents junk generations from being scored and avoids `runner` NameError crashes.
 - Rationale: Keeps the loop aligned with the single-SELECT contract and ensures the Act step is available—matching ReAct’s tool-usage pattern.
 
-## 2026-01-30 — ReAct execution-guided retry
+## 2026-01-26 — ReAct execution-guided retry
 - Activities: Enhanced `react_sql` to drop non-SELECT/markdown junk, bump candidates to 3/step, and add a retry when MySQL returns “Unknown column …” (hinting to join the correct table). Still chooses the narrowest executable projection to respect EM strictness.
 - Insight: Execution-guided feedback (per ReAct + text-to-SQL repair literature) is necessary to escape unknown-column dead ends without expanding the prompt indefinitely.
 
-## 2026-01-31 — ReAct sampling + repair prompt
+## 2026-01-26 — ReAct sampling + repair prompt
 - Activities: Switched multi-candidate generation to actual sampling (top-p/temperature, multiple return sequences) so candidates differ; added a one-shot repair prompt applied when a candidate fails execution (syntax/unknown column), and kept projection/order clamps. Updated CONFIG to reflect the change.
 - Insight: Diversity plus a lightweight repair step reduces VA=0 cases caused by identical bad candidates and quick syntax fixes, without heavy grammar constraints.
 
-## 2026-01-31 — ReAct fallback after no-select failure
+## 2026-01-26 — ReAct fallback after no-select failure
 - Activities: Added a deterministic few-shot fallback when all ReAct candidates fail to produce a valid SELECT; fixed quick-check decoding (strip prompt) and made main candidate generation deterministic (sampling only used in repair). This prevents empty `pred_sql` and keeps VA from collapsing to zero.
 - Justification: Full-run traces showed only “Show SQL …” instructions and no SELECT; fallback ensures at least one executable attempt. Deterministic main pass reduces repeated instruction-style junk; repair still offers a sampled alternative when execution fails.
