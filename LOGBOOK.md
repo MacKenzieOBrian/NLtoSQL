@@ -201,3 +201,7 @@ Talk to supervisor/IT about a CUDA box (≥12GB VRAM) so I can run the 4-bit pip
 ## 2026-01-30 — ReAct execution-guided retry
 - Activities: Enhanced `react_sql` to drop non-SELECT/markdown junk, bump candidates to 3/step, and add a retry when MySQL returns “Unknown column …” (hinting to join the correct table). Still chooses the narrowest executable projection to respect EM strictness.
 - Insight: Execution-guided feedback (per ReAct + text-to-SQL repair literature) is necessary to escape unknown-column dead ends without expanding the prompt indefinitely.
+
+## 2026-01-31 — ReAct sampling + repair prompt
+- Activities: Switched multi-candidate generation to actual sampling (top-p/temperature, multiple return sequences) so candidates differ; added a one-shot repair prompt applied when a candidate fails execution (syntax/unknown column), and kept projection/order clamps. Updated CONFIG to reflect the change.
+- Insight: Diversity plus a lightweight repair step reduces VA=0 cases caused by identical bad candidates and quick syntax fixes, without heavy grammar constraints.
