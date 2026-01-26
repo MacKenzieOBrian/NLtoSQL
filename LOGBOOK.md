@@ -169,6 +169,16 @@
 ### 2026-01-26 — Consolidation (retry, repair, fallback)
 - Activities: Added execution-guided retry for unknown columns; one-shot repair prompt; filtered non-SELECT/markdown junk; 3 candidates/step; deterministic decode main pass, sampling in repair; deterministic few-shot fallback when no SELECT; fixed quick-check to strip prompt; added semantic reranker + error taxonomy helpers in `nl2sql/agent_utils.py` (clean_candidate, tabular prompt variant, lexical semantic_score, repair hints).
 - Research Commentary (agent_utils Layer): Motivation—tackle “executable but wrong” via intent-aware rerank + baseline fallback. Design—SELECT-only filter; tabular prompt for join reasoning; semantic rerank; MySQL error taxonomy + hints; deterministic non-agentic candidate as lower bound. Rationale—avoid full Thought/Action/Observation (model too small) but try to lift EX without retraining.
+- Activities (granular log):
+  - Added semantic reranking: semantic_score − λ·num_cols to pick intent-aligned candidates over narrow projections.
+  - Added sqlparse clamps: strip ORDER BY unless ranking requested; trim projections for simple list/which NLQs.
+  - Added error-aware repair: feed DB error + schema to model to propose corrected SELECT.
+  - Added tabular prompt variant to diversify candidates beyond main ReAct prompt.
+  - Added deterministic baseline fallback (vanilla_candidate) so agent never underperforms few-shot.
+  - Switched candidate generation to mild sampling (top-p) for diversity.
+  - Reformatted ReAct history to readable newline blocks.
+  - Consolidated execution gating + semantic scoring into one pass to cut duplicate DB calls.
+  - Eval now saves VA/EX/EM + trace JSON for audit.
 
 ### Theoretical Trace (stage framing)
 - Literature ladder: Prompting → recovers syntax/schema; Fine-tuning → recovers semantic mapping; Agentic refinement → repairs via tool feedback. Project now follows Prompt → QLoRA → Execution-Guided Agent.
