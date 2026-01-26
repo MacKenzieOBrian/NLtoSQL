@@ -197,3 +197,7 @@ Talk to supervisor/IT about a CUDA box (≥12GB VRAM) so I can run the 4-bit pip
 ## 2026-01-24 — ReAct select-only filter + runner guard
 - Activities: Added a safety guard so `react_sql` skips candidates without a SELECT and always has a `QueryRunner` defined before execution checks. This prevents junk generations from being scored and avoids `runner` NameError crashes.
 - Rationale: Keeps the loop aligned with the single-SELECT contract and ensures the Act step is available—matching ReAct’s tool-usage pattern.
+
+## 2026-01-30 — ReAct execution-guided retry
+- Activities: Enhanced `react_sql` to drop non-SELECT/markdown junk, bump candidates to 3/step, and add a retry when MySQL returns “Unknown column …” (hinting to join the correct table). Still chooses the narrowest executable projection to respect EM strictness.
+- Insight: Execution-guided feedback (per ReAct + text-to-SQL repair literature) is necessary to escape unknown-column dead ends without expanding the prompt indefinitely.
