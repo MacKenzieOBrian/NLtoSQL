@@ -209,3 +209,7 @@ Talk to supervisor/IT about a CUDA box (≥12GB VRAM) so I can run the 4-bit pip
 ## 2026-01-26 — ReAct fallback after no-select failure
 - Activities: Added a deterministic few-shot fallback when all ReAct candidates fail to produce a valid SELECT; fixed quick-check decoding (strip prompt) and made main candidate generation deterministic (sampling only used in repair). This prevents empty `pred_sql` and keeps VA from collapsing to zero.
 - Justification: Full-run traces showed only “Show SQL …” instructions and no SELECT; fallback ensures at least one executable attempt. Deterministic main pass reduces repeated instruction-style junk; repair still offers a sampled alternative when execution fails.
+
+## 2026-01-26 — ReAct summary of what worked vs not
+- Activities: Reviewed recent ReAct iterations: stability improved (no crashes, non-SELECT filtered, ORDER/LIMIT and projection clamps, execution-guided retry/repair, deterministic fallback), but EX remains low on full set. Baseline and QLoRA remain the reliable, reportable paths.
+- Insight: Baseline/QLoRA are solid and reproducible; ReAct now stable but not yet yielding accuracy gains. Next lift would need better reranking (column-overlap scoring), broader error-aware retries (ambiguous column/unknown table), or schema allowlist/grammar clamps.
