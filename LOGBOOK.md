@@ -132,6 +132,11 @@ methodologies in recent literature (Spider/BIRD/Ojuri).
 - **Fix:** Added normalization to collapse spaced keywords before filtering; updated notebook to wrap `clean_candidate` with the normalizer.
 - **Effect:** Valid SQL now passes the filter even when spacing artifacts appear, restoring non‑empty predictions at STAGE 0.
 
+### 2026-01-27 — Notebook Debug Guide (stage-gated ablation)
+- **Change:** Added a “Staged Debugging Guide” markdown cell and stage‑gated `react_sql` in the notebook.
+- **Rationale:** Aligns with ablation practice in NL→SQL and execution‑guided decoding—validate minimal execution‑gated behaviour first, then re‑introduce clamps, reranking, and repair only after stability.
+- **Outcome:** Reduces accidental overwrites of the minimal agent and makes failures attributable to a specific stage.
+
 ### 2026-01-31 — Dev Note (SELECT query echo)
 - **Issue:** Model echoed instruction text (“SELECT query…”) which passed the old filter, yielding invalid-but-accepted SQL.
 - **Fix:** Enforced `SELECT … FROM …` in `clean_candidate` and fallback; removed “SELECT query” phrasing from prompt.
