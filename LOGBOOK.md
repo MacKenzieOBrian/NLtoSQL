@@ -127,6 +127,11 @@ methodologies in recent literature (Spider/BIRD/Ojuri).
 - **Process (lit‑guided):** Start with execution‑guided decoding only (Zhong et al.), then add constraints (PICARD‑style), then reranking/critics, then repair.
 - **Outcome:** Made the pipeline evidence‑driven rather than feature‑driven; each component is now re‑introduced only after validation.
 
+### 2026-01-27 — Debug Note (spaced SQL tokens)
+- **Issue:** Model output contained valid SQL but with letter‑spaced tokens (e.g., `S E L E C T ... F R O M ...`), causing `extract_first_select` and `clean_candidate` to reject it.
+- **Fix:** Added normalization to collapse spaced keywords before filtering; updated notebook to wrap `clean_candidate` with the normalizer.
+- **Effect:** Valid SQL now passes the filter even when spacing artifacts appear, restoring non‑empty predictions at STAGE 0.
+
 ### 2026-01-31 — Dev Note (SELECT query echo)
 - **Issue:** Model echoed instruction text (“SELECT query…”) which passed the old filter, yielding invalid-but-accepted SQL.
 - **Fix:** Enforced `SELECT … FROM …` in `clean_candidate` and fallback; removed “SELECT query” phrasing from prompt.
