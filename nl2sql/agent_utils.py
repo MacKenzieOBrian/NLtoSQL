@@ -21,12 +21,37 @@ from nl2sql.llm import extract_first_select
 from nl2sql.prompting import make_few_shot_messages
 
 
+def _normalize_spaced_keywords(text: str) -> str:
+    # Fix outputs like "S E L E C T" / "F R O M".
+    keywords = [
+        "select",
+        "from",
+        "where",
+        "group",
+        "by",
+        "order",
+        "limit",
+        "join",
+        "inner",
+        "left",
+        "right",
+        "on",
+        "having",
+        "distinct",
+    ]
+    for kw in keywords:
+        pattern = r"\\b" + "\\s*".join(list(kw)) + r"\\b"
+        text = re.sub(pattern, kw.upper(), text, flags=re.I)
+    return text
+
+
 def clean_candidate(raw: str) -> Optional[str]:
     """
     Keep only a single SELECT ... FROM ... statement; reject markdown/junk/plain text.
     Returns None if no usable SELECT is found.
     """
-    sql = extract_first_select(raw)
+    text = _normalize_spaced_keywords(raw or "")
+    sql = extract_first_select(text)
     if not sql:
         return None
 
