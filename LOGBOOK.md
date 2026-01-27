@@ -196,5 +196,9 @@
 - Insight: Stability up (no empty pred_sql, fewer junk candidates) but EX still low on full set. Expect gains from richer rerank/repair plus stronger base model (QLoRA). Baseline/QLoRA remain primary; ReAct still exploratory.
 - Rationale (for dissertation): agent_utils was introduced to counter the “executable but wrong” pattern—enforcing single-SELECT output, seeding a deterministic baseline candidate so the agent never underperforms prompt-only, steering repairs with an error taxonomy, and reranking by intent cues (aggregates/joins/grouping) rather than projection size. This keeps improvements in the eval loop without touching training.
 
+### 2026-01-27 — Supervisor check-in (use of AI & diagnosis)
+- Meeting: Discussed current EX failures. I explained that I used AI tooling to analyse result JSONs and noticed failures cluster on aggregation/join queries. Supervisor feedback: AI can be used analytically, but forward decisions must be grounded in literature, not AI suggestions. Action: tie next design choices to cited work (execution-guided decoding, aggregation-aware rerankers) and document rationale explicitly.
+- Plan: Add a small analysis script to surface failing NLQs (especially aggregates/joins) from results JSON for evidence-based discussion in dissertation.
+
 ### Dissertation narrative (cross-cutting)
 - Journey shows three clear stages to discuss: (1) Prompt-only baseline: executable but semantically weak (VA high, EX low). (2) QLoRA adapters: structural lift in NL→SQL mapping (EX improves, especially with k=3 exemplars). (3) Agentic refinement: execution-guided stability plus intent-aware reranking/repairs to recover EX without extra training. This progression is the core “investigator story” for the evaluation chapter.
