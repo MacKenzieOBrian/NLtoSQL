@@ -121,6 +121,12 @@ methodologies in recent literature (Spider/BIRD/Ojuri).
 - **Reason:** Strict filtering was suppressing valid baseline SQL, producing empty `pred_sql` even on simple queries.
 - **Effect:** Fallback now returns a valid SELECT more reliably while keeping strict filters for agentic candidates.
 
+### 2026-01-27 — Staged Decision Process (minimal → clamp → rerank → repair)
+- **Decision:** Re-structured the notebook into staged ablations (STAGE 0–3) to restore validity before re‑introducing complexity.
+- **Motivation:** Debug evidence showed valid SQL was being discarded by downstream filters; a minimal execution‑gated generator isolates the bottleneck.
+- **Process (lit‑guided):** Start with execution‑guided decoding only (Zhong et al.), then add constraints (PICARD‑style), then reranking/critics, then repair.
+- **Outcome:** Made the pipeline evidence‑driven rather than feature‑driven; each component is now re‑introduced only after validation.
+
 ### 2026-01-31 — Dev Note (SELECT query echo)
 - **Issue:** Model echoed instruction text (“SELECT query…”) which passed the old filter, yielding invalid-but-accepted SQL.
 - **Fix:** Enforced `SELECT … FROM …` in `clean_candidate` and fallback; removed “SELECT query” phrasing from prompt.
