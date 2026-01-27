@@ -200,5 +200,20 @@
 - Meeting: Discussed current EX failures. I explained that I used AI tooling to analyse result JSONs and noticed failures cluster on aggregation/join queries. Supervisor feedback: AI can be used analytically, but forward decisions must be grounded in literature, not AI suggestions. Action: tie next design choices to cited work (execution-guided decoding, aggregation-aware rerankers) and document rationale explicitly.
 - Plan: Add a small analysis script to surface failing NLQs (especially aggregates/joins) from results JSON for evidence-based discussion in dissertation.
 
+### 2026-01-28 — ReAct limits & literature-aligned playbook
+- Observation: Even with the improved ReAct stack (multi-candidate, tabular prompt, SELECT filter, ORDER/LIMIT clamping, semantic rerank, repair, fallback), EX is still low on compositional queries (multi-hop joins, revenue/aggregation, compositional filters).
+- Literature alignment:
+  - Execution-guided decoding helps only if the correct semantics appear in candidates (Zhong et al., 2017); it cannot invent missing schema knowledge.
+  - Schema linking is the bottleneck for complex joins/aggregations (RAT-SQL, Wang et al., 2020).
+  - Constraint decoding (PICARD, Scholak et al., 2021) fixes validity, not meaning—mirrors our VA=1/EX=0 cases.
+  - Agentic loops rely on model priors (ReAct, Yao et al., 2023); tools without knowledge still fail on revenue/joins.
+  - Compositional data is needed to learn these patterns (Spider/DIN-SQL).
+- Playbook (decisions):
+  1) Control-layer fixes (done): rerank/repair/fallback.
+  2) Improve priors: expand QLoRA training with compositional ClassicModels templates (joins + revenue + grouping).
+  3) Add critic/reranker if beams contain correct candidates but selection fails (Self-Refine, critic models).
+  4) Heavy FT/RLHF only if needed (likely out of scope).
+- Takeaway: Expect remaining failures on deep schema semantics; next steps must be data/adaptation-driven, backed by literature rather than AI suggestions alone.
+
 ### Dissertation narrative (cross-cutting)
 - Journey shows three clear stages to discuss: (1) Prompt-only baseline: executable but semantically weak (VA high, EX low). (2) QLoRA adapters: structural lift in NL→SQL mapping (EX improves, especially with k=3 exemplars). (3) Agentic refinement: execution-guided stability plus intent-aware reranking/repairs to recover EX without extra training. This progression is the core “investigator story” for the evaluation chapter.
