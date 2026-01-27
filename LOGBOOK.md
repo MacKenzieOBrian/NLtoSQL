@@ -105,7 +105,7 @@ methodologies in recent literature (Spider/BIRD/Ojuri).
 - **Lit Link:** Execution guidance insufficient for semantic leaps; matches survey findings.
 - **Reflection:** We entered “semantic bottleneck” regime.
 
-### 2026-01-28 — Literature-Aligned Diagnosis
+### 2026-01-26 — Literature-Aligned Diagnosis
 - **Conclusion:**  
   - Execution = robustness  
   - QLoRA = semantics  
@@ -116,17 +116,15 @@ methodologies in recent literature (Spider/BIRD/Ojuri).
   2) add critic/reranker (ValueNet / Self-Refine)  
   3) schema linking enhancements (RAT-SQL-style)
 
----
+### 2026-01-26 — Dev Note (fallback robustness)
+- **Change:** Relaxed `clean_candidate` and made `vanilla_candidate` baseline-aligned (extract first SELECT + guarded_postprocess, minimal filtering).
+- **Reason:** Strict filtering was suppressing valid baseline SQL, producing empty `pred_sql` even on simple queries.
+- **Effect:** Fallback now returns a valid SELECT more reliably while keeping strict filters for agentic candidates.
 
-## Cross-Phase Investigator Reflection
-
-> **Maturity Arc Observed:**
-> 1. **Implementation-led** → infra + DB + schema
-> 2. **Evaluation-led** → VA/EX split reveals semantic gap
-> 3. **Literature-led** → planned interventions tied to surveys + benchmarks
-
-This arc mirrors the empirical structure of NL→SQL research:
-_prompt → fine-tuning → execution → critic → curriculum_.
+### 2026-01-31 — Dev Note (SELECT query echo)
+- **Issue:** Model echoed instruction text (“SELECT query…”) which passed the old filter, yielding invalid-but-accepted SQL.
+- **Fix:** Enforced `SELECT … FROM …` in `clean_candidate` and fallback; removed “SELECT query” phrasing from prompt.
+- **Effect:** Rejects instruction echoes and restores valid SQL on simple queries.
 
 ---
 
