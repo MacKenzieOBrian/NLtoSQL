@@ -23,27 +23,47 @@ from nl2sql.prompting import make_few_shot_messages
 
 def clean_candidate(raw: str) -> Optional[str]:
     """
-    Keep only a single SELECT statement; reject markdown/junk/plain text.
+    Keep only a single SELECT ... FROM ... statement; reject markdown/junk/plain text.
     Returns None if no usable SELECT is found.
     """
     sql = extract_first_select(raw)
     if not sql:
         return None
+
     sql = sql.strip()
-    if not sql.lower().startswith("select"):
+    lower = sql.lower()
+
+    # If the first 'SELECT' isn't at the start, realign
+    if not lower.startswith("select"):
+        idx = lower.find("select")
+        if idx == -1:
+            return None
+        sql = sql[idx:].strip()
+        lower = sql.lower()
+
+    # Cut at the first ';' so trailing instructions don't poison the filter
+    if ";" in sql:
+        sql = sql.split(";", 1)[0].strip()
+        lower = sql.lower()
+
+    # Must contain FROM (allowing newlines/whitespace)
+    if not re.search(r"\bfrom\b", lower):
         return None
+
+    # Lightweight junk filters on trimmed SQL
     bad_phrases = (
-        "show sql",
-        "here is",
-        "the query is",
+        "```",
         "answer:",
         "explanation",
-        "```",
     )
-    lower = sql.lower()
     if any(bp in lower for bp in bad_phrases):
         return None
-    return sql if sql.endswith(";") else sql + ";"
+
+    # Reject instruction echoes like "SELECT statement only"
+    if re.search(r"\bselect\s+(query|statement)\b", lower):
+        return None
+
+    return sql + ";"
 
 
 def build_tabular_prompt(nlq: str, schema_text: str) -> str:
@@ -62,7 +82,7 @@ Schema:
 
 Question: {nlq}
 
-Output only the final SELECT statement and nothing else.
+Output only the final SQL statement and nothing else.
 """
 
 
@@ -78,12 +98,16 @@ def vanilla_candidate(
     Produce a deterministic few-shot candidate using the baseline prompt.
     Useful as a fallback when the ReAct loop finds no valid SQL.
     """
+    from nl2sql.postprocess import guarded_postprocess
+
     msgs = make_few_shot_messages(schema=schema_summary, exemplars=exemplars or [], nlq=nlq)
     prompt = tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
     inputs = tok(prompt, return_tensors="pt").to(model.device)
     out = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
     text = tok.decode(out[0], skip_special_tokens=True)
-    return clean_candidate(text)
+    raw_sql = extract_first_select(text) or text
+    sql = guarded_postprocess(raw_sql, nlq)
+    return clean_candidate(sql)
 
 
 def classify_error(err: str) -> str:
@@ -138,9 +162,11 @@ SCHEMA_KEYWORDS = {
 
 def count_select_columns(sql: str) -> int:
     lower = sql.lower()
-    if " from " not in lower or "select" not in lower:
+    if "select" not in lower:
         return 99
-    select_part = lower.split("from", 1)[0]
+    if not re.search(r"\bfrom\b", lower):
+        return 99
+    select_part = re.split(r"\bfrom\b", lower, 1)[0]
     select_part = select_part.split("select", 1)[1]
     return select_part.count(",") + 1
 

@@ -8,6 +8,18 @@ The dissertation goal is to measure (and explain) performance differences betwee
 - **Agentic SQL generation** (planned, ReAct-style refinement using a safe SQL execution tool)
 - **Parameter-efficient fine-tuning** (planned, QLoRA)
 
+## Decision Journey Reading Order
+
+For the dissertation narrative (decisions backed by literature), read in this order:
+1. `1.LITERATURE.md` (evidence base)
+2. `2.METHODOLOGY.md` (decision-driven methodology)
+3. `3.DECISIONS.md` (explicit decision log + literature hooks)
+4. `4.DATA_AND_SPLITS.md` (data/split decisions)
+5. `6.MODEL_ADAPTATION_STRATEGIES.md` (adaptation ladder)
+6. `7.EVALUATION_FRAMEWORK.md` (metric decisions)
+7. `8.RESULTS_SUMMARY.md` (results by decision stage)
+8. `LOGBOOK.md` (learning journey timeline)
+
 ## What’s in the repo
 
 - `nl2sql/`: reusable “experiment harness” code (DB access, schema text, prompting, generation, evaluation).
