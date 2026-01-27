@@ -179,6 +179,11 @@
   - Reformatted ReAct history to readable newline blocks.
   - Consolidated execution gating + semantic scoring into one pass to cut duplicate DB calls.
   - Eval now saves VA/EX/EM + trace JSON for audit.
+- Observation from sanity check (prompt-only baseline):
+  - k=0 (no exemplars): VA True, EX False on “Show product names, codes, and MSRPs” because projection order differed from gold.
+  - k=3 (few-shot): VA True, EX True on same query; few-shot fixed EX without ReAct or adapters.
+  - Insight: Model knows the columns; missing grounding at k=0 leads to projection-order EX failures. Supports keeping a few-shot baseline and deterministic fallback in the agentic pipeline.
+  - Diagnostic next step: compare Base+Few-shot vs Adapter+Few-shot; if adapters underperform base here, adapters are the bottleneck (not ReAct).
 
 ### Theoretical Trace (stage framing)
 - Literature ladder: Prompting → recovers syntax/schema; Fine-tuning → recovers semantic mapping; Agentic refinement → repairs via tool feedback. Project now follows Prompt → QLoRA → Execution-Guided Agent.
