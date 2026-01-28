@@ -142,10 +142,28 @@ methodologies in recent literature (Spider/BIRD/Ojuri).
 - **Reason:** Recent failures showed that complex filters were masking whether the generator itself was working; restoring a minimal baseline isolates the true bottleneck.
 - **Effect:** Establishes a reliable “known‑good” starting point for staged re‑introduction of features (literature‑aligned ablation).
 
-### 2026-01-31 — Dev Note (SELECT query echo)
-- **Issue:** Model echoed instruction text (“SELECT query…”) which passed the old filter, yielding invalid-but-accepted SQL.
-- **Fix:** Enforced `SELECT … FROM …` in `clean_candidate` and fallback; removed “SELECT query” phrasing from prompt.
-- **Effect:** Rejects instruction echoes and restores valid SQL on simple queries.
+### 2026-01-28 — ReAct Agent Staging (Stages 0 & 1)
+- **Goal:** Bring up a minimal but working ReAct‑style NL→SQL agent in `notebooks/03_agentic_eval.ipynb`, then progressively add structure:  
+  **Stage 0** = minimal execution‑gated generator; **Stage 1** = add projection/ORDER clamps.  
+  The aim was a stable, debuggable baseline before sampling/reranking/repair.
+- **Stage 0 wiring:** Implemented `_react_sql_minimal` (STAGE=0) vs `_react_sql_full` (STAGE≥1) with stage dispatch. Stage 0 builds a prompt, generates candidates, cleans them, runs via `QueryRunner`, then **falls back to `vanilla_candidate`** if all candidates fail.
+- **Cleaning failures diagnosed:** Blank `PRED` traces were caused by **over‑strict cleaning**, not model failure. Two issues were observed:  
+  1) `FROM` check failed after `extract_first_select + split(';',1)` returned only the prefix;  
+  2) prompt‑echo tails (“output only sql / no explanation”) triggered `bad_phrase` even when valid SQL preceded them.
+- **Fix implemented:** Added a shared `_clean_candidate_core` that:
+  - normalises spaced‑out tokens (`S E L E C T` → `SELECT`),  
+  - realigns to first `SELECT`,  
+  - trims prompt‑echo tails,  
+  - splits at the first `;`,  
+  - **does not enforce a strict FROM check** (execution gating catches invalid SQL).  
+  The relaxed cleaner is used for ReAct **and** monkey‑patched into `agent_utils.clean_candidate` so `vanilla_candidate` is consistent.
+- **Stage 0 sanity checks:**  
+  - “List all product lines.” → correct SQL returned.  
+  - “Show product names, codes, and MSRPs.” → correct columns, order mismatch (EX ok, EM ≠).  
+  - “USA customers” → extra column trimmed only after Stage 1 clamps.  
+  - “SF office count” and “total per order” remained **semantic routing** errors (wrong table/aggregation).
+- **Stage 1 clamps:** Enabled `strip_order_by_if_not_requested` and `trim_to_first_column` to improve minimal projection and remove ORDER/LIMIT artifacts. This improved EM/projection alignment but **did not fix semantic routing**, confirming clamps affect style not semantics.
+- **Conclusion:** Stage 0 is now stable and debuggable; Stage 1 improves projection hygiene; remaining errors are semantic (joins/aggregation), requiring reranking/repair or better priors.
 
 ---
 
