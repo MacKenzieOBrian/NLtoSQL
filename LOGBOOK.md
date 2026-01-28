@@ -137,6 +137,11 @@ methodologies in recent literature (Spider/BIRD/Ojuri).
 - **Rationale:** Aligns with ablation practice in NL→SQL and execution‑guided decoding—validate minimal execution‑gated behaviour first, then re‑introduce clamps, reranking, and repair only after stability.
 - **Outcome:** Reduces accidental overwrites of the minimal agent and makes failures attributable to a specific stage.
 
+### 2026-01-28 — Scaled Back for Baseline Validity
+- **Decision:** Dialed the notebook back to the minimal execution‑gated ReAct stage to confirm the model can produce valid SQL before layering clamps, reranking, and repair.
+- **Reason:** Recent failures showed that complex filters were masking whether the generator itself was working; restoring a minimal baseline isolates the true bottleneck.
+- **Effect:** Establishes a reliable “known‑good” starting point for staged re‑introduction of features (literature‑aligned ablation).
+
 ### 2026-01-31 — Dev Note (SELECT query echo)
 - **Issue:** Model echoed instruction text (“SELECT query…”) which passed the old filter, yielding invalid-but-accepted SQL.
 - **Fix:** Enforced `SELECT … FROM …` in `clean_candidate` and fallback; removed “SELECT query” phrasing from prompt.
