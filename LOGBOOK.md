@@ -196,3 +196,11 @@ The dissertation narrative can legitimately focus on whether **small open models
 - **Rationale (literature‑backed):**  
   Constrained decoding reduces invalid continuations (PICARD/Scholak et al., 2021), while execution‑guided decoding alone can accept spurious SQL unless paired with a semantic filter (Zhong et al., 2017; ValueNet/DIN‑SQL reranking). ReAct‑style agent loops require *format control + acceptance criteria* to avoid “valid‑but‑wrong” completions (Yao et al., 2023).
 - **Outcome:** Stabilizes Stage‑3 correctness by separating **VA (runs)** from **task success (semantics)**, improving traceability and narrative clarity for the dissertation.
+
+### 2026-01-29 — Stage 3 Stabilisation (Intent Constraints + Canonicalisation)
+- **Fixes applied:**  
+  - **Intent constraints:** added grouped‑aggregate checks (GROUP BY + aggregate + key in SELECT) and measure checks (total/amount ⇒ SUM), preventing “exec‑ok but wrong metric” outputs.  
+  - **Table‑casing canonicalisation:** rewrote `FROM/JOIN` table names to the schema’s canonical case to remove case‑sensitive “table doesn’t exist” failures.  
+  - **Cleaner hardening:** blocked `FROM dual`, `GROUP BY NULL`, dangling clauses, and prompt‑echo remnants that survived trimming.  
+  - **Repair filtering:** multi‑candidate repair + best‑SELECT extraction to reject keyword‑soup fixes.
+- **Effect:** Stage 3 now accepts **semantically plausible** SQL rather than any executable SQL; trace logs cleanly show where failures originate (generation vs cleaning vs execution vs repair).
