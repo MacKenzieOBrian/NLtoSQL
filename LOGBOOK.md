@@ -184,3 +184,15 @@ The dissertation narrative can legitimately focus on whether **small open models
 - **Change:** Added structured trace logging to the ReAct loop (raw candidate → cleaned SQL → post‑clamp SQL → execution error → repair attempt).
 - **Repair Logging:** `repair_sql` now returns both the repaired SQL and a small metadata dict (status, raw_fix, exec_error), so traces show *why* a repair succeeded or failed.
 - **Reason:** Traceability is needed to attribute errors to generation vs cleaning vs execution vs repair; aligns with agentic evaluation practice in ReAct/Reflexion‑style loops.
+
+### 2026-01-29 — Biggest Win: Output‑Control + Semantic Acceptance Gate
+- **Finding:** Two failure modes dominated:  
+  1) **Prompt‑echo garbage** after a valid SQL fragment (causing syntax errors).  
+  2) **Executable but irrelevant repairs** (e.g., `SELECT 1 FROM dual;`) that inflate VA but fail task intent.
+- **Decision:** Treat output control and acceptance as *first‑class* components of the agent loop:  
+  - **Stop‑on‑semicolon** generation to end decoding at the first `;` (prevents prompt‑echo tails).  
+  - **Prompt‑echo stripping** before cleaning (generic regex, not NLQ‑specific).  
+  - **Semantic acceptance gate** (use `semantic_score` as a *threshold*, not only a reranker) so executable but irrelevant SQL is rejected.
+- **Rationale (literature‑backed):**  
+  Constrained decoding reduces invalid continuations (PICARD/Scholak et al., 2021), while execution‑guided decoding alone can accept spurious SQL unless paired with a semantic filter (Zhong et al., 2017; ValueNet/DIN‑SQL reranking). ReAct‑style agent loops require *format control + acceptance criteria* to avoid “valid‑but‑wrong” completions (Yao et al., 2023).
+- **Outcome:** Stabilizes Stage‑3 correctness by separating **VA (runs)** from **task success (semantics)**, improving traceability and narrative clarity for the dissertation.
