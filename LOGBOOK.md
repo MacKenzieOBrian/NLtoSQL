@@ -177,3 +177,10 @@ methodologies in recent literature (Spider/BIRD/Ojuri).
 The dissertation narrative can legitimately focus on whether **small open models + PEFT + execution** can approximate proprietary agent performance under reproducible resource constraints.
 
 ---
+
+
+### 2026-01-29 — Stage 3 Outputs + Trace Logging Upgrade
+- **Observation:** Stage 3 outputs are mostly valid SQL; remaining issues are projection bloat and unnecessary ORDER BY/GROUP BY that reduce EM (e.g., extra `productLine`, spurious `ORDER BY` on totals).
+- **Change:** Added structured trace logging to the ReAct loop (raw candidate → cleaned SQL → post‑clamp SQL → execution error → repair attempt).
+- **Repair Logging:** `repair_sql` now returns both the repaired SQL and a small metadata dict (status, raw_fix, exec_error), so traces show *why* a repair succeeded or failed.
+- **Reason:** Traceability is needed to attribute errors to generation vs cleaning vs execution vs repair; aligns with agentic evaluation practice in ReAct/Reflexion‑style loops.
