@@ -1,9 +1,20 @@
 # Logbook (Research & Development Timeline)
 
+## At‑a‑Glance
+- Four phases from scoping → baselines → QLoRA → agentic refinement
+- Each phase anchored by a research question
+- Entries emphasise **decisions, evidence, and evaluation outcomes** (not raw implementation logs)
+
+## Index
+1. Phase 1 — Planning & Scoping (Sep–Oct 2025)  
+2. Phase 2 — Infra & Data Prep (Nov–Dec 2025)  
+3. Phase 3 — QLoRA Fine‑Tuning (Jan 2026)  
+4. Phase 4 — ReAct Exploration & Refinement (Jan 2026)  
+
 This logbook documents the research trajectory across four phases, emphasising
-(1) literature-aligned decision making,
-(2) hypothesis-driven experimentation, and
-(3) evaluation-centred interpretation rather than implementation logs.
+(1) literature‑aligned decision making,
+(2) hypothesis‑driven experimentation, and
+(3) evaluation‑centred interpretation rather than implementation logs.
 
 Each phase is anchored to a guiding research question, consistent with NL→SQL
 methodologies in recent literature (Spider/BIRD/Ojuri).
@@ -204,3 +215,19 @@ The dissertation narrative can legitimately focus on whether **small open models
   - **Cleaner hardening:** blocked `FROM dual`, `GROUP BY NULL`, dangling clauses, and prompt‑echo remnants that survived trimming.  
   - **Repair filtering:** multi‑candidate repair + best‑SELECT extraction to reject keyword‑soup fixes.
 - **Effect:** Stage 3 now accepts **semantically plausible** SQL rather than any executable SQL; trace logs cleanly show where failures originate (generation vs cleaning vs execution vs repair).
+
+### 2026-01-29 — Stage‑Gated Justification (Ablation + ReAct Pattern)
+- **Why STAGE 0–3:** stage‑gating is an **ablation ladder** that isolates the impact of clamps, reranking, and repair. This prevents “opaque agent” claims and supports attribution of VA/EX changes to specific mechanisms (aligned with execution‑guided decoding and ReAct ablations).
+- **STAGE 0 vs STAGE ≥1:** Stage 0 is **minimal execution‑gated decoding** (generate → extract → execute), while Stage ≥1 operationalises a **ReAct‑style loop** (generate → execute → observe → refine) with multi‑candidate search, clamping, and repair.
+- **Trace logging:** structured traces (raw → cleaned → post‑clamp → exec → repair) create an audit trail for failure‑mode analysis and reproducibility.
+- **Fallback rationale:** deterministic few‑shot fallback preserves benchmark coverage and comparability across configurations.
+
+### 2026-01-30 — Stage‑3 Full Run (200 queries)
+- **Run:** Stage‑3 ReAct on 200 ClassicModels NLQs (`results_react_200`).
+- **Metrics:** VA **0.805**, EX **0.13**, EM **0.105**.
+- **Interpretation (VA):** strong syntactic control; filtering + clamps + execution gating are working as intended.
+- **Interpretation (EX):** semantic alignment remains the bottleneck (aggregation scope, join selection, projection granularity).
+- **Interpretation (EM):** low EM is expected under agentic post‑processing and query rewrites; EM is diagnostic, not primary.
+- **Literature alignment:** matches reports that execution feedback stabilises validity but does not guarantee semantic correctness (Ojuri et al., 2025; ExCoT; execution‑guided decoding).
+- **Next steps logged:** introduce **Test‑Suite Accuracy (TS)** and a structured **error taxonomy** (projection, aggregation scope, join selection) to explain EX failures.
+ - **Dissertation narrative hook:** this run is the first **full‑set, agentic** result that isolates the “execution‑valid vs semantically‑correct” gap. It provides a concrete anchor for claims about why execution guidance improves stability but requires stronger semantic grounding or critic signals for EX gains.
