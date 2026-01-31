@@ -230,4 +230,19 @@ The dissertation narrative can legitimately focus on whether **small open models
 - **Interpretation (EM):** low EM is expected under agentic post‑processing and query rewrites; EM is diagnostic, not primary.
 - **Literature alignment:** matches reports that execution feedback stabilises validity but does not guarantee semantic correctness (Ojuri et al., 2025; ExCoT; execution‑guided decoding).
 - **Next steps logged:** introduce **Test‑Suite Accuracy (TS)** and a structured **error taxonomy** (projection, aggregation scope, join selection) to explain EX failures.
- - **Dissertation narrative hook:** this run is the first **full‑set, agentic** result that isolates the “execution‑valid vs semantically‑correct” gap. It provides a concrete anchor for claims about why execution guidance improves stability but requires stronger semantic grounding or critic signals for EX gains.
+- **Dissertation narrative hook:** this run is the first **full‑set, agentic** result that isolates the “execution‑valid vs semantically‑correct” gap. It provides a concrete anchor for claims about why execution guidance improves stability but requires stronger semantic grounding or critic signals for EX gains.
+
+### 2026-01-30 — EX Stabilisation Plan (Projection + Intent + Schema Linking)
+- **Adjustment 1 — Projection contract:** enforce NLQ‑requested columns and drop extras; targets EX loss from projection drift.
+- **Adjustment 2 — Intent classifier:** constrain query type (lookup vs aggregate vs grouped vs top‑k) to stop “wrong‑question” outputs.
+- **Adjustment 3 — Schema‑subset prompting:** light schema linking (keyword→table + join hints) to reduce wrong table selection.
+- **Rationale:** these are output‑shape and selection controls (not answer injection), aligned with constrained decoding and schema‑linking guidance in NL→SQL surveys.
+
+### 2026-01-31 — Implemented EX Stabilisation (Projection + Intent + Schema Subset)
+- **Implemented:** projection contract, intent classifier constraints, and schema‑subset prompting in the ReAct helper layer and notebook pipeline.  
+- **Why (dissertation framing):** targets the dominant EX failure modes (projection drift, wrong question type, wrong table selection) without changing model weights. These are *control‑layer* interventions aligned with execution‑guided decoding and schema‑linking recommendations.  
+- **Notes:**  
+  - Projection contract enforces *output shape* when NLQ explicitly names fields.  
+  - Intent constraints prevent valid‑but‑wrong query types (e.g., aggregate vs list).  
+  - Schema subset reduces prompt scope using keyword‑to‑table hints + join hints.  
+- **Expected impact:** raises EX by correcting “almost‑right” outputs while preserving VA.  
