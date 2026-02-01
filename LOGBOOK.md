@@ -230,4 +230,68 @@ The dissertation narrative can legitimately focus on whether **small open models
 - **Interpretation (EM):** low EM is expected under agentic post‑processing and query rewrites; EM is diagnostic, not primary.
 - **Literature alignment:** matches reports that execution feedback stabilises validity but does not guarantee semantic correctness (Ojuri et al., 2025; ExCoT; execution‑guided decoding).
 - **Next steps logged:** introduce **Test‑Suite Accuracy (TS)** and a structured **error taxonomy** (projection, aggregation scope, join selection) to explain EX failures.
- - **Dissertation narrative hook:** this run is the first **full‑set, agentic** result that isolates the “execution‑valid vs semantically‑correct” gap. It provides a concrete anchor for claims about why execution guidance improves stability but requires stronger semantic grounding or critic signals for EX gains.
+- **Dissertation narrative hook:** this run is the first **full‑set, agentic** result that isolates the “execution‑valid vs semantically‑correct” gap. It provides a concrete anchor for claims about why execution guidance improves stability but requires stronger semantic grounding or critic signals for EX gains.
+
+### 2026-01-30 — EX Stabilisation Plan (Projection + Intent + Schema Linking)
+- **Adjustment 1 — Projection contract:** enforce NLQ‑requested columns and drop extras; targets EX loss from projection drift.
+- **Adjustment 2 — Intent classifier:** constrain query type (lookup vs aggregate vs grouped vs top‑k) to stop “wrong‑question” outputs.
+- **Adjustment 3 — Schema‑subset prompting:** light schema linking (keyword→table + join hints) to reduce wrong table selection.
+- **Rationale:** these are output‑shape and selection controls (not answer injection), aligned with constrained decoding and schema‑linking guidance in NL→SQL surveys.
+
+### 2026-01-31 — Implemented EX Stabilisation (Projection + Intent + Schema Subset)
+- **Implemented:** projection contract, intent classifier constraints, and schema‑subset prompting in the ReAct helper layer and notebook pipeline.  
+- **Why (dissertation framing):** targets the dominant EX failure modes (projection drift, wrong question type, wrong table selection) without changing model weights. These are *control‑layer* interventions aligned with execution‑guided decoding and schema‑linking recommendations.  
+- **Notes:**  
+  - Projection contract enforces *output shape* when NLQ explicitly names fields.  
+  - Intent constraints prevent valid‑but‑wrong query types (e.g., aggregate vs list).  
+  - Schema subset reduces prompt scope using keyword‑to‑table hints + join hints.  
+- **Expected impact:** raises EX by correcting “almost‑right” outputs while preserving VA.  
+
+### 2026-01-31 — Simplified ReAct Loop (No STAGE Branching)
+- **Change:** removed STAGE gating and replaced with a single, explainable ReAct loop that always follows: generate → clean → postprocess → execute → intent‑gate → score → (repair) → fallback.  
+- **Config:** one `CFG` dict controls sampling, candidate count, clamps, projection contract, and repair.  
+- **Reason:** improves traceability and removes branch‑specific behavior so results are easier to interpret and reproduce.  
+
+### 2026-01-31 — EX Protection Patch (Projection Order + Repair Intent Gate)
+- **Change:** projection contract now preserves explicit NLQ field order; repair acceptance is gated by the same intent constraints used for primary candidates.  
+- **Why:** EX was failing on “almost‑right” outputs due to column order mismatch and repair occasionally overwrote correct intent with executable but irrelevant SQL.  
+- **Effect:** raises EX by aligning output shape with the NLQ and prevents semantic drift during repair.  
+
+### 2026-02-01 — TS Harness + Quick‑Test Toggles
+- **Change:** added Test‑Suite Accuracy (TS) evaluation harness and quick‑test toggles (limit, TS_N, max rows) to the agentic eval notebook.  
+- **Why:** TS provides semantic‑equivalence evaluation across perturbed DBs, while quick‑test toggles make iterative debugging feasible without full‑run cost.  
+- **Effect:** enables rapid validation of EX improvements and supports a rigorous, reproducible evaluation narrative.  
+
+---
+
+## ReAct Pipeline Cheat Sheet (Quick Reference)
+
+**Goal:** make the loop explainable, debuggable, and reproducible.
+
+**Inputs**
+- NLQ (question), schema summary, model, runner (DB executor)
+
+**Core phases (in order)**
+1) **Generate** — produce multiple SQL candidates (main + tabular prompt)  
+2) **Clean** — enforce single `SELECT … FROM … ;`, remove prompt echo, reject dangling SQL  
+3) **Post‑process** — projection guard, optional projection contract, canonical table casing, clamps  
+4) **Execute** — run SQL; failure becomes observation  
+5) **Intent‑gate + Score** — reject wrong query type; score by semantics + compactness  
+6) **Repair (optional)** — one‑shot fix using DB error; re‑exec  
+7) **Fallback** — deterministic few‑shot if all else fails
+
+**Key functions**
+- `generate_candidates(...)` → raw SQL strings  
+- `clean_candidate(...)` → `SELECT ... FROM ...;` or reject  
+- `projection_guard(...)` → minimal projection baseline  
+- `enforce_projection_contract(...)` → drop extra SELECT columns when NLQ lists fields  
+- `canonicalize_table_casing(...)` → fix `ORDERS` → `orders`  
+- `apply_clamps(...)` → strip ORDER/LIMIT, trim columns, add missing GROUP BY when asked  
+- `intent_constraints(...)` → reject wrong query type (list vs aggregate vs grouped vs top‑k)  
+- `repair_sql(...)` → uses DB error message to attempt one fix  
+
+**Success rule**
+- A query is accepted only if it **executes** and **passes intent constraints**, then wins the **score**.
+
+**Explainable story (1 line)**
+Generate → clean → post‑process → execute → intent‑gate → score → repair/fallback.
