@@ -252,6 +252,11 @@ The dissertation narrative can legitimately focus on whether **small open models
 - **Config:** one `CFG` dict controls sampling, candidate count, clamps, projection contract, and repair.  
 - **Reason:** improves traceability and removes branch‑specific behavior so results are easier to interpret and reproduce.  
 
+### 2026-01-31 — EX Protection Patch (Projection Order + Repair Intent Gate)
+- **Change:** projection contract now preserves explicit NLQ field order; repair acceptance is gated by the same intent constraints used for primary candidates.  
+- **Why:** EX was failing on “almost‑right” outputs due to column order mismatch and repair occasionally overwrote correct intent with executable but irrelevant SQL.  
+- **Effect:** raises EX by aligning output shape with the NLQ and prevents semantic drift during repair.  
+
 ---
 
 ## ReAct Pipeline Cheat Sheet (Quick Reference)
