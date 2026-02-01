@@ -246,3 +246,42 @@ The dissertation narrative can legitimately focus on whether **small open models
   - Intent constraints prevent valid‑but‑wrong query types (e.g., aggregate vs list).  
   - Schema subset reduces prompt scope using keyword‑to‑table hints + join hints.  
 - **Expected impact:** raises EX by correcting “almost‑right” outputs while preserving VA.  
+
+### 2026-01-31 — Simplified ReAct Loop (No STAGE Branching)
+- **Change:** removed STAGE gating and replaced with a single, explainable ReAct loop that always follows: generate → clean → postprocess → execute → intent‑gate → score → (repair) → fallback.  
+- **Config:** one `CFG` dict controls sampling, candidate count, clamps, projection contract, and repair.  
+- **Reason:** improves traceability and removes branch‑specific behavior so results are easier to interpret and reproduce.  
+
+---
+
+## ReAct Pipeline Cheat Sheet (Quick Reference)
+
+**Goal:** make the loop explainable, debuggable, and reproducible.
+
+**Inputs**
+- NLQ (question), schema summary, model, runner (DB executor)
+
+**Core phases (in order)**
+1) **Generate** — produce multiple SQL candidates (main + tabular prompt)  
+2) **Clean** — enforce single `SELECT … FROM … ;`, remove prompt echo, reject dangling SQL  
+3) **Post‑process** — projection guard, optional projection contract, canonical table casing, clamps  
+4) **Execute** — run SQL; failure becomes observation  
+5) **Intent‑gate + Score** — reject wrong query type; score by semantics + compactness  
+6) **Repair (optional)** — one‑shot fix using DB error; re‑exec  
+7) **Fallback** — deterministic few‑shot if all else fails
+
+**Key functions**
+- `generate_candidates(...)` → raw SQL strings  
+- `clean_candidate(...)` → `SELECT ... FROM ...;` or reject  
+- `projection_guard(...)` → minimal projection baseline  
+- `enforce_projection_contract(...)` → drop extra SELECT columns when NLQ lists fields  
+- `canonicalize_table_casing(...)` → fix `ORDERS` → `orders`  
+- `apply_clamps(...)` → strip ORDER/LIMIT, trim columns, add missing GROUP BY when asked  
+- `intent_constraints(...)` → reject wrong query type (list vs aggregate vs grouped vs top‑k)  
+- `repair_sql(...)` → uses DB error message to attempt one fix  
+
+**Success rule**
+- A query is accepted only if it **executes** and **passes intent constraints**, then wins the **score**.
+
+**Explainable story (1 line)**
+Generate → clean → post‑process → execute → intent‑gate → score → repair/fallback.

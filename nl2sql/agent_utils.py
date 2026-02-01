@@ -121,6 +121,7 @@ _FIELD_SYNONYMS = {
     "msrp": "MSRP",
     "product code": "productCode",
     "product name": "productName",
+    "product line": "productLine",
     "order number": "orderNumber",
     "customer name": "customerName",
     "customer number": "customerNumber",
@@ -132,13 +133,37 @@ _FIELD_SYNONYMS = {
 }
 
 
+def _explicit_field_list(nlq: str) -> list[str]:
+    """
+    Extract an explicit field list in NLQ order when the question enumerates fields
+    (e.g., \"names, codes, and MSRPs\" or \"with city and country\").
+    """
+    nl = (nlq or "").lower()
+    # Require an enumeration cue to avoid treating filter fields as projections.
+    if not ("," in nl or " and " in nl or " with " in nl or nl.startswith(("show", "list", "give", "display"))):
+        return []
+
+    hits = []
+    for k, col in _FIELD_SYNONYMS.items():
+        idx = nl.find(k)
+        if idx != -1:
+            hits.append((idx, col))
+    if not hits:
+        return []
+    hits.sort(key=lambda x: x[0])
+    ordered = []
+    for _, col in hits:
+        if col not in ordered:
+            ordered.append(col)
+    return ordered
+
+
 def _extract_required_columns(nlq: str) -> list[str]:
     nl = (nlq or "").lower()
-    cols: list[str] = []
-    for k, col in _FIELD_SYNONYMS.items():
-        if k in nl and col not in cols:
-            cols.append(col)
-    # common list-style questions imply name-only
+    cols = _explicit_field_list(nlq)
+    if cols:
+        return cols
+    # default list-style questions imply name-only
     if ("which customers" in nl or "list customers" in nl) and "customerName" not in cols:
         cols.append("customerName")
     return cols
@@ -167,8 +192,9 @@ def _split_select_items(select_part: str) -> list[str]:
 
 def enforce_projection_contract(sql: str, nlq: str) -> str:
     """
-    If NLQ explicitly names fields, drop extra SELECT columns deterministically.
-    This enforces *output shape* without injecting joins or predicates.
+    If NLQ explicitly names fields, drop extra SELECT columns deterministically
+    and preserve NLQ order. This enforces output shape without injecting joins
+    or predicates.
     """
     required = _extract_required_columns(nlq)
     if not required:
@@ -180,11 +206,13 @@ def enforce_projection_contract(sql: str, nlq: str) -> str:
 
     select_part = m.group(1)
     items = _split_select_items(select_part)
+    # Map required cols to matching SELECT items
     kept = []
-    for it in items:
-        low = it.lower()
-        if any(col.lower() in low for col in required):
-            kept.append(it)
+    for col in required:
+        for it in items:
+            if col.lower() in it.lower() and it not in kept:
+                kept.append(it)
+                break
 
     if not kept:
         return sql
