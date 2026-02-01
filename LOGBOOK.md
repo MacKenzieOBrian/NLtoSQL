@@ -257,6 +257,11 @@ The dissertation narrative can legitimately focus on whether **small open models
 - **Why:** EX was failing on “almost‑right” outputs due to column order mismatch and repair occasionally overwrote correct intent with executable but irrelevant SQL.  
 - **Effect:** raises EX by aligning output shape with the NLQ and prevents semantic drift during repair.  
 
+### 2026-02-01 — TS Harness + Quick‑Test Toggles
+- **Change:** added Test‑Suite Accuracy (TS) evaluation harness and quick‑test toggles (limit, TS_N, max rows) to the agentic eval notebook.  
+- **Why:** TS provides semantic‑equivalence evaluation across perturbed DBs, while quick‑test toggles make iterative debugging feasible without full‑run cost.  
+- **Effect:** enables rapid validation of EX improvements and supports a rigorous, reproducible evaluation narrative.  
+
 ---
 
 ## ReAct Pipeline Cheat Sheet (Quick Reference)
