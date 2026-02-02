@@ -272,6 +272,15 @@ The dissertation narrative can legitimately focus on whether **small open models
 - **Why:** keeps the notebook as an orchestration document and reduces “wall‑of‑code” sections; easier to justify and audit.  
 - **Effect:** same evaluation behavior, cleaner notebook structure, clearer explanation for examiners.  
 
+### 2026-02-02 — EX Comparator Relaxed + Quick‑Check Snapshot
+- **Change:** removed column‑name strictness from EX (execution_accuracy) so EX compares **row contents only**.  
+- **Why:** EX was penalizing correct answers due to column order / header mismatches; this aligns EX closer to semantic equivalence and to TS‑style comparison.  
+- **Quick check (N=20):** VA **0.8**, EX **0.4**, EM **0.2**, TS **0.6**.  
+- **My interpretation:** encouraging — validity remains stable, EX improves when projection noise is discounted, TS remains higher than EX but still below ideal.  
+- **Next plan:**  
+  - make TS “truer” by using **distilled/perturbed DBs** (not mere clones),  
+  - keep EX less strict (row‑equivalence) while reporting EM separately for formatting differences.  
+
 ---
 
 ## ReAct Pipeline Cheat Sheet (Quick Reference)
