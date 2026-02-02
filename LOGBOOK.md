@@ -262,6 +262,16 @@ The dissertation narrative can legitimately focus on whether **small open models
 - **Why:** TS provides semantic‑equivalence evaluation across perturbed DBs, while quick‑test toggles make iterative debugging feasible without full‑run cost.  
 - **Effect:** enables rapid validation of EX improvements and supports a rigorous, reproducible evaluation narrative.  
 
+### 2026-02-02 — Simplified Cell 6 (Readable ReAct Utilities)
+- **Change:** refactored Cell 6 into small, named helpers (normalize, trim prompt‑echo, clean candidate, post‑process, clamps, repair) with plain‑English comments.  
+- **Why:** improves explainability for examiners and makes the control‑layer logic defendable without reading dense regex.  
+- **Effect:** same behavior, clearer narrative and easier debugging.  
+
+### 2026-02-02 — Notebook Cleanup (TS util + score helper)
+- **Change:** moved TS harness into `scripts/ts_eval.py` and imported it in the notebook; added a single `score_sql()` helper cell to centralize candidate scoring.  
+- **Why:** keeps the notebook as an orchestration document and reduces “wall‑of‑code” sections; easier to justify and audit.  
+- **Effect:** same evaluation behavior, cleaner notebook structure, clearer explanation for examiners.  
+
 ---
 
 ## ReAct Pipeline Cheat Sheet (Quick Reference)
