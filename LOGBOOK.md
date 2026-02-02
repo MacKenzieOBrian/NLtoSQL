@@ -262,6 +262,25 @@ The dissertation narrative can legitimately focus on whether **small open models
 - **Why:** TS provides semantic‑equivalence evaluation across perturbed DBs, while quick‑test toggles make iterative debugging feasible without full‑run cost.  
 - **Effect:** enables rapid validation of EX improvements and supports a rigorous, reproducible evaluation narrative.  
 
+### 2026-02-02 — Simplified Cell 6 (Readable ReAct Utilities)
+- **Change:** refactored Cell 6 into small, named helpers (normalize, trim prompt‑echo, clean candidate, post‑process, clamps, repair) with plain‑English comments.  
+- **Why:** improves explainability for examiners and makes the control‑layer logic defendable without reading dense regex.  
+- **Effect:** same behavior, clearer narrative and easier debugging.  
+
+### 2026-02-02 — Notebook Cleanup (TS util + score helper)
+- **Change:** moved TS harness into `scripts/ts_eval.py` and imported it in the notebook; added a single `score_sql()` helper cell to centralize candidate scoring.  
+- **Why:** keeps the notebook as an orchestration document and reduces “wall‑of‑code” sections; easier to justify and audit.  
+- **Effect:** same evaluation behavior, cleaner notebook structure, clearer explanation for examiners.  
+
+### 2026-02-02 — EX Comparator Relaxed + Quick‑Check Snapshot
+- **Change:** removed column‑name strictness from EX (execution_accuracy) so EX compares **row contents only**.  
+- **Why:** EX was penalizing correct answers due to column order / header mismatches; this aligns EX closer to semantic equivalence and to TS‑style comparison.  
+- **Quick check (N=20):** VA **0.8**, EX **0.4**, EM **0.2**, TS **0.6**.  
+- **My interpretation:** encouraging — validity remains stable, EX improves when projection noise is discounted, TS remains higher than EX but still below ideal.  
+- **Next plan:**  
+  - make TS “truer” by using **distilled/perturbed DBs** (not mere clones),  
+  - keep EX less strict (row‑equivalence) while reporting EM separately for formatting differences.  
+
 ---
 
 ## ReAct Pipeline Cheat Sheet (Quick Reference)

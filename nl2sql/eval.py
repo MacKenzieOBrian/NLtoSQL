@@ -118,9 +118,6 @@ def execution_accuracy(
     if not pred_ok:
         return False, pred_err, gold_err
 
-    if pred_cols != gold_cols:
-        return False, "Column mismatch", None
-
     from collections import Counter
 
     return Counter(pred_rows) == Counter(gold_rows), None, None
