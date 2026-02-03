@@ -281,6 +281,11 @@ The dissertation narrative can legitimately focus on whether **small open models
   - make TS “truer” by using **distilled/perturbed DBs** (not mere clones),  
   - keep EX less strict (row‑equivalence) while reporting EM separately for formatting differences.  
 
+### 2026-02-02 — TS Definition Clarified (Suite‑Based, Not Distilled)
+- **Clarification:** TS in this project is a **suite‑based robustness check** using multiple perturbed DB replicas; it is **not** full distilled test suites in the Zhong et al. sense.  
+- **Reason for note:** prevents over‑claiming; still a defensible step beyond single‑DB EX and EM.  
+- **Ref:** [18]
+
 ---
 
 ## ReAct Pipeline Cheat Sheet (Quick Reference)
