@@ -2,11 +2,12 @@
 Safe query executor.
 Refs:
 - SQLAlchemy connection/execute docs: https://docs.sqlalchemy.org/en/20/core/connections.html
-- GCP connector examples (custom creator) and safe SELECT-only guards used in NL→SQL eval practice.
+- GCP connector examples (custom creator) and safe SELECT-only guards used in NL->SQL eval practice.
 Purpose: give the ReAct loop a controlled Act step and enforce read-only VA/EX runs.
 
 # Used here: run model SQL safely (SELECT-only), capture result previews/errors, and feed ReAct/eval.
-# What this is: a tiny wrapper around SQLAlchemy execution that refuses DDL/DML, so the model can only read; doubles as the “Act” tool in ReAct.
+# What this is: a tiny wrapper around SQLAlchemy execution that refuses DDL/DML,
+# so the model can only read; doubles as the "Act" tool in ReAct.
 """
 
 from __future__ import annotations
@@ -76,6 +77,8 @@ class QueryRunner:
         lowered = (sql or "").strip().lower()
         if not lowered:
             raise QueryExecutionError("Empty SQL string")
+        # Motivation: this project executes model-generated SQL against a real DB.
+        # A simple token blocklist is a pragmatic safety layer for evaluation runs.
         for token in self.forbidden_tokens:
             if token in lowered:
                 raise QueryExecutionError(f"Destructive SQL token detected: {token.strip()}")
@@ -88,6 +91,7 @@ class QueryRunner:
 
             with safe_connection(self.engine) as conn:
                 result = conn.execute(sqlalchemy.text(sql), params or {})
+                # Fetch all rows for correctness checks, but cap previews for human inspection.
                 rows = result.fetchall()
                 cols = list(result.keys())
 
@@ -96,6 +100,7 @@ class QueryRunner:
 
             df = None
             if capture_df:
+                # The preview DataFrame is a debugging aid for notebooks; it is not used for scoring.
                 df = pd.DataFrame(rows, columns=cols)
                 if len(df) > self.max_rows:
                     df = df.iloc[: self.max_rows]

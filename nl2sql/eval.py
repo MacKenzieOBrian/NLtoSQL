@@ -1,6 +1,6 @@
 """
 Evaluation helpers (VA/EM/EX).
-Refs: execution-based metrics common in NL→SQL work (e.g., Spider/EMNLP'20 TS:
+Refs: execution-based metrics common in NL->SQL work (e.g., Spider/EMNLP'20 TS:
 https://aclanthology.org/2020.emnlp-main.29/) and Ojuri et al. style VA/EX.
 SQLAlchemy execution docs: https://docs.sqlalchemy.org/en/20/core/connections.html#sqlalchemy.engine.Connection.execute
 
@@ -74,6 +74,9 @@ FORBIDDEN_TOKENS = [
 
 
 def _safety_check(sql: str) -> None:
+    # This evaluation harness executes model-generated SQL.
+    # Even in a controlled ClassicModels setting, we hard-block destructive tokens
+    # to prevent accidental DB mutation during experiments.
     lowered = (sql or "").strip().lower()
     if not lowered:
         raise ValueError("Empty SQL string")
@@ -91,8 +94,10 @@ def execute_fetch(
     try:
         _safety_check(sql)
         with safe_connection(engine) as conn:
+            # Use SQLAlchemy TextClause so execution is consistent across DB-API drivers.
             result = conn.execute(sqlalchemy.text(sql))
             cols = list(result.keys())
+            # Bound result size: large result sets are slow to compare and can blow up memory.
             rows = result.fetchmany(max_rows + 1)
         if len(rows) > max_rows:
             return False, cols, None, f"Result set too large (> {max_rows} rows) for comparison"
@@ -108,6 +113,10 @@ def execution_accuracy(
     gold_sql: str,
     max_compare_rows: int = 10000,
 ) -> tuple[bool, str | None, str | None]:
+    # EX is computed by executing BOTH predicted and gold SQL and comparing results.
+    # We intentionally compare row tuples as a multiset (Counter) to:
+    # - ignore row order when no ORDER BY is specified
+    # - preserve duplicate rows (set() would incorrectly drop duplicates)
     pred_ok, pred_cols, pred_rows, pred_err = execute_fetch(
         engine=engine, sql=pred_sql, max_rows=max_compare_rows
     )
@@ -122,6 +131,8 @@ def execution_accuracy(
 
     from collections import Counter
 
+    # NOTE: we compare rows only (not column names) because earlier experiments showed
+    # EX was dominated by projection/alias drift even when the underlying row sets matched.
     return Counter(pred_rows) == Counter(gold_rows), None, None
 
 
@@ -215,6 +226,8 @@ def test_suite_accuracy_for_item(
     strict_gold=False:
       ignore suite DBs where gold fails (uses remaining DBs)
     """
+    # Gold defines the expected semantics; we treat results as ordered only when
+    # the gold query contains ORDER BY. (Pred may include spurious ORDER BY.)
     ordered = _has_order_by(gold_sql)
 
     per_db: list[dict[str, Any]] = []
@@ -237,6 +250,8 @@ def test_suite_accuracy_for_item(
                 "match": False,
             })
             if strict_gold:
+                # If gold SQL breaks on a TS replica, that replica is not a valid semantic test.
+                # With strict_gold=True we treat this as TS=0 to avoid inflating TS.
                 all_ok = False
             continue
 
@@ -310,6 +325,8 @@ def eval_run(
     rng = random.Random(seed)
     items = test_set[:limit] if limit else test_set
 
+    # QueryRunner provides the SELECT-only "execution gate" and VA signal.
+    # We keep it inside eval_run so baseline + QLoRA use the same executor behavior.
     qr = QueryRunner(engine, max_rows=max_rows)
     out: list[EvalItem] = []
 
@@ -319,6 +336,8 @@ def eval_run(
 
         pool = exemplar_pool if exemplar_pool is not None else test_set
         if avoid_exemplar_leakage:
+            # Avoid giving the model the exact test item as a few-shot exemplar.
+            # This prevents inflated results due to copy/paste leakage.
             pool = [
                 ex
                 for ex in pool
@@ -332,16 +351,23 @@ def eval_run(
             exemplars = []
         messages = make_few_shot_messages(schema=schema_summary, exemplars=exemplars, nlq=nlq)
 
+        # Generation is deterministic by default (see nl2sql.llm.generate_sql_from_messages).
+        # This keeps evaluation stable across reruns.
         raw_sql = generate_sql_from_messages(
             model=model,
             tokenizer=tokenizer,
             messages=messages,
             max_new_tokens=max_new_tokens,
         )
+        # Postprocess is intentionally deterministic: it cleans common formatting/projection issues
+        # without changing model weights. See nl2sql.postprocess.guarded_postprocess.
         pred_sql = postprocess(raw_sql, nlq)
 
+        # VA (executability) from the QueryRunner.
         meta = qr.run(pred_sql, capture_df=False)
+        # EM is diagnostic: strict surface-form match after normalization.
         em = normalize_sql(pred_sql) == normalize_sql(gold_sql)
+        # EX is semantic: compare executed results vs gold results.
         ex, ex_pred_err, ex_gold_err = execution_accuracy(
             engine=engine,
             pred_sql=pred_sql,

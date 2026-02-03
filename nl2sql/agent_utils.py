@@ -1,8 +1,8 @@
 """
-Utilities to strengthen the ReAct-style NL→SQL agent without rewriting notebooks.
+Utilities to strengthen the ReAct-style NL->SQL agent without rewriting notebooks.
 
 Provides:
-- clean_candidate: strict SELECT-only filter to drop junk “Show SQL…” outputs.
+- clean_candidate: strict SELECT-only filter to drop junk "Show SQL..." outputs.
 - build_tabular_prompt: alternative prompt that makes the model enumerate tables/joins mentally.
 - vanilla_candidate: deterministic few-shot baseline candidate (for fallback/rerank).
 - classify_error / error_hint: tiny error taxonomy to drive targeted repair prompts.
@@ -48,7 +48,7 @@ def _normalize_spaced_keywords(text: str) -> str:
 
 
 # --- Lightweight schema-linking helpers ---
-# Justification: survey work repeatedly notes schema linking as the dominant NL→SQL
+# Justification: survey work repeatedly notes schema linking as the dominant NL->SQL
 # bottleneck. We use a simple, transparent keyword-to-table map to reduce the
 # prompt scope without injecting answer logic.
 _TABLE_HINTS = {
@@ -97,6 +97,8 @@ def build_schema_subset(schema_summary: str, nlq: str, max_tables: int = 6) -> s
     nl = (nlq or "").lower()
 
     picked: list[str] = []
+    # Heuristic keyword-to-table matching. This is intentionally simple and auditable:
+    # it may miss rare paraphrases, but it avoids introducing a learned linker.
     for key, tbls in _TABLE_HINTS.items():
         if key in nl:
             for t in tbls:
@@ -415,7 +417,7 @@ def semantic_score(nlq: str, sql: str) -> float:
     """
     Lightweight lexical score to prefer candidates whose columns/aggregates
     align with the NLQ intent. Not a true semantic parser, but better than
-    “fewest columns”.
+    "fewest columns".
     """
     nlq_low = nlq.lower()
     sql_low = sql.lower()
