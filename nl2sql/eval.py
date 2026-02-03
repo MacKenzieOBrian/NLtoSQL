@@ -12,11 +12,13 @@ SQLAlchemy execution docs: https://docs.sqlalchemy.org/en/20/core/connections.ht
 from __future__ import annotations
 
 import json
+import math
 import random
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 import sqlalchemy
 from sqlalchemy.engine import Engine
@@ -121,6 +123,169 @@ def execution_accuracy(
     from collections import Counter
 
     return Counter(pred_rows) == Counter(gold_rows), None, None
+
+
+# ----------------------------
+# Test-Suite Accuracy (TS)
+# ----------------------------
+# Suite-based semantic check: compare gold vs predicted across multiple perturbed DB replicas.
+# This mirrors the notebook TS harness but lives here for reuse in scripts.
+
+TS_ORDER_BY_RE = re.compile(r"(?is)\border\s+by\b")
+
+
+def _has_order_by(sql: str) -> bool:
+    return bool(TS_ORDER_BY_RE.search(sql or ""))
+
+
+def _coerce_cell(x: Any) -> Any:
+    """
+    Normalize SQL result cells for robust equality.
+    - keep None
+    - convert NaN -> string (so NaN equals NaN)
+    - round floats to reduce minor numeric drift
+    """
+    if x is None:
+        return None
+    if isinstance(x, float):
+        if math.isnan(x):
+            return "NaN"
+        return round(x, 10)
+    return x
+
+
+def _normalize_rows(rows: Iterable[Iterable[Any]]) -> list[tuple[Any, ...]]:
+    out: list[tuple[Any, ...]] = []
+    for r in rows:
+        out.append(tuple(_coerce_cell(v) for v in r))
+    return out
+
+
+def _sorted_rows(rows: list[tuple[Any, ...]]) -> list[tuple[Any, ...]]:
+    # Stable ordering for unordered comparisons; None sorts before strings/numbers.
+    return sorted(rows, key=lambda t: tuple("" if v is None else v for v in t))
+
+
+@dataclass
+class TSQueryRun:
+    ok: bool
+    rows: Optional[list[tuple[Any, ...]]] = None
+    cols: Optional[tuple[str, ...]] = None
+    error: Optional[str] = None
+
+
+def _run_select_ts(engine: Engine, sql: str, max_rows: int = 2000) -> TSQueryRun:
+    """Execute SELECT and fetch up to max_rows. Returns rows + column names."""
+    try:
+        with safe_connection(engine) as conn:
+            res = conn.execute(sqlalchemy.text(sql))
+            cols = tuple(res.keys())
+            fetched = res.fetchmany(max_rows)
+            rows = _normalize_rows(fetched)
+        return TSQueryRun(ok=True, rows=rows, cols=cols)
+    except Exception as e:
+        return TSQueryRun(ok=False, rows=None, cols=None, error=str(e))
+
+
+def _results_match_ts(
+    gold_rows: list[tuple[Any, ...]],
+    pred_rows: list[tuple[Any, ...]],
+    ordered: bool,
+) -> bool:
+    """Compare result sets; ordered if ORDER BY exists in gold."""
+    if ordered:
+        return gold_rows == pred_rows
+    return _sorted_rows(gold_rows) == _sorted_rows(pred_rows)
+
+
+def test_suite_accuracy_for_item(
+    *,
+    make_engine_fn: Callable[[str], Engine],
+    suite_db_names: list[str],
+    gold_sql: str,
+    pred_sql: str,
+    max_rows: int = 2000,
+    strict_gold: bool = True,
+) -> tuple[int, dict]:
+    """
+    Returns (ts_pass, debug_info).
+
+    strict_gold=True:
+      if gold fails on any suite db, treat as TS=0 (suite generation bug / invalid gold on that db)
+    strict_gold=False:
+      ignore suite DBs where gold fails (uses remaining DBs)
+    """
+    ordered = _has_order_by(gold_sql)
+
+    per_db: list[dict[str, Any]] = []
+    usable = 0
+    all_ok = True
+
+    for db in suite_db_names:
+        eng = make_engine_fn(db)
+
+        g = _run_select_ts(eng, gold_sql, max_rows=max_rows)
+        p = _run_select_ts(eng, pred_sql, max_rows=max_rows)
+
+        if not g.ok:
+            per_db.append({
+                "db": db,
+                "gold_ok": False,
+                "pred_ok": p.ok,
+                "gold_error": g.error,
+                "pred_error": p.error if not p.ok else None,
+                "match": False,
+            })
+            if strict_gold:
+                all_ok = False
+            continue
+
+        usable += 1
+
+        if not p.ok:
+            per_db.append({
+                "db": db,
+                "gold_ok": True,
+                "pred_ok": False,
+                "gold_error": None,
+                "pred_error": p.error,
+                "match": False,
+            })
+            all_ok = False
+            continue
+
+        if g.cols is not None and p.cols is not None and len(g.cols) != len(p.cols):
+            per_db.append({
+                "db": db,
+                "gold_ok": True,
+                "pred_ok": True,
+                "match": False,
+                "ordered_compare": ordered,
+                "gold_cols": g.cols,
+                "pred_cols": p.cols,
+            })
+            all_ok = False
+            continue
+
+        match = _results_match_ts(g.rows or [], p.rows or [], ordered=ordered)
+        per_db.append({
+            "db": db,
+            "gold_ok": True,
+            "pred_ok": True,
+            "match": match,
+            "ordered_compare": ordered,
+            "gold_sample": (g.rows or [])[:10],
+            "pred_sample": (p.rows or [])[:10],
+        })
+        if not match:
+            all_ok = False
+
+    if not strict_gold and usable == 0:
+        all_ok = False
+
+    ts = 1 if all_ok else 0
+    debug = {"ordered_compare": ordered, "usable_dbs": usable, "per_db": per_db}
+    return ts, debug
 
 
 def eval_run(
