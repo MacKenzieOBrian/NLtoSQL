@@ -17,7 +17,7 @@ This logbook documents the research trajectory across four phases, emphasising
 (3) evaluation‑centred interpretation rather than implementation logs.
 
 Each phase is anchored to a guiding research question, consistent with NL→SQL
-methodologies in recent literature (Spider/BIRD/Ojuri).
+methodologies in recent literature (Yu et al., 2018; Zhu et al., 2024; Hong et al., 2025; Ojuri et al., 2025).
 
 ---
 
@@ -121,11 +121,11 @@ methodologies in recent literature (Spider/BIRD/Ojuri).
   - Execution = robustness  
   - QLoRA = semantics  
   - Prompting = grounding  
-- **Lit Alignment:** Mirrors Spider/BIRD error taxonomies + ReAct failure analyses.
+- **Lit Alignment:** Mirrors Spider error analyses and ReAct failure analyses (Yu et al., 2018; Yao et al., 2023; Zhu et al., 2024).
 - **Next Steps (lit-driven):**  
   1) strengthen semantic curriculum (joins/aggregates)  
-  2) add critic/reranker (ValueNet / Self-Refine)  
-  3) schema linking enhancements (RAT-SQL-style)
+  2) add critic/reranker (surveyed in Zhu et al., 2024; Gao et al., 2025)  
+  3) schema linking enhancements (RESDSQL-style; Li, Zhang, Li, and Chen, 2023 (RESDSQL))
 
 ### 2026-01-26 — Dev Note (fallback robustness)
 - **Change:** Relaxed `clean_candidate` and made `vanilla_candidate` baseline-aligned (extract first SELECT + guarded_postprocess, minimal filtering).
@@ -135,7 +135,7 @@ methodologies in recent literature (Spider/BIRD/Ojuri).
 ### 2026-01-27 — Staged Decision Process (minimal → clamp → rerank → repair)
 - **Decision:** Re-structured the notebook into staged ablations (STAGE 0–3) to restore validity before re‑introducing complexity.
 - **Motivation:** Debug evidence showed valid SQL was being discarded by downstream filters; a minimal execution‑gated generator isolates the bottleneck.
-- **Process (lit‑guided):** Start with execution‑guided decoding only (Zhong et al.), then add constraints (PICARD‑style), then reranking/critics, then repair.
+- **Process (lit‑guided):** Start with execution‑guided decoding only (Zhong, Yu, and Klein, 2020), then add constraints (PICARD‑style; Scholak, Schucher, and Bahdanau, 2021 (PICARD)), then reranking/critics (Zhu et al., 2024; Gao et al., 2025), then repair (Zhai et al., 2025).
 - **Outcome:** Made the pipeline evidence‑driven rather than feature‑driven; each component is now re‑introduced only after validation.
 
 ### 2026-01-27 — Debug Note (spaced SQL tokens)
@@ -195,6 +195,7 @@ The dissertation narrative can legitimately focus on whether **small open models
 - **Change:** Added structured trace logging to the ReAct loop (raw candidate → cleaned SQL → post‑clamp SQL → execution error → repair attempt).
 - **Repair Logging:** `repair_sql` now returns both the repaired SQL and a small metadata dict (status, raw_fix, exec_error), so traces show *why* a repair succeeded or failed.
 - **Reason:** Traceability is needed to attribute errors to generation vs cleaning vs execution vs repair; aligns with agentic evaluation practice in ReAct/Reflexion‑style loops.
+Code: `notebooks/03_agentic_eval.ipynb`
 
 ### 2026-01-29 — Biggest Win: Output‑Control + Semantic Acceptance Gate
 - **Finding:** Two failure modes dominated:  
@@ -205,8 +206,9 @@ The dissertation narrative can legitimately focus on whether **small open models
   - **Prompt‑echo stripping** before cleaning (generic regex, not NLQ‑specific).  
   - **Semantic acceptance gate** (use `semantic_score` as a *threshold*, not only a reranker) so executable but irrelevant SQL is rejected.
 - **Rationale (literature‑backed):**  
-  Constrained decoding reduces invalid continuations (PICARD/Scholak et al., 2021), while execution‑guided decoding alone can accept spurious SQL unless paired with a semantic filter (Zhong et al., 2017; ValueNet/DIN‑SQL reranking). ReAct‑style agent loops require *format control + acceptance criteria* to avoid “valid‑but‑wrong” completions (Yao et al., 2023).
+  Constrained decoding reduces invalid continuations (PICARD; Scholak, Schucher, and Bahdanau, 2021 (PICARD)), while execution‑guided decoding alone can accept spurious SQL unless paired with a semantic filter (Zhong, Yu, and Klein, 2020; Zhu et al., 2024; Gao et al., 2025). ReAct‑style agent loops require *format control + acceptance criteria* to avoid “valid‑but‑wrong” completions (Yao et al., 2023).
 - **Outcome:** Stabilizes Stage‑3 correctness by separating **VA (runs)** from **task success (semantics)**, improving traceability and narrative clarity for the dissertation.
+Code: `nl2sql/agent_utils.py#L263`, `nl2sql/agent_utils.py#L414`, `nl2sql/postprocess.py#L125`
 
 ### 2026-01-29 — Stage 3 Stabilisation (Intent Constraints + Canonicalisation)
 - **Fixes applied:**  
@@ -215,9 +217,11 @@ The dissertation narrative can legitimately focus on whether **small open models
   - **Cleaner hardening:** blocked `FROM dual`, `GROUP BY NULL`, dangling clauses, and prompt‑echo remnants that survived trimming.  
   - **Repair filtering:** multi‑candidate repair + best‑SELECT extraction to reject keyword‑soup fixes.
 - **Effect:** Stage 3 now accepts **semantically plausible** SQL rather than any executable SQL; trace logs cleanly show where failures originate (generation vs cleaning vs execution vs repair).
+Code: `nl2sql/agent_utils.py#L235`, `nl2sql/postprocess.py#L45`
 
 ### 2026-01-29 — Stage‑Gated Justification (Ablation + ReAct Pattern)
 - **Why STAGE 0–3:** stage‑gating is an **ablation ladder** that isolates the impact of clamps, reranking, and repair. This prevents “opaque agent” claims and supports attribution of VA/EX changes to specific mechanisms (aligned with execution‑guided decoding and ReAct ablations).
+Code: `notebooks/03_agentic_eval.ipynb`
 - **STAGE 0 vs STAGE ≥1:** Stage 0 is **minimal execution‑gated decoding** (generate → extract → execute), while Stage ≥1 operationalises a **ReAct‑style loop** (generate → execute → observe → refine) with multi‑candidate search, clamping, and repair.
 - **Trace logging:** structured traces (raw → cleaned → post‑clamp → exec → repair) create an audit trail for failure‑mode analysis and reproducibility.
 - **Fallback rationale:** deterministic few‑shot fallback preserves benchmark coverage and comparability across configurations.
@@ -261,16 +265,19 @@ The dissertation narrative can legitimately focus on whether **small open models
 - **Change:** added Test‑Suite Accuracy (TS) evaluation harness and quick‑test toggles (limit, TS_N, max rows) to the agentic eval notebook.  
 - **Why:** TS provides semantic‑equivalence evaluation across perturbed DBs, while quick‑test toggles make iterative debugging feasible without full‑run cost.  
 - **Effect:** enables rapid validation of EX improvements and supports a rigorous, reproducible evaluation narrative.  
+Code: `nl2sql/eval.py#L201`, `notebooks/03_agentic_eval.ipynb`
 
 ### 2026-02-02 — Simplified Cell 6 (Readable ReAct Utilities)
 - **Change:** refactored Cell 6 into small, named helpers (normalize, trim prompt‑echo, clean candidate, post‑process, clamps, repair) with plain‑English comments.  
 - **Why:** improves explainability for examiners and makes the control‑layer logic defendable without reading dense regex.  
 - **Effect:** same behavior, clearer narrative and easier debugging.  
+Code: `nl2sql/agent_utils.py#L263`, `notebooks/03_agentic_eval.ipynb`
 
 ### 2026-02-02 — Notebook Cleanup (TS util + score helper)
-- **Change:** moved TS harness into `scripts/ts_eval.py` and imported it in the notebook; added a single `score_sql()` helper cell to centralize candidate scoring.  
+- **Change:** moved TS harness into `nl2sql/eval.py` and imported it in the notebook; added a single `score_sql()` helper cell to centralize candidate scoring.  
 - **Why:** keeps the notebook as an orchestration document and reduces “wall‑of‑code” sections; easier to justify and audit.  
 - **Effect:** same evaluation behavior, cleaner notebook structure, clearer explanation for examiners.  
+Code: `nl2sql/eval.py#L201`, `notebooks/03_agentic_eval.ipynb`
 
 ### 2026-02-02 — EX Comparator Relaxed + Quick‑Check Snapshot
 - **Change:** removed column‑name strictness from EX (execution_accuracy) so EX compares **row contents only**.  
@@ -280,42 +287,11 @@ The dissertation narrative can legitimately focus on whether **small open models
 - **Next plan:**  
   - make TS “truer” by using **distilled/perturbed DBs** (not mere clones),  
   - keep EX less strict (row‑equivalence) while reporting EM separately for formatting differences.  
+Code: `nl2sql/eval.py#L104`
 
 ### 2026-02-02 — TS Definition Clarified (Suite‑Based, Not Distilled)
 - **Clarification:** TS in this project is a **suite‑based robustness check** using multiple perturbed DB replicas; it is **not** full distilled test suites in the Zhong et al. sense.  
 - **Reason for note:** prevents over‑claiming; still a defensible step beyond single‑DB EX and EM.  
-- **Ref:** [18]
+- **Ref:** Zhong, Yu, and Klein (2020)
+Code: `nl2sql/eval.py#L201`
 
----
-
-## ReAct Pipeline Cheat Sheet (Quick Reference)
-
-**Goal:** make the loop explainable, debuggable, and reproducible.
-
-**Inputs**
-- NLQ (question), schema summary, model, runner (DB executor)
-
-**Core phases (in order)**
-1) **Generate** — produce multiple SQL candidates (main + tabular prompt)  
-2) **Clean** — enforce single `SELECT … FROM … ;`, remove prompt echo, reject dangling SQL  
-3) **Post‑process** — projection guard, optional projection contract, canonical table casing, clamps  
-4) **Execute** — run SQL; failure becomes observation  
-5) **Intent‑gate + Score** — reject wrong query type; score by semantics + compactness  
-6) **Repair (optional)** — one‑shot fix using DB error; re‑exec  
-7) **Fallback** — deterministic few‑shot if all else fails
-
-**Key functions**
-- `generate_candidates(...)` → raw SQL strings  
-- `clean_candidate(...)` → `SELECT ... FROM ...;` or reject  
-- `projection_guard(...)` → minimal projection baseline  
-- `enforce_projection_contract(...)` → drop extra SELECT columns when NLQ lists fields  
-- `canonicalize_table_casing(...)` → fix `ORDERS` → `orders`  
-- `apply_clamps(...)` → strip ORDER/LIMIT, trim columns, add missing GROUP BY when asked  
-- `intent_constraints(...)` → reject wrong query type (list vs aggregate vs grouped vs top‑k)  
-- `repair_sql(...)` → uses DB error message to attempt one fix  
-
-**Success rule**
-- A query is accepted only if it **executes** and **passes intent constraints**, then wins the **score**.
-
-**Explainable story (1 line)**
-Generate → clean → post‑process → execute → intent‑gate → score → repair/fallback.

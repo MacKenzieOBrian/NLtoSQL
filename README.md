@@ -1,61 +1,41 @@
-# NL→SQL Dissertation Project (ClassicModels)
+# NL->SQL Dissertation Project (ClassicModels)
 
 This repo contains an end-to-end experimentation pipeline for **Natural Language to SQL** over the **ClassicModels** MySQL database.
 
-The dissertation goal is to measure (and explain) performance differences between:
-- **Zero-shot prompting** (no exemplars)
-- **Few-shot prompting** (in-context exemplars, weights frozen)
-- **Agentic SQL generation** (planned, ReAct-style refinement using a safe SQL execution tool)
-- **Parameter-efficient fine-tuning** (planned, QLoRA)
+## Canonical Reading Order (New Decision Log Format)
+1. `1_LITERATURE.md`
+2. `2_METHODOLOGY.md`
+3. `3_AGENT_DESIGN.md`
+4. `4_EVALUATION.md`
+5. `5_ITERATIVE_REFINEMENTS.md`
+6. `6_LIMITATIONS.md`
+7. `LOGBOOK.md`
 
-## Decision Journey Reading Order
+## What's in the repo
 
-For the dissertation narrative (decisions backed by literature), read in this order:
-1. `1.LITERATURE.md` (evidence base)
-2. `2.METHODOLOGY.md` (decision-driven methodology)
-3. `3.DECISIONS.md` (explicit decision log + literature hooks)
-4. `4.DATA_AND_SPLITS.md` (data/split decisions)
-5. `6.MODEL_ADAPTATION_STRATEGIES.md` (adaptation ladder)
-6. `7.EVALUATION_FRAMEWORK.md` (metric decisions)
-7. `8.RESULTS_SUMMARY.md` (results by decision stage)
-8. `LOGBOOK.md` (learning journey timeline)
-
-## What’s in the repo
-
-- `nl2sql/`: reusable “experiment harness” code (DB access, schema text, prompting, generation, evaluation).
-- `notebooks/`: Colab notebooks that *run* experiments and produce dissertation-ready outputs.
-- `data/`: benchmark JSON (currently `data/classicmodels_test_200.json`).
+- `nl2sql/`: reusable experiment harness code (DB access, schema text, prompting, generation, evaluation).
+- `notebooks/`: Colab notebooks that run experiments and produce outputs.
+- `data/`: benchmark JSON.
 - `results/`: local outputs (JSON runs, figures). Gitignored by default; see `results/README.md`.
-- `DECISIONS.md`: decision record (what/why/where) for dissertation writing.
-- `ARCHITECTURE.md`: condensed system overview.
-- `ARCHITECTURE_DETAILS.md`: full architecture notes (appendix).
-- `CONFIG.md`: runtime setup, env vars, and reproducibility checklist.
-- `DATA.md`: dataset conventions and evaluation hygiene.
-- `LOGBOOK.md`: condensed project log.
-- `LOGBOOK_REFLECTIONS.md`: full log + reflections (appendix).
-- `NOTES.md`: open questions / TODOs.
+- `DEMO_NOTEBOOK_03_AGENTIC.md`: cell-by-cell demo guide for the agentic notebook.
+- `REFERENCES.md`: bibliography list.
 
 ## Quickstart (Colab baseline)
 
-1. Set env vars in Colab enter when prompted: `INSTANCE_CONNECTION_NAME`, `DB_USER`, `DB_PASS`, `DB_NAME`, `HF_TOKEN`.
+1. Set env vars in Colab when prompted: `INSTANCE_CONNECTION_NAME`, `DB_USER`, `DB_PASS`, `DB_NAME`, `HF_TOKEN`.
 2. Open and run: `notebooks/02_baseline_prompting_eval.ipynb`
 3. Outputs are written to `results/baseline/` (gitignored by default).
-   - If you want these outputs on GitHub, remove/adjust the `results/` rule in `.gitignore` and commit curated JSONs.
 
 ## Quickstart (QLoRA)
 
-1. Validate (and optionally edit) the provided training set: `notebooks/04_build_training_set.ipynb` checks `data/train/classicmodels_train_200.jsonl` against the live DB and the fixed 200-item benchmark.
+1. Validate (and optionally edit) the provided training set: `notebooks/04_build_training_set.ipynb`
 2. Fine-tune + evaluate adapters: `notebooks/05_qlora_train_eval.ipynb`
 
 ## Evaluation metrics
 
 - **VA (Validity)**: predicted SQL executes successfully (via `QueryRunner`).
-- **EM (Exact Match)**: normalized SQL string match vs gold SQL (strict, conservative).
-- **EX (Execution Accuracy)**: execute predicted SQL and compare results to the gold SQL results (Ojuri-style execution accuracy).
-- **TS / test-suite accuracy**: planned next metric (compare results across distilled DB variants).
+- **EM (Exact Match)**: normalized SQL string match vs gold SQL (strict, diagnostic).
+- **EX (Execution Accuracy)**: execute predicted SQL and compare results to the gold SQL results.
+- **TS / test-suite accuracy**: suite-based semantic check implemented in `nl2sql/eval.py`.
 
-## Why we evaluate baselines vs QLoRA
-
-- **Baseline runs** (zero-shot and few-shot) change only the *prompt*; the model weights stay fixed. They show how far prompt engineering alone can go.
-- **QLoRA runs** train adapters on ClassicModels pairs, changing the model’s behaviour. We then re-evaluate on the same 200-item test set to measure generalisation uplift.
-- We evaluate QLoRA with both `k=0` and `k=3` to separate gains from **training** vs gains from **adding exemplars** at inference time.
+Code: `nl2sql/query_runner.py`, `nl2sql/eval.py`
