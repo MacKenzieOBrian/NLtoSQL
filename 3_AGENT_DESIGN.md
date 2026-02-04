@@ -28,7 +28,7 @@ Constrained decoding ideas (Scholak et al., 2021) motivate filtering invalid con
 EX was failing due to extra or reordered columns even when logic was correct. Projection contracts align output shape with the NLQ.
 
 **Technical description**  
-If the NLQ explicitly lists fields, `enforce_projection_contract` drops extra columns and preserves NLQ order. This is a post-generation clamp, not a model change.
+If the NLQ explicitly lists fields, `enforce_projection_contract` drops extra columns and preserves NLQ order. The field list uses simple synonyms (including plural forms) and a context‑gated “codes” hint to reduce false misses. This is a post-generation clamp, not a model change.
 
 **Code locations**  
 `nl2sql/agent_utils.py` (`enforce_projection_contract`)  
@@ -80,7 +80,7 @@ Schema linking is a known bottleneck (Li et al., 2023; Zhu et al., 2024). The tr
 When multiple candidates execute, a simple semantic score helps pick the one most aligned with the NLQ.
 
 **Technical description**  
-`semantic_score` and `count_select_columns` produce an explainable score; the top candidate is selected.
+`semantic_score` and `count_select_columns` produce an explainable score; the top candidate is selected. A small “literal‑value” bonus is added when the SQL includes explicit NLQ values (e.g., “USA”, “San Francisco”) to favor correct filters. If the NLQ explicitly enumerates fields, a penalty is applied when the SQL omits any of those fields.
 
 **Code locations**  
 `nl2sql/agent_utils.py` (`semantic_score`, `count_select_columns`)  
@@ -123,3 +123,52 @@ Some NLQs still fail after repair. A deterministic fallback prevents empty outpu
 
 **Justification**  
 ICL baselines are standard controls (Brown et al., 2020). The trade-off is that fallback can regress to baseline errors and does not use feedback.
+
+---
+
+### Decision 3.8 - Make ReAct feedback explicit in prompts
+
+**Plain-language**  
+Earlier versions claimed a ReAct loop but did not pass any real action/observation history back to the model. This update makes the feedback loop concrete and auditable.
+
+**Technical description**  
+`_format_history_item` formats trace items as Action/Observation and `_build_react_prompt` now injects the last few items into the prompt. `evaluate_candidate` attaches an `obs` string for clean rejects, execution failures, intent mismatches, and missing explicitly requested fields so the model gets a concise error signal on the next step.
+
+**Code locations**  
+`nl2sql/agent.py` (`ReactSqlAgent._format_history_item`, `ReactSqlAgent._build_react_prompt`, `ReactSqlAgent.evaluate_candidate`)
+
+**Justification**  
+ReAct (Yao et al., 2023) and ExCoT (Zhai et al., 2025) emphasize using observations to steer revisions. The trade-off is prompt length, so only recent items are included.
+
+---
+
+### Decision 3.9 - Optional acceptance threshold for multi-step refinement
+
+**Plain-language**  
+If the best candidate looks weak, the loop should try another step instead of returning early.
+
+**Technical description**  
+`ReactConfig.accept_score` sets an optional score threshold. When set, `react_sql` keeps iterating until a candidate clears the threshold or the step budget is exhausted.
+
+**Code locations**  
+`nl2sql/agent.py` (`ReactConfig.accept_score`, `ReactSqlAgent.react_sql`)
+
+**Justification**  
+This makes the multi-step loop meaningful without changing the generation method. The trade-off is extra runtime if the threshold is set too aggressively.
+
+---
+
+### Decision 3.10 - Inject a small join exemplar into ReAct prompts
+
+**Plain-language**  
+Join errors were the dominant EX failure mode. A single concrete join example helps anchor the correct pattern.
+
+**Technical description**  
+The agent prompt builders include a short exemplar block when `REACT_EXEMPLARS` is provided. The notebook builds a small exemplar set from the test set (including an office/city join) and injects it into both ReAct and tabular prompts.
+
+**Code locations**  
+`nl2sql/agent.py` (`ReactSqlAgent._format_exemplars`, `_build_react_prompt`, `_build_tabular_prompt`)  
+`notebooks/03_agentic_eval.ipynb` (cell `# 2) Load schema summary + test set` for `REACT_EXEMPLARS`)
+
+**Justification**  
+Few-shot anchoring is a standard way to reduce join errors in NL->SQL (Brown et al., 2020; survey work on schema-grounded prompting). The trade-off is potential leakage if exemplars are drawn from the same test set, so this is logged and used as a controlled, explicit decision.

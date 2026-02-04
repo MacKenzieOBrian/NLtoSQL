@@ -32,6 +32,7 @@ from .agent_utils import (
     count_select_columns,
     enforce_projection_contract,
     intent_constraints,
+    missing_explicit_fields,
     semantic_score,
     vanilla_candidate,
 )
@@ -60,6 +61,11 @@ class ReactConfig:
 
     # Scoring.
     column_penalty: float = 0.5
+    # Optional early-stop threshold for multi-step refinement.
+    # If None, the loop returns the best executable candidate per step (current behavior).
+    accept_score: Optional[float] = None
+    # Verbose tracing for debugging the full loop.
+    verbose: bool = False
 
 
 class _StopOnSemicolon(StoppingCriteria):
@@ -102,14 +108,42 @@ class ReactSqlAgent:
         if getattr(self.tok, "pad_token", None) is None and getattr(self.tok, "eos_token", None) is not None:
             self.tok.pad_token = self.tok.eos_token
 
+    def _debug(self, msg: str) -> None:
+        if self.cfg.verbose:
+            print(msg)
+
     # -----------------
     # Prompt builders
     # -----------------
+    def _format_history_item(self, h: dict) -> str:
+        # ReAct alignment: treat each history entry as (Action, Observation).
+        # We log rich fields in the trace; this formatter keeps prompts compact and auditable.
+        action = h.get("sql") or h.get("raw") or h.get("phase") or ""
+        obs = h.get("obs") or h.get("error") or h.get("reason") or ""
+        step = h.get("step")
+        prefix = f"Step {step} " if step is not None else ""
+        return f"{prefix}Action: {_trim(action)}\nObservation: {_trim(obs)}"
+
+    def _format_exemplars(self, exemplars: Optional[list[dict]], max_ex: int = 2) -> str:
+        if not exemplars:
+            return ""
+        lines: list[str] = []
+        for ex in exemplars[:max_ex]:
+            nlq = (ex.get("nlq") or "").strip()
+            sql = (ex.get("sql") or "").strip()
+            if nlq and sql:
+                lines.append(f"Example\nQuestion: {nlq}\nSQL: {sql}")
+        return "\n\n".join(lines)
+
     def _build_react_prompt(self, *, nlq: str, schema_text: str, history: list[dict], observation: str) -> str:
         schema_view = build_schema_subset(schema_text, nlq) if self.cfg.use_schema_subset else schema_text
-        history_text = "\n\n".join(
-            f"Thought/Action: {h.get('ta','')}\nObservation: {h.get('obs','')}" for h in history
-        ) or "None yet."
+        if self.cfg.verbose:
+            table_lines = [ln for ln in schema_view.splitlines() if "(" in ln and ")" in ln]
+            self._debug(f"[prompt] react schema_subset={self.cfg.use_schema_subset} tables={len(table_lines)}")
+        # Keep only the most recent items to limit prompt size.
+        history_text = "\n\n".join(self._format_history_item(h) for h in history[-4:]) or "None yet."
+        exemplars_text = self._format_exemplars(getattr(self, "_prompt_exemplars", None))
+        exemplars_block = f"Examples:\n{exemplars_text}\n\n" if exemplars_text else ""
         return f"""
 You are an expert MySQL analyst.
 
@@ -119,11 +153,12 @@ TASK:
 - The output must include a FROM clause.
 - Use only schema tables/columns.
 - Use ORDER BY/LIMIT only if explicitly asked.
+- Use the Observation to correct mistakes from prior attempts.
 
 Schema:
 {schema_view}
 
-Question:
+{exemplars_block}Question:
 {nlq}
 
 Recent steps:
@@ -137,13 +172,18 @@ Respond with only the final SQL statement.
 
     def _build_tabular_prompt(self, *, nlq: str, schema_text: str) -> str:
         schema_view = build_schema_subset(schema_text, nlq) if self.cfg.use_schema_subset else schema_text
+        if self.cfg.verbose:
+            table_lines = [ln for ln in schema_view.splitlines() if "(" in ln and ")" in ln]
+            self._debug(f"[prompt] tabular schema_subset={self.cfg.use_schema_subset} tables={len(table_lines)}")
+        exemplars_text = self._format_exemplars(getattr(self, "_prompt_exemplars", None))
+        exemplars_block = f"Examples:\n{exemplars_text}\n\n" if exemplars_text else ""
         return f"""
 You are an expert SQL engineer. Think through tables and join keys, then output one SELECT.
 
 Schema:
 {schema_view}
 
-Question:
+{exemplars_block}Question:
 {nlq}
 
 Output only the final SQL statement and nothing else.
@@ -161,6 +201,11 @@ Output only the final SQL statement and nothing else.
         # Prefixing with SELECT reduces non-SQL continuations.
         prompt = prompt.rstrip() + "\nSELECT "
         inputs = self.tok(prompt, return_tensors="pt").to(self.model.device)
+
+        self._debug(
+            f"[gen] do_sample={do_sample} num={num} max_new_tokens={cfg.max_new_tokens} "
+            f"temp={cfg.temperature} top_p={cfg.top_p} prompt_tokens={inputs.input_ids.shape[-1]}"
+        )
 
         gen_kwargs: dict[str, Any] = {
             "max_new_tokens": cfg.max_new_tokens,
@@ -191,35 +236,80 @@ Output only the final SQL statement and nothing else.
     # -----------------
     def postprocess_sql(self, *, sql: str, nlq: str) -> str:
         # Deterministic postprocess layer (no weight changes).
+        if self.cfg.verbose:
+            self._debug("[guard] calling guarded_postprocess")
         cleaned = guarded_postprocess(sql, nlq)
+        if self.cfg.verbose and cleaned != sql:
+            self._debug(f"[post] guarded_postprocess changed sql: {_trim(cleaned)}")
         if self.cfg.use_projection_contract:
-            cleaned = enforce_projection_contract(cleaned, nlq)
+            if self.cfg.verbose:
+                self._debug("[guard] calling enforce_projection_contract")
+            contracted = enforce_projection_contract(cleaned, nlq)
+            if self.cfg.verbose and contracted != cleaned:
+                self._debug(f"[post] projection_contract applied: {_trim(contracted)}")
+            cleaned = contracted
         return cleaned
 
     def evaluate_candidate(self, *, nlq: str, raw: str) -> tuple[Optional[tuple[str, float]], dict]:
+        if self.cfg.verbose:
+            self._debug("[guard] calling clean_candidate_with_reason")
+        self._debug(f"[eval] raw candidate: {_trim(raw)}")
         sql, reason = clean_candidate_with_reason(raw)
         if not sql:
-            return None, {"phase": "clean_reject", "reason": reason, "raw": _trim(raw)}
+            self._debug(f"[eval] clean_reject reason={reason}")
+            return None, {
+                "phase": "clean_reject",
+                "reason": reason,
+                "raw": _trim(raw),
+                "obs": f"Rejected during cleanup: {reason}",
+            }
 
         sql = self.postprocess_sql(sql=sql, nlq=nlq)
+        self._debug(f"[eval] postprocess sql: {_trim(sql)}")
+
+        missing_fields = missing_explicit_fields(nlq, sql)
+        if missing_fields:
+            self._debug(f"[eval] missing explicit fields: {missing_fields}")
 
         # Execution gate (Act): must run successfully.
+        if self.cfg.verbose:
+            self._debug("[guard] calling runner.run (execution gate)")
         meta = self.runner.run(sql, capture_df=False)
         if not meta.success:
-            return None, {"phase": "exec_fail", "sql": sql, "error": _trim(meta.error)}
+            err = _trim(meta.error)
+            self._debug(f"[eval] exec_fail error={err}")
+            return None, {
+                "phase": "exec_fail",
+                "sql": sql,
+                "error": err,
+                "obs": f"Execution error: {err}",
+            }
 
         # Intent gate: prevent executable-but-wrong-shape answers.
+        if self.cfg.verbose:
+            self._debug("[guard] calling intent_constraints")
         ok, why = intent_constraints(nlq, sql)
         if not ok:
-            return None, {"phase": "intent_reject", "sql": sql, "reason": why}
+            self._debug(f"[eval] intent_reject reason={why}")
+            return None, {
+                "phase": "intent_reject",
+                "sql": sql,
+                "reason": why,
+                "obs": f"Intent mismatch: {why}",
+            }
 
         # Simple, auditable scoring.
         s_sem = semantic_score(nlq, sql)
         s_cols = count_select_columns(sql)
         s_extra = float(self.extra_score_fn(nlq, sql))
         score = float(s_sem) - float(self.cfg.column_penalty) * float(s_cols) + s_extra
+        self._debug(f"[eval] accept score={score:.2f} sem={s_sem:.2f} cols={s_cols} extra={s_extra:.2f}")
 
-        return (sql, score), {"phase": "accept", "sql": sql, "score": score, "sem": s_sem, "cols": s_cols, "extra": s_extra}
+        log = {"phase": "accept", "sql": sql, "score": score, "sem": s_sem, "cols": s_cols, "extra": s_extra}
+        if missing_fields:
+            log["missing_fields"] = missing_fields
+            log["obs"] = f"Missing requested fields: {', '.join(missing_fields)}"
+        return (sql, score), log
 
     # -----------------
     # Repair
@@ -227,6 +317,8 @@ Output only the final SQL statement and nothing else.
     def repair_sql(self, *, nlq: str, bad_sql: str, error_msg: str, schema_text: str) -> tuple[Optional[str], dict]:
         if not self.cfg.enable_repair:
             return None, {"enabled": False}
+
+        self._debug(f"[repair] starting: bad_sql={_trim(bad_sql)} error={_trim(error_msg)}")
 
         prompt = f"""
 You are an expert MySQL engineer.
@@ -249,27 +341,34 @@ Output ONLY the corrected SELECT statement.
 
         fixes = self.generate_candidates(prompt, num=self.cfg.repair_num_cands, do_sample=True)
         if not fixes:
+            self._debug("[repair] no fixes generated")
             return None, {"enabled": True, "status": "no_fix_generated"}
+        self._debug(f"[repair] generated fixes={len(fixes)}")
 
         last_info: dict = {"enabled": True, "status": "no_valid_fix"}
         for raw_fix in fixes:
             cand, _reason = clean_candidate_with_reason(raw_fix)
             if not cand:
+                self._debug("[repair] clean_reject on fix")
                 continue
 
             sql = self.postprocess_sql(sql=cand, nlq=nlq)
             meta = self.runner.run(sql, capture_df=False)
             if not meta.success:
+                self._debug(f"[repair] exec_fail on fix: {_trim(meta.error)}")
                 last_info = {"enabled": True, "status": "exec_fail", "raw_fix": _trim(raw_fix), "fixed_sql": sql, "exec_error": _trim(meta.error)}
                 continue
 
             ok, why = intent_constraints(nlq, sql)
             if not ok:
+                self._debug(f"[repair] intent_reject on fix: {why}")
                 last_info = {"enabled": True, "status": "intent_reject", "raw_fix": _trim(raw_fix), "fixed_sql": sql, "reason": why}
                 continue
 
+            self._debug(f"[repair] accepted fix: {_trim(sql)}")
             return sql, {"enabled": True, "status": "exec_ok", "raw_fix": _trim(raw_fix), "fixed_sql": sql}
 
+        self._debug("[repair] no valid fix accepted")
         return None, last_info
 
     # -----------------
@@ -289,20 +388,34 @@ Output ONLY the corrected SELECT statement.
         observation = "Start."
         last_failed_sql: Optional[str] = None
         last_error: Optional[str] = None
+        # Store exemplars on the agent so prompt builders can include them.
+        self._prompt_exemplars = exemplars or []
+
+        self._debug(
+            f"[start] steps={cfg.max_steps} num_cands={cfg.num_cands} "
+            f"tabular={cfg.use_tabular_prompt} schema_subset={cfg.use_schema_subset} "
+            f"projection_contract={cfg.use_projection_contract} accept_score={cfg.accept_score}"
+        )
 
         for step in range(cfg.max_steps):
+            self._debug(f"[step {step}] obs={_trim(observation)} history={len(history)}")
             prompts = [self._build_react_prompt(nlq=nlq, schema_text=schema_text, history=history, observation=observation)]
             if cfg.use_tabular_prompt:
                 prompts.append(self._build_tabular_prompt(nlq=nlq, schema_text=schema_text))
 
+            self._debug(f"[step {step}] prompts_used={len(prompts)}")
             per_prompt = max(1, cfg.num_cands // len(prompts))
             raw_cands: list[str] = []
             for p in prompts:
+                self._debug(f"[step {step}] generating candidates per_prompt={per_prompt}")
                 raw_cands.extend(self.generate_candidates(p, num=per_prompt, do_sample=cfg.do_sample))
 
+            self._debug(f"[step {step}] total candidates={len(raw_cands)}")
             best: Optional[tuple[str, float]] = None
+            best_info: Optional[dict] = None
 
-            for raw in raw_cands:
+            for idx, raw in enumerate(raw_cands, start=1):
+                self._debug(f"[step {step}] candidate {idx}/{len(raw_cands)}")
                 result, log = self.evaluate_candidate(nlq=nlq, raw=raw)
                 log = {"step": step, **log}
                 history.append({k: _trim(v) for k, v in log.items()})
@@ -315,11 +428,24 @@ Output ONLY the corrected SELECT statement.
                     sql, score = result
                     if best is None or score > best[1]:
                         best = (sql, score)
+                        best_info = log
 
             if best is not None:
                 sql, score = best
-                history.append({"step": step, "phase": "final", "sql": sql, "score": score})
-                return sql, history
+                # Optional multi-step refinement: only stop early if the score clears a threshold.
+                if cfg.accept_score is None or score >= cfg.accept_score:
+                    self._debug(f"[step {step}] accept final score={score:.2f}")
+                    history.append({"step": step, "phase": "final", "sql": sql, "score": score})
+                    return sql, history
+                missing_note = ""
+                if best_info and best_info.get("missing_fields"):
+                    missing_note = f" Missing fields: {', '.join(best_info['missing_fields'])}."
+                observation = _trim(
+                    f"Best candidate scored {score:.2f} (below threshold). "
+                    f"Re-evaluate joins/filters.{missing_note} Candidate: {sql}"
+                )
+                history.append({"step": step, "phase": "observation", "obs": observation})
+                continue
 
             # Optional repair: use error message as feedback, then re-run gates.
             if cfg.enable_repair and last_error and last_failed_sql:
@@ -331,9 +457,12 @@ Output ONLY the corrected SELECT statement.
                 )
                 history.append({"step": step, "phase": "repair", "bad_sql": last_failed_sql, "error": _trim(last_error), **repinfo})
                 if repaired:
+                    self._debug(f"[step {step}] repair accepted")
                     history.append({"step": step, "phase": "final", "sql": repaired, "score": "repair_accept"})
                     return repaired, history
-                observation = f"Previous SQL failed: {last_error}. Revise tables/joins and try again."
+                observation = _trim(
+                    f"Previous SQL failed: {last_error}. Revise tables/joins and try again."
+                )
             else:
                 observation = "No executable candidates. Try a simpler join path."
 
@@ -349,9 +478,9 @@ Output ONLY the corrected SELECT statement.
                 exemplars=exemplars or [],
             )
             if fallback:
+                self._debug("[fallback] using deterministic baseline candidate")
                 history.append({"step": cfg.max_steps, "phase": "fallback", "sql": fallback})
                 return fallback, history
 
         history.append({"step": cfg.max_steps, "phase": "fail", "reason": "No valid SQL found"})
         return "", history
-

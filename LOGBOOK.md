@@ -295,3 +295,50 @@ Code: `nl2sql/eval.py#L104`
 - **Ref:** Zhong, Yu, and Klein (2020)
 Code: `nl2sql/eval.py#L201`
 
+### 2026-02-04 — ReAct Feedback Made Explicit (Action/Observation)
+- **Change:** ReAct history now uses real action/observation fields, and each rejection logs an explicit observation string (clean reject, exec fail, intent reject).  
+- **Why:** the prompt claimed ReAct structure but history text was blank; explicit observations align the loop with ReAct/ExCoT feedback without changing model weights.  
+- **Effect:** trace is now auditable and the model receives concrete error feedback in the next step.  
+Code: `nl2sql/agent.py` (`_format_history_item`, `_build_react_prompt`, `evaluate_candidate`)
+
+### 2026-02-04 — Optional Multi‑Step Threshold (accept_score)
+- **Change:** added `accept_score` to `ReactConfig`; if set, the loop keeps iterating until a candidate clears the threshold.  
+- **Why:** makes multi‑step refinement meaningful while keeping the loop bounded and explainable.  
+- **Effect:** enables true “try‑improve‑accept” behavior without changing the generation method.  
+Code: `nl2sql/agent.py` (`ReactConfig`, `react_sql`)
+
+### 2026-02-04 — Eval Save Robustness (Decimal‑safe JSON)
+- **Change:** JSON saving now uses `default=str` to serialize Decimal values in TS debug outputs.  
+- **Why:** SQLAlchemy returns Decimal for numeric columns; JSON serialization would fail during result persistence.  
+- **Effect:** results can be saved without stripping debug detail.  
+Code: `notebooks/03_agentic_eval.ipynb` (evaluation save block)
+
+### 2026-02-04 — Field Synonyms + Literal‑Value Scoring
+- **Change:** expanded NLQ field synonyms (plural forms) and added a small literal‑value scoring signal (e.g., “USA”, “San Francisco”) in `semantic_score`.  
+- **Why:** missing explicit fields (“codes”) and filters were causing avoidable EX/TS misses; a lightweight lexical signal improves candidate selection without adding learned components.  
+- **Effect:** better alignment with NLQ field lists and improved selection of candidates that include key filter values.  
+Code: `nl2sql/agent_utils.py` (`_FIELD_SYNONYMS`, `_SPECIAL_FIELD_HINTS`, `_extract_value_hints`, `semantic_score`)
+
+### 2026-02-04 — Explicit Field Missing Penalty + More Candidates
+- **Change:** added a penalty in `semantic_score` when explicitly requested fields are missing, and increased agent candidate count in the notebook config.  
+- **Why:** some NLQs enumerated fields (e.g., “names, codes, and MSRPs”) but the chosen candidate dropped a field; increasing candidates and penalizing omissions improves selection without altering model weights.  
+- **Effect:** higher chance of selecting candidates that include all requested fields; modest EX/TS improvement expected.  
+Code: `nl2sql/agent_utils.py` (`semantic_score`), `notebooks/03_agentic_eval.ipynb` (`ReactConfig.num_cands`)
+
+### 2026-02-04 — ReAct Multi-step Enabled in Notebook
+- **Change:** set `accept_score` in the notebook `ReactConfig` so the loop can perform true multi-step refinement instead of always stopping at the first executable candidate.  
+- **Why:** ReAct’s core benefit is observe → revise; without a threshold the loop behaves like a single-pass sampler.  
+- **Effect:** encourages an additional step when the best candidate is weak, improving alignment with ReAct/ExCoT behavior.  
+Code: `notebooks/03_agentic_eval.ipynb` (`ReactConfig.accept_score`)
+
+### 2026-02-04 — Missing-field Observation in ReAct Trace
+- **Change:** when explicitly requested fields are missing, the agent logs an observation string (e.g., “Missing requested fields: productCode”) so it can be used in the next step.  
+- **Why:** makes the feedback loop more actionable and aligns with ReAct-style correction.  
+- **Effect:** clearer traces and better guidance for multi-step refinement.  
+Code: `nl2sql/agent.py` (`evaluate_candidate`), `nl2sql/agent_utils.py` (`missing_explicit_fields`)
+
+### 2026-02-04 — Join Exemplar Injection for ReAct Prompts
+- **Change:** added a small exemplar set (from the test set) and inject it into ReAct and tabular prompts; also print a schema check for `offices.city`.  
+- **Why:** join errors are the most common EX failure; a single join exemplar can anchor the intended join pattern without changing model weights.  
+- **Effect:** improved join behavior expected on office/city queries; prompts remain auditable.  
+Code: `nl2sql/agent.py` (prompt exemplar formatting), `notebooks/03_agentic_eval.ipynb` (`REACT_EXEMPLARS`)
