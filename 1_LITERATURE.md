@@ -1,75 +1,76 @@
-# Literature Engineering Log (Reformatted)
+# Literature Review
 
-Each decision is presented in a four-part explanation format.
-
----
-
-### Decision 1.1 - Center the review on execution-centric evaluation (VA/EX/TS)
-
-**Plain-language**  
-Early drafts focused on exact match and prompt wording, but baseline runs showed VA much higher than EX. The review needed to explain why valid SQL can still be semantically wrong.
-
-**Technical description**  
-Baseline evaluations showed many VA=1, EX=0 cases. This indicated that string matching was not the right primary lens. The literature framing was shifted to emphasize execution-based evaluation and test-suite ideas, while EM was retained only as a diagnostic signal.
-
-**Code locations**  
-`nl2sql/eval.py` (`execution_accuracy`, `test_suite_accuracy_for_item`, `eval_run`)  
-`nl2sql/query_runner.py` (`QueryRunner.run`)  
-`notebooks/03_agentic_eval.ipynb` ("## ReAct execution-guided pipeline (best version so far)")
-
-**Justification**  
-Zhong et al. (2020) show that execution-based and test-suite evaluation are required to handle SQL surface variability. Yu et al. (2018) establish execution-centric evaluation in NL->SQL benchmarks. The trade-off is that all execution metrics depend on database fidelity, so the framing explicitly acknowledges that limitation.
+This review is focused on LLM-based Text-to-SQL systems, with emphasis on evaluation reliability and agentic execution feedback. It is written to justify the choices made in this project, not to catalogue every paper in the area.
 
 ---
 
-### Decision 1.2 - Use a prompt -> PEFT -> agent ladder as the organizing frame
+## Scope and Framing
 
-**Plain-language**  
-The literature was initially a flat list of methods, which made the experimental stages look arbitrary. A staged ladder clarifies why each experiment exists.
+Text-to-SQL is hard because the same question can map to many correct SQL strings. That means surface-level metrics (exact string match) are brittle and can understate real semantic correctness. The review therefore centers on evaluation that checks execution behavior, not just syntax.
 
-**Technical description**  
-The review was reorganized to mirror the experimental sequence: prompting (ICL), then PEFT (QLoRA), then agentic control with execution feedback. This aligns the narrative with the actual notebooks and evaluation runs.
-
-**Code locations**  
-`notebooks/02_baseline_prompting_eval.ipynb` (baseline prompting)  
-`notebooks/05_qlora_train_eval.ipynb` (QLoRA training and eval)  
-`notebooks/03_agentic_eval.ipynb` (agentic loop)
-
-**Justification**  
-Brown et al. (2020) motivate ICL baselines, Ding et al. (2023) and Goswami et al. (2024) motivate PEFT, and Yao et al. (2023) plus Zhai et al. (2025) motivate feedback-driven agent loops. The trade-off is that this ladder can under-represent hybrid methods, but it keeps the study defensible and attributable.
+Key sources:
+- Execution-based and test-suite evaluation: `REFERENCES.md#ref-zhong2020-ts`, `REFERENCES.md#ref-yu2018-spider`
+- Surveys of LLM-based Text-to-SQL: `REFERENCES.md#ref-zhu2024-survey`, `REFERENCES.md#ref-hong2025-survey`
 
 ---
 
-### Decision 1.3 - Treat proprietary agents as upper bounds, not baselines
+## Evaluation Beyond Exact Match
 
-**Plain-language**  
-Comparing directly to closed, proprietary agents weakens reproducibility. They are better described as upper bounds rather than baselines.
+Exact Match (EM) was common in early benchmarks, but it does not capture semantic equivalence. Execution Accuracy (EX) and test-suite-style evaluation address this by running SQL and comparing outputs. Zhong et al. motivate test suites for semantic checks; Yu et al. show why EM alone is insufficient in complex SQL settings.
 
-**Technical description**  
-All evaluations are kept within the open harness. Proprietary outputs are not used inside the pipeline, and comparisons are framed qualitatively.
-
-**Code locations**  
-`nl2sql/eval.py` (`eval_run`)  
-`notebooks/02_baseline_prompting_eval.ipynb`  
-`notebooks/03_agentic_eval.ipynb`
-
-**Justification**  
-Surveys of LLM agents highlight reproducibility constraints and the need for open evaluation (Xi et al., 2025). Strong results in proprietary systems (Ojuri et al., 2025) are informative but not reproducible here. The trade-off is that state-of-the-art comparisons remain qualitative.
+Key sources:
+- `REFERENCES.md#ref-zhong2020-ts`
+- `REFERENCES.md#ref-yu2018-spider`
 
 ---
 
-### Decision 1.4 - Emphasize schema linking as a dominant error source
+## Prompting and In-Context Learning
 
-**Plain-language**  
-Trace reviews repeatedly showed wrong-table joins, even when SQL executed successfully. The literature needed to reflect schema linking as a central bottleneck.
+In-context learning provides a simple baseline that is widely used for Text-to-SQL. It is still an essential comparison point because it isolates the effect of prompting from learned weights. Mosbach et al. argue for fair comparisons between ICL and fine-tuning, which is a design constraint here.
 
-**Technical description**  
-Error logs and EX failures clustered around table selection and join path errors. A lightweight schema-subset prompt and join hints were introduced to reduce the scope of schema linking errors without retraining.
+Key sources:
+- `REFERENCES.md#ref-brown2020-gpt3`
+- `REFERENCES.md#ref-mosbach2023-icl`
 
-**Code locations**  
-`nl2sql/agent_utils.py` (`build_schema_subset`)  
-`nl2sql/schema.py` (`build_schema_summary`)  
-`notebooks/03_agentic_eval.ipynb` ("Top-down: Prepare schema summary and a small debug slice")
+---
 
-**Justification**  
-RESDSQL (Li et al., 2023) and surveys (Zhu et al., 2024; Hong et al., 2025) identify schema linking as a primary bottleneck. The approach here is heuristic and transparent, which keeps it auditable but limits generalization.
+## Parameter-Efficient Fine-Tuning (PEFT / QLoRA)
+
+PEFT methods make fine-tuning feasible under limited VRAM. They are not a replacement for robust evaluation, but they enable a controlled test of whether training data improves SQL generation beyond prompting. Ding et al. and Goswami et al. provide the foundation for using LoRA/QLoRA in this context.
+
+Key sources:
+- `REFERENCES.md#ref-ding2023-peft`
+- `REFERENCES.md#ref-goswami2024-peft`
+
+---
+
+## Agentic Execution Feedback (ReAct / ExCoT)
+
+Execution feedback is the main theoretical justification for the agent loop. ReAct formalizes an action-observation loop, and ExCoT shows execution feedback can improve Text-to-SQL reasoning. This motivates a bounded, explainable loop rather than unstructured self-reflection.
+
+Key sources:
+- `REFERENCES.md#ref-yao2023-react`
+- `REFERENCES.md#ref-zhai2025-excot`
+
+---
+
+## Schema Linking as a Bottleneck
+
+Multiple surveys and model papers identify schema linking as a dominant error source. This project uses heuristic schema subset selection to reduce prompt noise, explicitly acknowledging that it is not a learned linker and is therefore limited in coverage.
+
+Key sources:
+- `REFERENCES.md#ref-li2023-resdsql`
+- `REFERENCES.md#ref-zhu2024-survey`
+- `REFERENCES.md#ref-hong2025-survey`
+
+---
+
+## Positioning of This Project
+
+The project is intentionally iterative and evaluation-driven:
+- Start with a strong ICL baseline.
+- Add PEFT (QLoRA) to test whether training improves SQL generation.
+- Add an execution-guided agent loop to correct runnable-but-wrong SQL.
+
+This mirrors the methodological ladder in the experiments and keeps claims limited to what the evaluation harness can support.
+
