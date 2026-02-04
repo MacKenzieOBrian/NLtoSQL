@@ -101,6 +101,7 @@ Agent (canonical ReAct loop lives in code, notebook just configures it):
 - `nl2sql/agent.py:ReactSqlAgent._format_history_item`: explicit Action/Observation formatting used in the prompt.
 - Verbose tracing: set `ReactConfig.verbose=True` to print the full loop (prompt size, candidate evaluation, gates, repair).
 - Notebook config sets `accept_score` to enable multi-step refinement in practice.
+- ReAct prompts can include a small exemplar block (e.g., join example) via `REACT_EXEMPLARS` in the notebook.
 
 Notebooks (agent config + evaluation loop):
 - `notebooks/03_agentic_eval.ipynb`: imports `ReactSqlAgent`, sets `ReactConfig`, runs VA/EM/EX/TS evaluation and saves JSON.

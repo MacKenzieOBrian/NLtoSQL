@@ -354,6 +354,18 @@ Code pointers:
 
 ---
 
+### Q: "Did you add any exemplars to the ReAct prompt? Why?"
+
+Model answer (say this):
+"Yes, I inject a very small exemplar block into the ReAct and tabular prompts (via `REACT_EXEMPLARS` in the notebook). The goal is to anchor join patterns, which were the most common EX failures. It’s explicit and logged so the trade‑off (possible leakage if exemplars come from the test set) is transparent."
+
+Code pointers:
+- `nl2sql/agent.py:ReactSqlAgent._format_exemplars`
+- `nl2sql/agent.py:_build_react_prompt` / `_build_tabular_prompt`
+- `notebooks/03_agentic_eval.ipynb` (REACT_EXEMPLARS)
+
+---
+
 ### Q: "How do you keep the agent loop from running forever or becoming un-auditable?"
 
 Model answer (say this):

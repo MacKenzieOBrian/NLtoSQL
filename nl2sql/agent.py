@@ -124,6 +124,17 @@ class ReactSqlAgent:
         prefix = f"Step {step} " if step is not None else ""
         return f"{prefix}Action: {_trim(action)}\nObservation: {_trim(obs)}"
 
+    def _format_exemplars(self, exemplars: Optional[list[dict]], max_ex: int = 2) -> str:
+        if not exemplars:
+            return ""
+        lines: list[str] = []
+        for ex in exemplars[:max_ex]:
+            nlq = (ex.get("nlq") or "").strip()
+            sql = (ex.get("sql") or "").strip()
+            if nlq and sql:
+                lines.append(f"Example\nQuestion: {nlq}\nSQL: {sql}")
+        return "\n\n".join(lines)
+
     def _build_react_prompt(self, *, nlq: str, schema_text: str, history: list[dict], observation: str) -> str:
         schema_view = build_schema_subset(schema_text, nlq) if self.cfg.use_schema_subset else schema_text
         if self.cfg.verbose:
@@ -131,6 +142,8 @@ class ReactSqlAgent:
             self._debug(f"[prompt] react schema_subset={self.cfg.use_schema_subset} tables={len(table_lines)}")
         # Keep only the most recent items to limit prompt size.
         history_text = "\n\n".join(self._format_history_item(h) for h in history[-4:]) or "None yet."
+        exemplars_text = self._format_exemplars(getattr(self, "_prompt_exemplars", None))
+        exemplars_block = f"Examples:\n{exemplars_text}\n\n" if exemplars_text else ""
         return f"""
 You are an expert MySQL analyst.
 
@@ -145,7 +158,7 @@ TASK:
 Schema:
 {schema_view}
 
-Question:
+{exemplars_block}Question:
 {nlq}
 
 Recent steps:
@@ -162,13 +175,15 @@ Respond with only the final SQL statement.
         if self.cfg.verbose:
             table_lines = [ln for ln in schema_view.splitlines() if "(" in ln and ")" in ln]
             self._debug(f"[prompt] tabular schema_subset={self.cfg.use_schema_subset} tables={len(table_lines)}")
+        exemplars_text = self._format_exemplars(getattr(self, "_prompt_exemplars", None))
+        exemplars_block = f"Examples:\n{exemplars_text}\n\n" if exemplars_text else ""
         return f"""
 You are an expert SQL engineer. Think through tables and join keys, then output one SELECT.
 
 Schema:
 {schema_view}
 
-Question:
+{exemplars_block}Question:
 {nlq}
 
 Output only the final SQL statement and nothing else.
@@ -363,6 +378,8 @@ Output ONLY the corrected SELECT statement.
         observation = "Start."
         last_failed_sql: Optional[str] = None
         last_error: Optional[str] = None
+        # Store exemplars on the agent so prompt builders can include them.
+        self._prompt_exemplars = exemplars or []
 
         self._debug(
             f"[start] steps={cfg.max_steps} num_cands={cfg.num_cands} "

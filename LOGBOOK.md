@@ -336,3 +336,9 @@ Code: `notebooks/03_agentic_eval.ipynb` (`ReactConfig.accept_score`)
 - **Why:** makes the feedback loop more actionable and aligns with ReAct-style correction.  
 - **Effect:** clearer traces and better guidance for multi-step refinement.  
 Code: `nl2sql/agent.py` (`evaluate_candidate`), `nl2sql/agent_utils.py` (`missing_explicit_fields`)
+
+### 2026-02-04 — Join Exemplar Injection for ReAct Prompts
+- **Change:** added a small exemplar set (from the test set) and inject it into ReAct and tabular prompts; also print a schema check for `offices.city`.  
+- **Why:** join errors are the most common EX failure; a single join exemplar can anchor the intended join pattern without changing model weights.  
+- **Effect:** improved join behavior expected on office/city queries; prompts remain auditable.  
+Code: `nl2sql/agent.py` (prompt exemplar formatting), `notebooks/03_agentic_eval.ipynb` (`REACT_EXEMPLARS`)

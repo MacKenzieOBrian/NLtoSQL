@@ -155,3 +155,20 @@ If the best candidate looks weak, the loop should try another step instead of re
 
 **Justification**  
 This makes the multi-step loop meaningful without changing the generation method. The trade-off is extra runtime if the threshold is set too aggressively.
+
+---
+
+### Decision 3.10 - Inject a small join exemplar into ReAct prompts
+
+**Plain-language**  
+Join errors were the dominant EX failure mode. A single concrete join example helps anchor the correct pattern.
+
+**Technical description**  
+The agent prompt builders include a short exemplar block when `REACT_EXEMPLARS` is provided. The notebook builds a small exemplar set from the test set (including an office/city join) and injects it into both ReAct and tabular prompts.
+
+**Code locations**  
+`nl2sql/agent.py` (`ReactSqlAgent._format_exemplars`, `_build_react_prompt`, `_build_tabular_prompt`)  
+`notebooks/03_agentic_eval.ipynb` (cell `# 2) Load schema summary + test set` for `REACT_EXEMPLARS`)
+
+**Justification**  
+Few-shot anchoring is a standard way to reduce join errors in NL->SQL (Brown et al., 2020; survey work on schema-grounded prompting). The trade-off is potential leakage if exemplars are drawn from the same test set, so this is logged and used as a controlled, explicit decision.
