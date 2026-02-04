@@ -69,3 +69,19 @@ TS checks whether predicted SQL behaves like gold across multiple perturbed DB r
 
 **Justification**  
 Zhong et al. (2020) define distilled test suites; this project implements a lightweight suite-based approximation. The trade-off is reliance on perturbation quality rather than full distillation.
+
+---
+
+### Result Logging (JSON serialization)
+
+**Plain-language**  
+Evaluation results are saved to JSON so they can be inspected and plotted later.
+
+**Technical description**  
+The notebook save block uses `json.dumps(..., default=str)` to handle Decimal values returned by SQLAlchemy in TS debug samples.
+
+**Code locations**  
+`notebooks/03_agentic_eval.ipynb` (evaluation save block)
+
+**Justification**  
+This avoids failing the run at the final save step while preserving debug information. The trade-off is that some numeric debug fields are stored as strings.

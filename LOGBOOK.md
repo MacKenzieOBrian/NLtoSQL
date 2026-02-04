@@ -295,3 +295,26 @@ Code: `nl2sql/eval.py#L104`
 - **Ref:** Zhong, Yu, and Klein (2020)
 Code: `nl2sql/eval.py#L201`
 
+### 2026-02-04 — ReAct Feedback Made Explicit (Action/Observation)
+- **Change:** ReAct history now uses real action/observation fields, and each rejection logs an explicit observation string (clean reject, exec fail, intent reject).  
+- **Why:** the prompt claimed ReAct structure but history text was blank; explicit observations align the loop with ReAct/ExCoT feedback without changing model weights.  
+- **Effect:** trace is now auditable and the model receives concrete error feedback in the next step.  
+Code: `nl2sql/agent.py` (`_format_history_item`, `_build_react_prompt`, `evaluate_candidate`)
+
+### 2026-02-04 — Optional Multi‑Step Threshold (accept_score)
+- **Change:** added `accept_score` to `ReactConfig`; if set, the loop keeps iterating until a candidate clears the threshold.  
+- **Why:** makes multi‑step refinement meaningful while keeping the loop bounded and explainable.  
+- **Effect:** enables true “try‑improve‑accept” behavior without changing the generation method.  
+Code: `nl2sql/agent.py` (`ReactConfig`, `react_sql`)
+
+### 2026-02-04 — Eval Save Robustness (Decimal‑safe JSON)
+- **Change:** JSON saving now uses `default=str` to serialize Decimal values in TS debug outputs.  
+- **Why:** SQLAlchemy returns Decimal for numeric columns; JSON serialization would fail during result persistence.  
+- **Effect:** results can be saved without stripping debug detail.  
+Code: `notebooks/03_agentic_eval.ipynb` (evaluation save block)
+
+### 2026-02-04 — Field Synonyms + Literal‑Value Scoring
+- **Change:** expanded NLQ field synonyms (plural forms) and added a small literal‑value scoring signal (e.g., “USA”, “San Francisco”) in `semantic_score`.  
+- **Why:** missing explicit fields (“codes”) and filters were causing avoidable EX/TS misses; a lightweight lexical signal improves candidate selection without adding learned components.  
+- **Effect:** better alignment with NLQ field lists and improved selection of candidates that include key filter values.  
+Code: `nl2sql/agent_utils.py` (`_FIELD_SYNONYMS`, `_SPECIAL_FIELD_HINTS`, `_extract_value_hints`, `semantic_score`)

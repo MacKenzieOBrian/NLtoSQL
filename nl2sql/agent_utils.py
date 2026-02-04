@@ -119,8 +119,11 @@ def build_schema_subset(schema_summary: str, nlq: str, max_tables: int = 6) -> s
 # which is consistent with constrained decoding/validation literature.
 _FIELD_SYNONYMS = {
     "msrp": "MSRP",
+    "msrps": "MSRP",
     "product code": "productCode",
+    "product codes": "productCode",
     "product name": "productName",
+    "product names": "productName",
     "product line": "productLine",
     "order number": "orderNumber",
     "customer name": "customerName",
@@ -130,6 +133,11 @@ _FIELD_SYNONYMS = {
     "city": "city",
     "country": "country",
     "amount": "amount",
+}
+
+# Some terms are too ambiguous alone (e.g., "codes"). Use a context check.
+_SPECIAL_FIELD_HINTS = {
+    "codes": ("productCode", ["product"]),
 }
 
 
@@ -147,6 +155,10 @@ def _explicit_field_list(nlq: str) -> list[str]:
     for k, col in _FIELD_SYNONYMS.items():
         idx = nl.find(k)
         if idx != -1:
+            hits.append((idx, col))
+    for k, (col, ctx) in _SPECIAL_FIELD_HINTS.items():
+        idx = nl.find(k)
+        if idx != -1 and any(c in nl for c in ctx):
             hits.append((idx, col))
     if not hits:
         return []
@@ -403,6 +415,15 @@ def semantic_score(nlq: str, sql: str) -> float:
     overlap = len(nl_tokens & sql_tokens)
     score += 0.1 * overlap
 
+    # Reward presence of explicit NLQ values (e.g., "USA", "San Francisco").
+    # This helps prioritize candidates that include the correct filter literals.
+    value_hints = _extract_value_hints(nlq)
+    if value_hints:
+        if any(v in sql_low for v in value_hints):
+            score += 2.0
+        else:
+            score -= 2.0
+
     if any(w in nlq_low for w in ["total", "sum", "revenue", "amount"]):
         if re.search(r"\b(sum|count|avg|max|min)\s*\(", sql_low, re.IGNORECASE):
             score += 3.0
@@ -414,3 +435,46 @@ def semantic_score(nlq: str, sql: str) -> float:
             score -= 2.0
 
     return score
+
+
+_VALUE_STOPWORDS = {
+    "List",
+    "Show",
+    "Which",
+    "What",
+    "How",
+    "Count",
+    "Total",
+    "Average",
+    "Find",
+    "Give",
+    "Display",
+    "Name",
+    "Names",
+    "Number",
+}
+
+
+def _extract_value_hints(nlq: str) -> list[str]:
+    """Extract likely literal values from NLQ for scoring (lowercased)."""
+    text = nlq or ""
+    hints: set[str] = set()
+
+    # Quoted strings are strong signals.
+    for m in re.findall(r"\"([^\"]+)\"|'([^']+)'", text):
+        for group in m:
+            if group:
+                hints.add(group)
+
+    # Uppercase abbreviations (e.g., USA, UK).
+    hints.update(re.findall(r"\b[A-Z]{2,}\b", text))
+
+    # Multi-word proper nouns (e.g., San Francisco).
+    hints.update(re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b", text))
+
+    # Single capitalized words (filter common question words).
+    for w in re.findall(r"\b[A-Z][a-z]+\b", text):
+        if w not in _VALUE_STOPWORDS:
+            hints.add(w)
+
+    return [h.lower() for h in hints if h.strip()]
