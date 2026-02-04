@@ -32,6 +32,17 @@ def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+DEFAULT_FORBIDDEN_TOKENS = [
+    "drop ",
+    "delete ",
+    "truncate ",
+    "alter ",
+    "create ",
+    "update ",
+    "insert ",
+]
+
+
 @dataclass(frozen=True)
 class QueryResult:
     sql: str
@@ -39,6 +50,7 @@ class QueryResult:
     timestamp: str
     success: bool
     rowcount: int
+    truncated: bool
     exec_time_s: Optional[float]
     error: Optional[str]
     columns: Optional[list[str]]
@@ -51,6 +63,7 @@ class QueryResult:
             "timestamp": self.timestamp,
             "success": self.success,
             "rowcount": self.rowcount,
+            "truncated": self.truncated,
             "exec_time_s": self.exec_time_s,
             "error": self.error,
             "columns": self.columns,
@@ -63,15 +76,7 @@ class QueryRunner:
         self.engine = engine
         self.max_rows = max_rows
         self.history: list[QueryResult] = []
-        self.forbidden_tokens = forbidden_tokens or [
-            "drop ",
-            "delete ",
-            "truncate ",
-            "alter ",
-            "create ",
-            "update ",
-            "insert ",
-        ]
+        self.forbidden_tokens = forbidden_tokens or list(DEFAULT_FORBIDDEN_TOKENS)
 
     def _safety_check(self, sql: str) -> None:
         lowered = (sql or "").strip().lower()
@@ -91,9 +96,13 @@ class QueryRunner:
 
             with safe_connection(self.engine) as conn:
                 result = conn.execute(sqlalchemy.text(sql), params or {})
-                # Fetch all rows for correctness checks, but cap previews for human inspection.
-                rows = result.fetchall()
                 cols = list(result.keys())
+                # Bound how much we fetch: QueryRunner is for gating + debugging previews,
+                # not for full result materialization (EX/TS do their own bounded fetch).
+                rows = result.fetchmany(self.max_rows + 1)
+                truncated = len(rows) > self.max_rows
+                if truncated:
+                    rows = rows[: self.max_rows]
 
             end = datetime.now(timezone.utc)
             exec_time_s = (end - start).total_seconds()
@@ -102,8 +111,6 @@ class QueryRunner:
             if capture_df:
                 # The preview DataFrame is a debugging aid for notebooks; it is not used for scoring.
                 df = pd.DataFrame(rows, columns=cols)
-                if len(df) > self.max_rows:
-                    df = df.iloc[: self.max_rows]
 
             out = QueryResult(
                 sql=sql,
@@ -111,6 +118,7 @@ class QueryRunner:
                 timestamp=timestamp,
                 success=True,
                 rowcount=min(len(rows), self.max_rows),
+                truncated=bool(truncated),
                 exec_time_s=exec_time_s,
                 error=None,
                 columns=cols,
@@ -123,6 +131,7 @@ class QueryRunner:
                 timestamp=timestamp,
                 success=False,
                 rowcount=0,
+                truncated=False,
                 exec_time_s=None,
                 error=str(e),
                 columns=None,

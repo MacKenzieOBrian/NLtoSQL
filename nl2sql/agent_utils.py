@@ -3,9 +3,7 @@ Utilities to strengthen the ReAct-style NL->SQL agent without rewriting notebook
 
 Provides:
 - clean_candidate: strict SELECT-only filter to drop junk "Show SQL..." outputs.
-- build_tabular_prompt: alternative prompt that makes the model enumerate tables/joins mentally.
 - vanilla_candidate: deterministic few-shot baseline candidate (for fallback/rerank).
-- classify_error / error_hint: tiny error taxonomy to drive targeted repair prompts.
 - semantic_score: lightweight lexical heuristic to rerank executable candidates.
 - projection/intent helpers: enforce minimal projections and basic intent constraints.
 - schema subset helpers: lightweight schema-linking for prompt reduction.
@@ -262,70 +260,78 @@ def intent_constraints(nlq: str, sql: str) -> tuple[bool, str]:
             return False, "topk_requires_order_limit"
     return True, "ok"
 
-def clean_candidate(raw: str) -> Optional[str]:
-    """
-    Keep only a single SELECT ... FROM ... statement; reject markdown/junk/plain text.
-    Returns None if no usable SELECT is found.
-    """
-    text = _normalize_spaced_keywords(raw or "")
-    sql = extract_first_select(text)
-    if not sql:
-        return None
 
-    sql = sql.strip()
+# Prompt-echo trimming: models sometimes repeat instruction text ("output only SQL"),
+# which makes the candidate non-executable. Keep this deterministic and transparent.
+_ECHO_CUTOFF_RE = re.compile(
+    r"(?is)\b("
+    r"output\s+only|"
+    r"no\s+explanation|"
+    r"no\s+markdown|"
+    r"respond\s+with|"
+    r"show\s+output|"
+    r"outputformatting|"
+    r"output\s+formatting|"
+    r"y/n"
+    r")\b"
+)
+
+
+def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
+    """Extract a single executable SELECT statement (or explain why it was rejected).
+
+    Used by the ReAct loop to:
+    - drop prompt echo / markdown / multi-statement outputs that cause VA=0
+    - keep the trace explainable ("rejected because ...")
+    """
+    if not raw:
+        return None, "empty"
+
+    text = _normalize_spaced_keywords(raw)
+    sql = extract_first_select(text) or text
+    sql = (sql or "").strip()
     lower = sql.lower()
 
-    # If the first 'SELECT' isn't at the start, realign
-    if not lower.startswith("select"):
-        idx = lower.find("select")
-        if idx == -1:
-            return None
-        sql = sql[idx:].strip()
+    idx = lower.find("select")
+    if idx == -1:
+        return None, "no_select"
+    sql = sql[idx:].strip()
+    lower = sql.lower()
+
+    # Cut off instruction echo that sometimes appears inside the same text span.
+    m = _ECHO_CUTOFF_RE.search(sql)
+    if m:
+        sql = sql[: m.start()].strip()
         lower = sql.lower()
 
-    # Cut at the first ';' so trailing instructions don't poison the filter
+    # Cut at the first ';' so trailing text does not poison execution.
     if ";" in sql:
         sql = sql.split(";", 1)[0].strip()
         lower = sql.lower()
 
-    # Must contain FROM (allowing newlines/whitespace)
+    # Must contain FROM (allowing newlines/whitespace).
     if not re.search(r"\bfrom\b", lower):
-        return None
+        return None, "no_from"
 
-    # Lightweight junk filters on trimmed SQL
+    # Lightweight junk filters on trimmed SQL.
     bad_phrases = (
         "```",
         "answer:",
         "explanation",
     )
     if any(bp in lower for bp in bad_phrases):
-        return None
+        return None, "bad_phrase"
 
     # Reject instruction echoes like "SELECT statement only"
     if re.search(r"\bselect\s+(query|statement)\b", lower):
-        return None
+        return None, "instruction_echo"
 
-    return sql + ";"
+    return sql.rstrip(";") + ";", "ok"
 
 
-def build_tabular_prompt(nlq: str, schema_text: str) -> str:
-    """
-    Alternative prompt that nudges the model to reason about tables/joins explicitly.
-    """
-    return f"""
-You are an expert SQL engineer. Follow these steps internally, but only output the final SELECT:
-1) Decide which tables are needed.
-2) Choose the join keys.
-3) Choose the columns to return (only those asked).
-4) Write ONE valid MySQL SELECT answer.
-
-Schema:
-{schema_text}
-
-Question: {nlq}
-
-Output only the final SQL statement and nothing else.
-"""
+def clean_candidate(raw: str) -> Optional[str]:
+    sql, _ = clean_candidate_with_reason(raw)
+    return sql
 
 
 def vanilla_candidate(
@@ -350,41 +356,6 @@ def vanilla_candidate(
     raw_sql = extract_first_select(text) or text
     sql = guarded_postprocess(raw_sql, nlq)
     return clean_candidate(sql)
-
-
-def classify_error(err: str) -> str:
-    """
-    Coarse error taxonomy for MySQL execution errors.
-    """
-    e = err.lower()
-    if "unknown column" in e:
-        return "unknown_column"
-    if "unknown table" in e or "doesn't exist" in e:
-        return "unknown_table"
-    if "ambiguous column" in e:
-        return "ambiguous_column"
-    if "group by" in e and "isn't in group by" in e:
-        return "group_by"
-    if "syntax error" in e or "check the manual" in e:
-        return "syntax"
-    return "other"
-
-
-def error_hint(kind: str, err: str) -> str:
-    """
-    Human-readable hint to feed back into a repair prompt.
-    """
-    if kind == "unknown_column":
-        return "Use only columns that exist in the schema; add the correct joins if a column lives in another table."
-    if kind == "unknown_table":
-        return "Use only tables that exist in the schema (customers, orders, orderdetails, products, payments, offices, employees, productlines)."
-    if kind == "ambiguous_column":
-        return "Qualify columns with the correct table alias (e.g., customers.customerNumber vs orders.customerNumber)."
-    if kind == "group_by":
-        return "All non-aggregated selected columns must appear in GROUP BY."
-    if kind == "syntax":
-        return "Fix the MySQL syntax (commas/parentheses/keywords)."
-    return "Fix the SQL so it is valid MySQL and answers the question."
 
 
 # Simple schema keyword map for lexical reranking

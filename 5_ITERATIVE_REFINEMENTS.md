@@ -10,10 +10,11 @@ Each decision is presented in a four-part explanation format.
 When many controls were enabled at once, it was unclear which change improved EX. Stage gating isolates effects.
 
 **Technical description**  
-The notebook was organized to enable controls incrementally, so each stage adds exactly one mechanism (clamps, reranking, repair).
+Controls are enabled incrementally via explicit configuration toggles (e.g., repair on/off, schema subset on/off, projection contract on/off). This supports ablation-style runs where each change can be evaluated in isolation.
 
 **Code locations**  
-`notebooks/03_agentic_eval.ipynb` ("## 6. Helper Layer: Staged Controls, Candidate Generation, and Error-Aware Repair")
+`nl2sql/agent.py` (`ReactConfig`)  
+`notebooks/03_agentic_eval.ipynb` (cell `# 6) Agent implementation (imported)` sets config values)
 
 **Justification**  
 Ablation is standard in NL->SQL evaluation (Zhu et al., 2024). The trade-off is additional run time and complexity.
@@ -29,7 +30,8 @@ Valid SQL was often followed by extra text, causing syntax errors and VA=0. Trim
 The cleaner cuts at the first semicolon and removes prompt echo or trailing instructions before execution.
 
 **Code locations**  
-`notebooks/03_agentic_eval.ipynb` helper layer (`clean_candidate`, `strip_prompt_echo`)  
+`nl2sql/agent.py` (`_StopOnSemicolon` in `ReactSqlAgent.generate_candidates`)  
+`nl2sql/agent_utils.py` (`clean_candidate_with_reason`)  
 `nl2sql/llm.py` (`extract_first_select`)
 
 **Justification**  

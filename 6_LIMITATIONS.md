@@ -32,7 +32,7 @@ A learned schema linker was out of scope, so a transparent keyword-based subset 
 **Code locations**  
 `nl2sql/agent_utils.py` (`build_schema_subset`)  
 `nl2sql/schema.py` (`build_schema_summary`)  
-`notebooks/03_agentic_eval.ipynb` (prompt build step)
+`nl2sql/agent.py` (`ReactSqlAgent._build_react_prompt`)
 
 **Justification**  
 Schema linking is a known bottleneck (Li et al., 2023; Zhu et al., 2024). The trade-off is heuristic coverage and weaker generalization.
@@ -48,9 +48,9 @@ Unbounded repair risks drift and opaque behavior. A single repair attempt keeps 
 `repair_sql` generates a small set of fixes and accepts only those that pass execution and intent gates.
 
 **Code locations**  
-`notebooks/03_agentic_eval.ipynb` (helper layer `repair_sql`)  
+`nl2sql/agent.py` (`ReactSqlAgent.repair_sql`)  
 `nl2sql/agent_utils.py` (`intent_constraints`)  
-`scripts/run_full_pipeline.py` (single repair attempt path)
+`scripts/run_full_pipeline.py` (CLI sanity-check path uses the same agent module)
 
 **Justification**  
 ReAct and ExCoT motivate feedback, but do not require unlimited revisions (Yao et al., 2023; Zhai et al., 2025). The trade-off is that some errors may need multiple repairs and will be missed.

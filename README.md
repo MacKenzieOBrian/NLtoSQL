@@ -16,15 +16,14 @@ This repo contains an end-to-end experimentation pipeline for **Natural Language
 - `nl2sql/`: reusable experiment harness code (DB access, schema text, prompting, generation, evaluation).
 - `notebooks/`: Colab notebooks that run experiments and produce outputs.
 - `data/`: benchmark JSON.
-- `results/`: local outputs (JSON runs, figures). Gitignored by default; see `results/README.md`.
-- `DEMO_NOTEBOOK_03_AGENTIC.md`: cell-by-cell demo guide for the agentic notebook.
+- `results/`: outputs (JSON runs, figures). In this repo, results are kept in git for reproducibility; see `results/README.md`.
 - `REFERENCES.md`: bibliography list.
 
 ## Quickstart (Colab baseline)
 
 1. Set env vars in Colab when prompted: `INSTANCE_CONNECTION_NAME`, `DB_USER`, `DB_PASS`, `DB_NAME`, `HF_TOKEN`.
 2. Open and run: `notebooks/02_baseline_prompting_eval.ipynb`
-3. Outputs are written to `results/baseline/` (gitignored by default).
+3. Outputs are written to `results/baseline/`.
 
 ## Quickstart (QLoRA)
 

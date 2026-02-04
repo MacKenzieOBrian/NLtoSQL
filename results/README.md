@@ -1,8 +1,8 @@
 This folder is where Colab notebooks write evaluation outputs (JSON runs, tables, figures).
 
-By default, `results/` is gitignored to avoid accidentally committing large outputs.
-If you want to version key outputs for the dissertation (e.g., baseline `results_*.json` or figures),
-remove or adjust the `results/` rule in `.gitignore`.
+In this repo, `results/` is intentionally kept in git for reproducibility (especially the small JSON runs).
+If you want to avoid committing large artifacts later, add explicit ignore patterns to `.gitignore`
+(e.g., `results/**/*.ckpt`, `results/**/*.bin`, or large figure folders).
 
 ## Recommended dissertation outputs to keep
 

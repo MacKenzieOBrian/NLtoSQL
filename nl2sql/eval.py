@@ -27,7 +27,7 @@ from .db import safe_connection
 from .llm import generate_sql_from_messages
 from .postprocess import guarded_postprocess, normalize_sql
 from .prompting import make_few_shot_messages
-from .query_runner import QueryRunner
+from .query_runner import DEFAULT_FORBIDDEN_TOKENS, QueryRunner
 
 
 def now_utc_iso() -> str:
@@ -62,17 +62,6 @@ class EvalItem:
         }
 
 
-FORBIDDEN_TOKENS = [
-    "drop ",
-    "delete ",
-    "truncate ",
-    "alter ",
-    "create ",
-    "update ",
-    "insert ",
-]
-
-
 def _safety_check(sql: str) -> None:
     # This evaluation harness executes model-generated SQL.
     # Even in a controlled ClassicModels setting, we hard-block destructive tokens
@@ -80,7 +69,7 @@ def _safety_check(sql: str) -> None:
     lowered = (sql or "").strip().lower()
     if not lowered:
         raise ValueError("Empty SQL string")
-    for token in FORBIDDEN_TOKENS:
+    for token in DEFAULT_FORBIDDEN_TOKENS:
         if token in lowered:
             raise ValueError(f"Destructive SQL token detected: {token.strip()}")
 
@@ -188,6 +177,7 @@ class TSQueryRun:
 def _run_select_ts(engine: Engine, sql: str, max_rows: int = 2000) -> TSQueryRun:
     """Execute SELECT and fetch up to max_rows. Returns rows + column names."""
     try:
+        _safety_check(sql)
         with safe_connection(engine) as conn:
             res = conn.execute(sqlalchemy.text(sql))
             cols = tuple(res.keys())
