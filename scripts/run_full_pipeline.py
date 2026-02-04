@@ -31,20 +31,11 @@ from transformers import (
 )
 
 from nl2sql.db import create_engine_with_connector
+from nl2sql.agent import ReactConfig, ReactSqlAgent
 from nl2sql.eval import eval_run, execution_accuracy
-from nl2sql.postprocess import guarded_postprocess, normalize_sql
-from nl2sql.prompting import make_few_shot_messages
+from nl2sql.postprocess import normalize_sql
 from nl2sql.query_runner import QueryRunner
 from nl2sql.schema import build_schema_summary
-from nl2sql.agent_utils import (
-    clean_candidate,
-    build_tabular_prompt,
-    vanilla_candidate,
-    classify_error,
-    error_hint,
-    semantic_score,
-    count_select_columns,
-)
 
 
 def parse_args() -> argparse.Namespace:
@@ -218,156 +209,8 @@ def run_qlora_eval(
     )
 
 
-# --- ReAct (lightweight, small-slice sanity check) ---
-PROMPT_INSTR = (
-    "You are an expert SQL agent. Only output a single SELECT statement "
-    "against the ClassicModels schema below. No DDL/DML, no comments. "
-    "Use the previous observation to fix errors. Reply with SQL only."
-)
-
-
-def build_react_prompt(nlq: str, schema_text: str, history: list[dict[str, str]], observation: str) -> str:
-    history_text = "\n".join([f"Thought/Action: {h['ta']}\nObservation: {h['obs']}" for h in history]) or "None."
-    return f"""
-You are an expert MySQL analyst.
-
-TASK:
-- Output ONE and ONLY ONE valid MySQL SELECT statement.
-- Do NOT explain or comment.
-- The output MUST start with SELECT.
-- If unsure, still output your best single SELECT.
-
-Schema:
-{schema_text}
-
-Question: {nlq}
-
-Previous trace:
-{history_text}
-Last observation: {observation}
-
-Return only the final SELECT statement.
-"""
-
-
-def _generate_candidates(prompt: str, model, tok, num: int = 2, do_sample: bool = True) -> list[str]:
-    inputs = tok(prompt, return_tensors="pt").to(model.device)
-    gen_kwargs = dict(
-        max_new_tokens=192,
-        do_sample=do_sample,
-        temperature=0.5,
-        top_p=0.9,
-        num_return_sequences=num,
-    )
-    with torch.no_grad():
-        out = model.generate(**inputs, **gen_kwargs)
-    cands = []
-    for i in range(num):
-        gen_ids = out[i][inputs.input_ids.shape[-1]:]
-        gen = tok.decode(gen_ids, skip_special_tokens=True)
-        cands.append(gen)
-    return cands
-
-
-def react_sql(
-    nlq: str,
-    schema_text: str,
-    model,
-    tok,
-    runner: QueryRunner,
-    max_steps: int = 3,
-    num_cands: int = 4,
-    exemplars: list[dict] | None = None,
-):
-    history: list[dict[str, str]] = []
-    observation = "Start."
-    best_sql = None
-    best_score = float("-inf")
-
-    for _ in range(max_steps):
-        # diversify prompts
-        raw_cands = []
-        raw_cands += _generate_candidates(
-            build_react_prompt(nlq, schema_text, history, observation),
-            model,
-            tok,
-            num=max(1, num_cands // 2),
-            do_sample=True,
-        )
-        raw_cands += _generate_candidates(
-            build_tabular_prompt(nlq, schema_text),
-            model,
-            tok,
-            num=num_cands - len(raw_cands),
-            do_sample=True,
-        )
-
-        ranked: list[str] = []
-        for raw in raw_cands:
-            sql = clean_candidate(raw)
-            if not sql:
-                history.append({"ta": raw, "obs": "Rejected: not a pure SELECT"})
-                continue
-            sql = guarded_postprocess(sql, nlq)
-            ranked.append(sql)
-
-        step_success = False
-        last_error = None
-
-        for sql in ranked:
-            try:
-                meta = runner.run(sql)
-                if not meta.success:
-                    raise ValueError(meta.error or "exec failed")
-                score = semantic_score(nlq, sql) - 0.2 * count_select_columns(sql)
-                if score > best_score:
-                    best_score = score
-                    best_sql = sql
-                history.append({"ta": sql, "obs": "SUCCESS"})
-                step_success = True
-            except Exception as e:
-                last_error = str(e)
-                kind = classify_error(last_error)
-                history.append({"ta": sql, "obs": f"ERROR ({kind}): {last_error}"})
-                # single repair attempt
-                hint = error_hint(kind, last_error)
-                repair_prompt = build_react_prompt(
-                    nlq,
-                    schema_text,
-                    history,
-                    f"{last_error}. {hint}",
-                )
-                repair_raw = _generate_candidates(repair_prompt, model, tok, num=1, do_sample=True)[0]
-                repaired = clean_candidate(repair_raw)
-                if repaired:
-                    try:
-                        meta2 = runner.run(repaired)
-                        if meta2.success:
-                            score = semantic_score(nlq, repaired) - 0.2 * count_select_columns(repaired)
-                            if score > best_score:
-                                best_score = score
-                                best_sql = repaired
-                            history.append({"ta": repaired, "obs": "SUCCESS (repair)"})
-                            step_success = True
-                            continue
-                    except Exception as e2:
-                        history.append({"ta": repaired, "obs": f"Repair ERROR: {e2}"})
-
-        if step_success and best_sql:
-            observation = "SUCCESS"
-            break
-        else:
-            observation = f"ERROR: {last_error or 'all candidates failed'}"
-
-    # deterministic fallback if nothing worked
-    if best_sql is None:
-        fallback_sql = vanilla_candidate(nlq, schema_text, tok, model, exemplars=exemplars or [])
-        if fallback_sql:
-            best_sql = fallback_sql
-            best_score = semantic_score(nlq, best_sql)
-            history.append({"ta": "fallback:few-shot", "obs": "USED"})
-
-    return best_sql, history
+# --- ReAct (small-slice sanity check) ---
+# Canonical implementation lives in `nl2sql/agent.py` so notebooks + scripts share the same loop.
 
 
 def run_react_small(
@@ -383,31 +226,37 @@ def run_react_small(
     Path("results/agent").mkdir(parents=True, exist_ok=True)
     eval_model = model if adapter_path is None else wrap_peft(model, adapter_path)
     runner = QueryRunner(engine, max_rows=1000)
+    agent = ReactSqlAgent(
+        model=eval_model,
+        tok=tok,
+        runner=runner,
+        cfg=ReactConfig(
+            max_steps=3,
+            num_cands=4,
+            do_sample=True,
+            enable_repair=True,
+            use_tabular_prompt=True,
+            use_schema_subset=True,
+            use_projection_contract=True,
+        ),
+    )
 
     items = test_set[:limit]
     results = []
     for i, sample in enumerate(items, start=1):
         nlq = sample["nlq"]
         gold_sql = sample["sql"]
-        pred_sql, trace = react_sql(
-            nlq,
-            schema_summary,
-            eval_model,
-            tok,
-            runner,
-            max_steps=3,
-            num_cands=4,
+        pred_sql, trace = agent.react_sql(
+            nlq=nlq,
+            schema_text=schema_summary,
+            schema_summary=schema_summary,
             exemplars=test_set[:3],
         )
-        va = 0
+        # VA/EX mirror the main eval harness: VA is executability; EX is row-set equivalence.
         em = int(normalize_sql(pred_sql) == normalize_sql(gold_sql))
-        ex = 0
-        try:
-            runner.run(pred_sql)
-            va = 1
-            ex = int(execution_accuracy(engine=engine, pred_sql=pred_sql, gold_sql=gold_sql)[0])
-        except Exception:
-            va = 0
+        meta = runner.run(pred_sql, capture_df=False)
+        va = int(meta.success)
+        ex = int(execution_accuracy(engine=engine, pred_sql=pred_sql, gold_sql=gold_sql)[0]) if meta.success else 0
         results.append(
             {
                 "nlq": nlq,
@@ -416,10 +265,11 @@ def run_react_small(
                 "va": va,
                 "em": em,
                 "ex": ex,
+                "error": meta.error,
                 "trace": trace,
             }
         )
-        print(f"[ReAct] {i}/{len(items)} VA={va} EM={em}")
+        print(f"[ReAct] {i}/{len(items)} VA={va} EM={em} EX={ex}")
 
     save_path = Path("results/agent/results_react_small.json")
     save_path.write_text(json.dumps(results, indent=2), encoding="utf-8")

@@ -13,7 +13,8 @@ Raw model outputs often include explanations or multiple statements, which cause
 `clean_candidate` extracts the first SELECT, removes prompt echo, enforces presence of FROM, and rejects junk patterns. This prevents formatting noise from dominating VA/EX.
 
 **Code locations**  
-`notebooks/03_agentic_eval.ipynb` helper layer ("## 6. Helper Layer: Staged Controls, Candidate Generation, and Error-Aware Repair")  
+`nl2sql/agent_utils.py` (`clean_candidate_with_reason`, `clean_candidate`)  
+`nl2sql/agent.py` (`ReactSqlAgent.evaluate_candidate`)  
 `nl2sql/llm.py` (`extract_first_select`)
 
 **Justification**  
@@ -31,7 +32,7 @@ If the NLQ explicitly lists fields, `enforce_projection_contract` drops extra co
 
 **Code locations**  
 `nl2sql/agent_utils.py` (`enforce_projection_contract`)  
-`notebooks/03_agentic_eval.ipynb` helper layer (postprocess step)
+`nl2sql/agent.py` (`ReactSqlAgent.postprocess_sql`)
 
 **Justification**  
 Execution-based metrics are sensitive to surface variation (Zhong et al., 2020). This clamp reduces false negatives but can over-restrict implicit multi-field queries.
@@ -48,7 +49,7 @@ Executable SQL can still answer the wrong question type. An intent gate rejects 
 
 **Code locations**  
 `nl2sql/agent_utils.py` (`intent_constraints`)  
-`notebooks/03_agentic_eval.ipynb` (inside `evaluate_candidate`)
+`nl2sql/agent.py` (`ReactSqlAgent.evaluate_candidate`)
 
 **Justification**  
 Execution success does not guarantee semantic correctness (Zhong et al., 2020). The trade-off is possible false rejections on ambiguous NLQs.
@@ -66,7 +67,7 @@ Wrong-table joins were a dominant error mode. Reducing schema scope improves tab
 **Code locations**  
 `nl2sql/agent_utils.py` (`build_schema_subset`)  
 `nl2sql/schema.py` (`build_schema_summary`)  
-`notebooks/03_agentic_eval.ipynb` (prompt build step)
+`nl2sql/agent.py` (`ReactSqlAgent._build_react_prompt`)
 
 **Justification**  
 Schema linking is a known bottleneck (Li et al., 2023; Zhu et al., 2024). The trade-off is heuristic coverage and weaker generalization.
@@ -83,7 +84,7 @@ When multiple candidates execute, a simple semantic score helps pick the one mos
 
 **Code locations**  
 `nl2sql/agent_utils.py` (`semantic_score`, `count_select_columns`)  
-`notebooks/03_agentic_eval.ipynb` (inside `evaluate_candidate`)
+`nl2sql/agent.py` (`ReactSqlAgent.evaluate_candidate`)
 
 **Justification**  
 Reranking strategies are common in NL->SQL pipelines (Zhu et al., 2024; Gao et al., 2025). The trade-off is that lexical overlap is not true semantic parsing.
@@ -99,9 +100,9 @@ If all candidates fail, a bounded repair step can correct common schema or synta
 `repair_sql` feeds the bad SQL, error message, and schema into the model and tests a small set of fixes. Repairs still pass through intent gates.
 
 **Code locations**  
-`notebooks/03_agentic_eval.ipynb` helper layer (`repair_sql`)  
+`nl2sql/agent.py` (`ReactSqlAgent.repair_sql`)  
 `nl2sql/query_runner.py` (`QueryRunner.run`)  
-`scripts/run_full_pipeline.py` (single repair attempt path)
+`scripts/run_full_pipeline.py` (CLI sanity-check path uses the same agent module)
 
 **Justification**  
 Execution feedback is central to ExCoT (Zhai et al., 2025) and aligns with ReAct (Yao et al., 2023). The trade-off is potential drift toward executable but irrelevant SQL, so repair is bounded and gated.

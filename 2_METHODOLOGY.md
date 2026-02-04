@@ -1,93 +1,87 @@
-# Methodology Engineering Log (Reformatted)
+# Methodology
 
-Each decision is presented in a four-part explanation format.
-
----
-
-### Decision 2.1 - Use ClassicModels as the fixed-schema benchmark
-
-**Plain-language**  
-Mixing schemas made results hard to interpret. A fixed schema makes improvements attributable to the method rather than the data.
-
-**Technical description**  
-ClassicModels is used as the evaluation substrate. A consistent schema summary is built for prompting, and a fixed test set is evaluated across all stages.
-
-**Code locations**  
-`data/classicmodels_test_200.json`  
-`data/train/classicmodels_train_200.jsonl`  
-`nl2sql/schema.py` (`build_schema_summary`)  
-`notebooks/05_qlora_train_eval.ipynb` ("## 2) Load benchmark + training set")
-
-**Justification**  
-Spider (Yu et al., 2018) emphasizes controlled evaluation within fixed schemas, and Ojuri et al. (2025) use ClassicModels for agent evaluation. The trade-off is limited claims about cross-domain generalization.
+This section explains how the experiments are designed and executed. The aim is controlled comparison across methods, not the absolute best possible score.
 
 ---
 
-### Decision 2.2 - Use small supervised splits (200 train / 200 test)
+## Research Design
 
-**Plain-language**  
-Full-scale fine-tuning is infeasible under Colab-class constraints. A small, clean split is enough to measure relative improvements.
+The methodology is error-driven and incremental:
+1. Establish a deterministic prompting baseline.
+2. Add PEFT (QLoRA) to test whether training improves SQL generation.
+3. Add a bounded ReAct-style agent loop to use execution feedback without changing model weights.
 
-**Technical description**  
-A 200/200 split is used for training and testing. Leakage checks and validation are performed in the dataset prep notebook.
-
-**Code locations**  
-`data/train/classicmodels_train_200.jsonl`  
-`data/classicmodels_test_200.json`  
-`notebooks/04_build_training_set.ipynb` ("## 3) Leakage + safety checks")
-
-**Justification**  
-PEFT work shows gains with limited data (Ding et al., 2023; Goswami et al., 2024). The trade-off is that small data underestimates full-capacity performance.
+This sequencing makes improvements attributable to specific changes.
 
 ---
 
-### Decision 2.3 - Fix the prompt format and use deterministic decoding
+## Dataset and Split
 
-**Plain-language**  
-Prompt drift and sampling noise made results unstable. Deterministic decoding keeps comparisons fair.
+The ClassicModels database is used as the fixed schema. A small, clean split is used for feasibility:
+- Training: `data/train/classicmodels_train_200.jsonl`
+- Test: `data/classicmodels_test_200.json`
 
-**Technical description**  
-A fixed system prompt and deterministic decoding (`do_sample=False`) are used for baselines. This isolates the effect of method changes.
-
-**Code locations**  
-`nl2sql/prompting.py` (`SYSTEM_INSTRUCTIONS`, `make_few_shot_messages`)  
-`nl2sql/llm.py` (`generate_sql_from_messages`, `do_sample=False`)  
-`notebooks/02_baseline_prompting_eval.ipynb`
-
-**Justification**  
-Controlled ICL baselines are required for fair comparison (Brown et al., 2020; Mosbach et al., 2023). The trade-off is that deterministic decoding can understate best-case performance.
+A fixed schema makes results interpretable and keeps comparisons fair across methods.
 
 ---
 
-### Decision 2.4 - Use QLoRA adapters instead of full fine-tuning
+## Baseline Prompting (ICL)
 
-**Plain-language**  
-Full fine-tuning exceeds the available VRAM. QLoRA makes training feasible while keeping evaluation consistent.
+Baseline evaluation uses a fixed system prompt and deterministic decoding. This creates a stable reference point for later changes.
 
-**Technical description**  
-QLoRA adapters are trained in a dedicated notebook and evaluated using the same harness as baselines. The base model remains fixed.
-
-**Code locations**  
-`notebooks/05_qlora_train_eval.ipynb` ("## 4) Load base model (4-bit) + configure QLoRA", "## 6) Train (SFT with TRL)")  
-`nl2sql/eval.py` (`eval_run`)
-
-**Justification**  
-QLoRA is a standard PEFT method with strong empirical support (Ding et al., 2023; Goswami et al., 2024). The trade-off is that adapters may not fully capture complex relational reasoning with limited data.
+Implementation notes:
+- Prompt format: `nl2sql/prompting.py`
+- Deterministic generation: `nl2sql/llm.py`
+- Postprocess: `nl2sql/postprocess.py`
+- Evaluation: `nl2sql/eval.py:eval_run`
 
 ---
 
-### Decision 2.5 - Evaluate agentic refinement without changing weights
+## QLoRA Fine-Tuning
 
-**Plain-language**  
-Prompting and QLoRA still produced semantic errors. Execution feedback can improve correctness without retraining.
+QLoRA adapters are trained to test whether task-specific data improves SQL generation. The base model is kept fixed and adapters are evaluated with the same harness as the baseline.
 
-**Technical description**  
-A ReAct-style loop generates, executes, and refines SQL candidates using execution feedback. Only control logic is added; weights are unchanged.
+Implementation notes:
+- Training + eval notebook: `notebooks/05_qlora_train_eval.ipynb`
+- Evaluation harness: `nl2sql/eval.py:eval_run`
 
-**Code locations**  
-`notebooks/03_agentic_eval.ipynb` ("## ReAct execution-guided pipeline (best version so far)")  
-`nl2sql/query_runner.py` (`QueryRunner.run`)  
-`nl2sql/agent_utils.py` (`intent_constraints`, `semantic_score`)
+---
 
-**Justification**  
-ReAct (Yao et al., 2023) and ExCoT (Zhai et al., 2025) motivate execution feedback loops. The trade-off is that control logic cannot fully correct deep semantic gaps without stronger priors.
+## Agentic ReAct Loop (Execution Feedback)
+
+The agent adds control logic around execution feedback. It does not change model weights. The loop is bounded and traceable:
+- Generate multiple candidates
+- Clean + deterministic postprocess
+- Execute (SELECT-only guard)
+- Intent gate + scoring
+- Optional bounded repair
+
+Implementation notes:
+- Loop: `nl2sql/agent.py:ReactSqlAgent.react_sql`
+- Execution gate: `nl2sql/query_runner.py:QueryRunner.run`
+- Evaluation: `notebooks/03_agentic_eval.ipynb`
+
+---
+
+## Evaluation Metrics
+
+Four metrics are reported:
+- VA: executability (SQL runs successfully)
+- EM: exact match (diagnostic only)
+- EX: execution accuracy on base DB (result equivalence)
+- TS: test-suite accuracy across perturbed DB replicas
+
+Implementation notes:
+- VA: `nl2sql/query_runner.py`
+- EM: `nl2sql/postprocess.py:normalize_sql`
+- EX: `nl2sql/eval.py:execution_accuracy`
+- TS: `nl2sql/eval.py:test_suite_accuracy_for_item`
+
+---
+
+## Reproducibility and Safety
+
+- Dependencies are pinned in `requirements.txt`.
+- Query execution is SELECT-only; destructive tokens are blocked.
+- Result sets are capped during EX/TS to avoid runaway comparisons.
+
