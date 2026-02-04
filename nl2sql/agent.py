@@ -236,10 +236,14 @@ Output only the final SQL statement and nothing else.
     # -----------------
     def postprocess_sql(self, *, sql: str, nlq: str) -> str:
         # Deterministic postprocess layer (no weight changes).
+        if self.cfg.verbose:
+            self._debug("[guard] calling guarded_postprocess")
         cleaned = guarded_postprocess(sql, nlq)
         if self.cfg.verbose and cleaned != sql:
             self._debug(f"[post] guarded_postprocess changed sql: {_trim(cleaned)}")
         if self.cfg.use_projection_contract:
+            if self.cfg.verbose:
+                self._debug("[guard] calling enforce_projection_contract")
             contracted = enforce_projection_contract(cleaned, nlq)
             if self.cfg.verbose and contracted != cleaned:
                 self._debug(f"[post] projection_contract applied: {_trim(contracted)}")
@@ -247,6 +251,8 @@ Output only the final SQL statement and nothing else.
         return cleaned
 
     def evaluate_candidate(self, *, nlq: str, raw: str) -> tuple[Optional[tuple[str, float]], dict]:
+        if self.cfg.verbose:
+            self._debug("[guard] calling clean_candidate_with_reason")
         self._debug(f"[eval] raw candidate: {_trim(raw)}")
         sql, reason = clean_candidate_with_reason(raw)
         if not sql:
@@ -266,6 +272,8 @@ Output only the final SQL statement and nothing else.
             self._debug(f"[eval] missing explicit fields: {missing_fields}")
 
         # Execution gate (Act): must run successfully.
+        if self.cfg.verbose:
+            self._debug("[guard] calling runner.run (execution gate)")
         meta = self.runner.run(sql, capture_df=False)
         if not meta.success:
             err = _trim(meta.error)
@@ -278,6 +286,8 @@ Output only the final SQL statement and nothing else.
             }
 
         # Intent gate: prevent executable-but-wrong-shape answers.
+        if self.cfg.verbose:
+            self._debug("[guard] calling intent_constraints")
         ok, why = intent_constraints(nlq, sql)
         if not ok:
             self._debug(f"[eval] intent_reject reason={why}")
