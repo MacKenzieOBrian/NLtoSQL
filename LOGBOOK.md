@@ -318,3 +318,21 @@ Code: `notebooks/03_agentic_eval.ipynb` (evaluation save block)
 - **Why:** missing explicit fields (“codes”) and filters were causing avoidable EX/TS misses; a lightweight lexical signal improves candidate selection without adding learned components.  
 - **Effect:** better alignment with NLQ field lists and improved selection of candidates that include key filter values.  
 Code: `nl2sql/agent_utils.py` (`_FIELD_SYNONYMS`, `_SPECIAL_FIELD_HINTS`, `_extract_value_hints`, `semantic_score`)
+
+### 2026-02-04 — Explicit Field Missing Penalty + More Candidates
+- **Change:** added a penalty in `semantic_score` when explicitly requested fields are missing, and increased agent candidate count in the notebook config.  
+- **Why:** some NLQs enumerated fields (e.g., “names, codes, and MSRPs”) but the chosen candidate dropped a field; increasing candidates and penalizing omissions improves selection without altering model weights.  
+- **Effect:** higher chance of selecting candidates that include all requested fields; modest EX/TS improvement expected.  
+Code: `nl2sql/agent_utils.py` (`semantic_score`), `notebooks/03_agentic_eval.ipynb` (`ReactConfig.num_cands`)
+
+### 2026-02-04 — ReAct Multi-step Enabled in Notebook
+- **Change:** set `accept_score` in the notebook `ReactConfig` so the loop can perform true multi-step refinement instead of always stopping at the first executable candidate.  
+- **Why:** ReAct’s core benefit is observe → revise; without a threshold the loop behaves like a single-pass sampler.  
+- **Effect:** encourages an additional step when the best candidate is weak, improving alignment with ReAct/ExCoT behavior.  
+Code: `notebooks/03_agentic_eval.ipynb` (`ReactConfig.accept_score`)
+
+### 2026-02-04 — Missing-field Observation in ReAct Trace
+- **Change:** when explicitly requested fields are missing, the agent logs an observation string (e.g., “Missing requested fields: productCode”) so it can be used in the next step.  
+- **Why:** makes the feedback loop more actionable and aligns with ReAct-style correction.  
+- **Effect:** clearer traces and better guidance for multi-step refinement.  
+Code: `nl2sql/agent.py` (`evaluate_candidate`), `nl2sql/agent_utils.py` (`missing_explicit_fields`)

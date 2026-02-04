@@ -170,6 +170,15 @@ def _explicit_field_list(nlq: str) -> list[str]:
     return ordered
 
 
+def missing_explicit_fields(nlq: str, sql: str) -> list[str]:
+    """Return explicitly requested fields that are missing from the SQL."""
+    required = _explicit_field_list(nlq)
+    if not required:
+        return []
+    sql_low = (sql or "").lower()
+    return [c for c in required if c.lower() not in sql_low]
+
+
 def _extract_required_columns(nlq: str) -> list[str]:
     nl = (nlq or "").lower()
     cols = _explicit_field_list(nlq)
@@ -405,6 +414,13 @@ def semantic_score(nlq: str, sql: str) -> float:
     nlq_low = nlq.lower()
     sql_low = sql.lower()
     score = 0.0
+
+    # Penalize missing explicitly requested fields (if NLQ enumerates them).
+    required_fields = _explicit_field_list(nlq)
+    if required_fields:
+        missing = [c for c in required_fields if c.lower() not in sql_low]
+        if missing:
+            score -= 3.0 * len(missing)
 
     for key, aliases in SCHEMA_KEYWORDS.items():
         if any(a in nlq_low for a in aliases) and key in sql_low:

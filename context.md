@@ -4,13 +4,13 @@ This file is intentionally "too detailed": it is meant to be pasted into another
 
 It is written to match the current code in this repo (not vague textbook definitions).
 
-Last updated: 2026-02-04
+Last updated: 2026-02-04 (ReAct feedback made explicit, scoring hints added, eval JSON save fix)
 
 ---
 
 ## 0) One Paragraph Summary (If You Get Interrupted)
 
-This project builds and evaluates a Natural Language -> SQL (MySQL) system over the ClassicModels database. It starts with a baseline prompt + few-shot in-context learning, adds QLoRA adapters for parameter-efficient fine-tuning, and then adds an "agentic" ReAct-style loop that uses execution feedback (errors and result previews) plus deterministic post-processing constraints to improve executability and semantic correctness. Evaluation is reported using VA (valid SQL / executability), EM (normalized exact match), EX (execution accuracy by result-set comparison on the base DB), and TS (test-suite accuracy across multiple perturbed DB replicas).
+This project builds and evaluates a Natural Language -> SQL (MySQL) system over the ClassicModels database. It starts with a baseline prompt + few-shot in-context learning, adds QLoRA adapters for parameter-efficient fine-tuning, and then adds an "agentic" ReAct-style loop that uses execution feedback (error messages) plus deterministic post-processing constraints to improve executability and semantic correctness. Evaluation is reported using VA (valid SQL / executability), EM (normalized exact match), EX (execution accuracy by result-set comparison on the base DB), and TS (test-suite accuracy across multiple perturbed DB replicas).
 
 ---
 
@@ -81,9 +81,10 @@ Deterministic postprocess:
 Agent utilities (lightweight heuristics):
 - `nl2sql/agent_utils.py:clean_candidate`: strict SELECT-only cleaner for raw model output
 - `nl2sql/agent_utils.py:build_schema_subset`: heuristic schema linking via keyword->table hints
-- `nl2sql/agent_utils.py:enforce_projection_contract`: drop extra SELECT fields when NLQ enumerates fields
+- `nl2sql/agent_utils.py:enforce_projection_contract`: drop extra SELECT fields when NLQ enumerates fields (uses synonyms + context-gated “codes” hint)
 - `nl2sql/agent_utils.py:intent_constraints`: reject SQL that contradicts NLQ intent (e.g., top-k)
-- `nl2sql/agent_utils.py:semantic_score` and `count_select_columns`: reranking heuristics
+- `nl2sql/agent_utils.py:missing_explicit_fields`: detect missing explicitly requested fields for ReAct feedback
+- `nl2sql/agent_utils.py:semantic_score` and `count_select_columns`: reranking heuristics (includes literal-value hint for filters + penalty for missing explicitly requested fields)
 
 Evaluation:
 - `nl2sql/eval.py:eval_run`: baseline/QLoRA evaluation loop for VA/EM/EX
@@ -95,8 +96,11 @@ Scripts:
 - `scripts/analyze_results.py`: heuristic failure breakdown for a JSON run
 
 Agent (canonical ReAct loop lives in code, notebook just configures it):
-- `nl2sql/agent.py:ReactConfig`: explicit bounds/toggles for the loop (steps, candidates, repair).
+- `nl2sql/agent.py:ReactConfig`: explicit bounds/toggles for the loop (steps, candidates, repair, optional `accept_score`, `verbose`).
 - `nl2sql/agent.py:ReactSqlAgent.react_sql`: bounded ReAct-style loop returning `(pred_sql, trace)`.
+- `nl2sql/agent.py:ReactSqlAgent._format_history_item`: explicit Action/Observation formatting used in the prompt.
+- Verbose tracing: set `ReactConfig.verbose=True` to print the full loop (prompt size, candidate evaluation, gates, repair).
+- Notebook config sets `accept_score` to enable multi-step refinement in practice.
 
 Notebooks (agent config + evaluation loop):
 - `notebooks/03_agentic_eval.ipynb`: imports `ReactSqlAgent`, sets `ReactConfig`, runs VA/EM/EX/TS evaluation and saves JSON.
@@ -121,6 +125,7 @@ You can describe the project as three progressively stronger "methods" run on th
 
 3. Agentic ReAct loop (execution feedback + deterministic guards)
    - bounded loop: generate candidates -> postprocess -> execute -> gate -> optionally repair -> repeat
+   - explicit Action/Observation history is injected into prompts; optional `accept_score` can force multi-step refinement
    - notebook: `notebooks/03_agentic_eval.ipynb`
    - code: uses `nl2sql/query_runner.py` for execution gating and `nl2sql/agent_utils.py` for constraints/scoring
 
@@ -512,6 +517,7 @@ Agentic eval outputs (notebook):
   - pred_sql
   - trace (history of candidates/errors/observations)
   - metrics per item (VA/EM/EX/TS)
+  - JSON save uses `default=str` to serialize Decimal values in TS debug samples.
 
 Analysis helper:
 - `scripts/analyze_results.py` can categorize EX failures (projection mismatch, join mismatch, etc.) with simple heuristics.
@@ -554,7 +560,7 @@ Q: "How do you ensure the model cannot destroy your database?"
 A: "I enforce a read-only policy at the executor level. Both `QueryRunner._safety_check` and the EX harness `_safety_check` block DDL/DML keywords like DROP/DELETE/UPDATE/INSERT. It is not a perfect SQL sandbox, but in a controlled ClassicModels setting it is a pragmatic safety layer."
 
 Q: "What exactly is returned to the agent as observation?"
-A: "In the notebook ReAct loop, the observation is usually either 'SUCCESS' or an error string from `QueryRunner.run`. The runner also has a preview DataFrame available, but the main feedback used to guide repairs is the error message plus a coarse error taxonomy."
+A: "In the canonical agent (`nl2sql/agent.py`), each candidate is logged with an explicit Action/Observation pair. Observations are concise strings like `Execution error: ...`, `Intent mismatch: ...`, or `Rejected during cleanup: ...`. This is injected into the next prompt to make the ReAct feedback loop explicit. The QueryRunner also exposes a preview DataFrame, but the loop currently uses error strings rather than full previews."
 
 Q: "Do you commit to a single transaction? Any isolation concerns?"
 A: "For this dissertation harness, each query is executed independently in a short-lived connection. It's read-only SELECT execution. Isolation is not a focus, and consistency is assumed because the underlying dataset is static during evaluation."

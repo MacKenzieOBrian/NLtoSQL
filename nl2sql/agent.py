@@ -32,6 +32,7 @@ from .agent_utils import (
     count_select_columns,
     enforce_projection_contract,
     intent_constraints,
+    missing_explicit_fields,
     semantic_score,
     vanilla_candidate,
 )
@@ -245,6 +246,10 @@ Output only the final SQL statement and nothing else.
         sql = self.postprocess_sql(sql=sql, nlq=nlq)
         self._debug(f"[eval] postprocess sql: {_trim(sql)}")
 
+        missing_fields = missing_explicit_fields(nlq, sql)
+        if missing_fields:
+            self._debug(f"[eval] missing explicit fields: {missing_fields}")
+
         # Execution gate (Act): must run successfully.
         meta = self.runner.run(sql, capture_df=False)
         if not meta.success:
@@ -275,7 +280,11 @@ Output only the final SQL statement and nothing else.
         score = float(s_sem) - float(self.cfg.column_penalty) * float(s_cols) + s_extra
         self._debug(f"[eval] accept score={score:.2f} sem={s_sem:.2f} cols={s_cols} extra={s_extra:.2f}")
 
-        return (sql, score), {"phase": "accept", "sql": sql, "score": score, "sem": s_sem, "cols": s_cols, "extra": s_extra}
+        log = {"phase": "accept", "sql": sql, "score": score, "sem": s_sem, "cols": s_cols, "extra": s_extra}
+        if missing_fields:
+            log["missing_fields"] = missing_fields
+            log["obs"] = f"Missing requested fields: {', '.join(missing_fields)}"
+        return (sql, score), log
 
     # -----------------
     # Repair
@@ -376,6 +385,7 @@ Output ONLY the corrected SELECT statement.
 
             self._debug(f"[step {step}] total candidates={len(raw_cands)}")
             best: Optional[tuple[str, float]] = None
+            best_info: Optional[dict] = None
 
             for idx, raw in enumerate(raw_cands, start=1):
                 self._debug(f"[step {step}] candidate {idx}/{len(raw_cands)}")
@@ -391,6 +401,7 @@ Output ONLY the corrected SELECT statement.
                     sql, score = result
                     if best is None or score > best[1]:
                         best = (sql, score)
+                        best_info = log
 
             if best is not None:
                 sql, score = best
@@ -399,9 +410,12 @@ Output ONLY the corrected SELECT statement.
                     self._debug(f"[step {step}] accept final score={score:.2f}")
                     history.append({"step": step, "phase": "final", "sql": sql, "score": score})
                     return sql, history
+                missing_note = ""
+                if best_info and best_info.get("missing_fields"):
+                    missing_note = f" Missing fields: {', '.join(best_info['missing_fields'])}."
                 observation = _trim(
                     f"Best candidate scored {score:.2f} (below threshold). "
-                    f"Re-evaluate joins/filters. Candidate: {sql}"
+                    f"Re-evaluate joins/filters.{missing_note} Candidate: {sql}"
                 )
                 history.append({"step": step, "phase": "observation", "obs": observation})
                 continue

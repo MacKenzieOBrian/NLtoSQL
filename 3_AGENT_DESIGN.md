@@ -80,7 +80,7 @@ Schema linking is a known bottleneck (Li et al., 2023; Zhu et al., 2024). The tr
 When multiple candidates execute, a simple semantic score helps pick the one most aligned with the NLQ.
 
 **Technical description**  
-`semantic_score` and `count_select_columns` produce an explainable score; the top candidate is selected. A small “literal‑value” bonus is added when the SQL includes explicit NLQ values (e.g., “USA”, “San Francisco”) to favor correct filters.
+`semantic_score` and `count_select_columns` produce an explainable score; the top candidate is selected. A small “literal‑value” bonus is added when the SQL includes explicit NLQ values (e.g., “USA”, “San Francisco”) to favor correct filters. If the NLQ explicitly enumerates fields, a penalty is applied when the SQL omits any of those fields.
 
 **Code locations**  
 `nl2sql/agent_utils.py` (`semantic_score`, `count_select_columns`)  
@@ -132,7 +132,7 @@ ICL baselines are standard controls (Brown et al., 2020). The trade-off is that 
 Earlier versions claimed a ReAct loop but did not pass any real action/observation history back to the model. This update makes the feedback loop concrete and auditable.
 
 **Technical description**  
-`_format_history_item` formats trace items as Action/Observation and `_build_react_prompt` now injects the last few items into the prompt. `evaluate_candidate` attaches an `obs` string for clean rejects, execution failures, and intent mismatches so the model gets a concise error signal on the next step.
+`_format_history_item` formats trace items as Action/Observation and `_build_react_prompt` now injects the last few items into the prompt. `evaluate_candidate` attaches an `obs` string for clean rejects, execution failures, intent mismatches, and missing explicitly requested fields so the model gets a concise error signal on the next step.
 
 **Code locations**  
 `nl2sql/agent.py` (`ReactSqlAgent._format_history_item`, `ReactSqlAgent._build_react_prompt`, `ReactSqlAgent.evaluate_candidate`)

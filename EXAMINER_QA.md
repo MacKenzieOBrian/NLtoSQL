@@ -306,7 +306,7 @@ Related literature:
 ### Q: "What is the 'Act' tool and what is the observation in your ReAct loop?"
 
 Model answer (say this):
-"The Act tool is executing SQL against the database via `runner.run(sql)` (QueryRunner). The observation is whether execution succeeded and, if it failed, the error message. That observation is appended into the trace and used to construct the next prompt or a repair prompt."
+"The Act tool is executing SQL against the database via `runner.run(sql)` (QueryRunner). Each candidate is logged with an explicit Action/Observation pair: observations include cleanup rejections, execution errors, or intent mismatches. Those short observation strings are injected into the next prompt so the ReAct loop is explicit, not implicit."
 
 Code pointers:
 - `nl2sql/query_runner.py:QueryRunner.run`
@@ -315,6 +315,42 @@ Code pointers:
 Related literature:
 - [Yao et al., 2023](REFERENCES.md#ref-yao2023-react) (act + observation loop)
 - [Zhai et al., 2025](REFERENCES.md#ref-zhai2025-excot) (execution feedback for Text-to-SQL)
+
+---
+
+### Q: "How is the Action/Observation history actually represented in the prompt?"
+
+Model answer (say this):
+"The agent formats recent trace items into explicit `Action:` and `Observation:` lines using `ReactSqlAgent._format_history_item`. It keeps only the last few items to control prompt length. This makes the loop ReAct-like in structure rather than just re-trying silently."
+
+Code pointers:
+- `nl2sql/agent.py:ReactSqlAgent._format_history_item`
+- `nl2sql/agent.py:ReactSqlAgent._build_react_prompt`
+
+Related literature:
+- [Yao et al., 2023](REFERENCES.md#ref-yao2023-react)
+
+---
+
+### Q: "What is `accept_score` and why did you add it?"
+
+Model answer (say this):
+"`accept_score` is an optional threshold in `ReactConfig`. If it’s set, the loop only returns a candidate when its score clears that threshold; otherwise it keeps iterating until it hits the step budget. This makes multi‑step refinement meaningful but still bounded and explainable. In the notebook I set it explicitly so the loop actually performs multi‑step refinement during evaluation."
+
+Code pointers:
+- `nl2sql/agent.py:ReactConfig` (`accept_score`)
+- `nl2sql/agent.py:ReactSqlAgent.react_sql`
+
+---
+
+### Q: "How do you debug the full ReAct process end‑to‑end?"
+
+Model answer (say this):
+"I turn on `ReactConfig.verbose=True`. That prints prompt settings, candidate counts, postprocess changes, gate outcomes, scores, and repair attempts. It gives a full readable trace without changing the model logic."
+
+Code pointers:
+- `nl2sql/agent.py:ReactConfig` (`verbose`)
+- `nl2sql/agent.py:ReactSqlAgent._debug`
 
 ---
 
@@ -380,7 +416,7 @@ Related literature:
 ### Q: "How do you score candidates, exactly?"
 
 Model answer (say this):
-"Candidate scoring is explicit and auditable: `score = semantic_score(nlq, sql) - column_penalty * count_select_columns(sql) + extra_score_fn(nlq, sql)`. `semantic_score` is a lightweight lexical heuristic and `count_select_columns` penalizes wide projections. `column_penalty` is a config constant, and `extra_score_fn` is an optional hook that defaults to 0.0 so additional heuristics are clearly separated."
+"Candidate scoring is explicit and auditable: `score = semantic_score(nlq, sql) - column_penalty * count_select_columns(sql) + extra_score_fn(nlq, sql)`. `semantic_score` is a lightweight lexical heuristic that includes a small bonus for explicit NLQ values (e.g., 'USA', 'San Francisco') and a penalty if explicitly requested fields are missing. `count_select_columns` penalizes wide projections. `column_penalty` is a config constant, and `extra_score_fn` is an optional hook that defaults to 0.0 so additional heuristics are clearly separated."
 
 Code pointers:
 - `nl2sql/agent.py:ReactConfig` (`column_penalty`)
@@ -400,6 +436,29 @@ Model answer (say this):
 
 Code pointers:
 - `nl2sql/agent_utils.py:semantic_score` (token overlap + keyword hints)
+
+---
+
+### Q: "Why do you give extra points for literal values like 'USA' or 'San Francisco'?"
+
+Model answer (say this):
+"Those are strong cues that a candidate captured the intended filter. I extract likely literal values from the NLQ (quoted strings, capitalized multi‑word names, abbreviations) and add a small bonus if they appear in the SQL. It’s a lightweight heuristic to avoid returning queries that miss obvious filters."
+
+Code pointers:
+- `nl2sql/agent_utils.py:_extract_value_hints`
+- `nl2sql/agent_utils.py:semantic_score`
+
+---
+
+### Q: "How do you handle NLQs that explicitly list fields (e.g., 'names, codes, and MSRPs')?"
+
+Model answer (say this):
+"I detect explicitly enumerated fields with a lightweight synonym map and check whether the SQL includes them. If fields are missing, the candidate gets a scoring penalty and the ReAct trace logs an observation like 'Missing requested fields: productCode' so the next step can correct it. This is still deterministic and doesn’t use gold SQL."
+
+Code pointers:
+- `nl2sql/agent_utils.py:missing_explicit_fields`
+- `nl2sql/agent_utils.py:semantic_score`
+- `nl2sql/agent.py:ReactSqlAgent.evaluate_candidate`
 
 ---
 
@@ -570,6 +629,16 @@ Code pointers:
 - `nl2sql/eval.py:EvalItem.to_jsonable`
 - `nl2sql/eval.py:eval_run` (payload format)
 - `results/README.md` (where outputs are written; gitignore note)
+
+---
+
+### Q: "Why does your agentic notebook save JSON with `default=str`?"
+
+Model answer (say this):
+"The agentic eval saves TS debug samples that can include `Decimal` values from MySQL. Python’s `json.dumps` can’t serialize Decimal by default, so I use `default=str` to preserve the debug output without crashing at the end of a run. The numeric metrics remain computed in memory as floats; only the saved debug fields become strings."
+
+Code pointers:
+- `notebooks/03_agentic_eval.ipynb` (evaluation save block with `default=str`)
 
 ---
 
