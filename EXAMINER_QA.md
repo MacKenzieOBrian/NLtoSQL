@@ -10,6 +10,7 @@ All answers are written to match the current implementation in this repo (not an
 ---
 
 ## Contents
+- Research Journey / Decisions
 - Model Loading and Quantization (Practical Engineering Questions)
 - Database Execution and Safety (Engine + QueryRunner)
 - Schema Summary and Heuristic Schema Linking
@@ -25,6 +26,69 @@ All answers are written to match the current implementation in this repo (not an
 
 ---
 
+## Research Journey / Decisions
+
+### Q: "Tell me the research journey of this project."
+
+Model answer (say this):
+"I followed an error‑driven path documented in `LOGBOOK.md`. In Sep–Oct 2025 I scoped the problem and saw that EM alone was misleading, so I planned for execution‑based evaluation. By Jan 31, 2026 I had a baseline and added guardrails after observing projection, intent, and schema errors. In early Feb 2026 I built the TS harness to test semantic robustness. On Feb 4–5 I replaced a ReAct‑inspired loop with an explicit tool‑driven ReAct loop and added validation, schema linking, constraint checks, and decision logs so every accept/reject is auditable."
+
+Code pointers:
+- `LOGBOOK.md` (dated entries)
+- `notebooks/03_agentic_eval.ipynb` (tool‑driven loop + evaluation)
+
+Related literature:
+- [Yao et al., 2023](REFERENCES.md#ref-yao2023-react)
+- [Zhong et al., 2020](REFERENCES.md#ref-zhong2020-ts)
+
+---
+
+### Q: "What did you decide not to do, and why?"
+
+Model answer (say this):
+"I intentionally avoided a learned schema linker and a full distilled test‑suite pipeline because they add extra models and complexity beyond the dissertation scope. I also avoided unbounded reflection loops because they reduce interpretability and make evaluation unstable. Instead I used heuristic schema linking, bounded steps, and explicit validation so behavior is auditable and reproducible."
+
+Code pointers:
+- `6_LIMITATIONS.md` (schema linking + constraint extraction limitations)
+- `notebooks/03_agentic_eval.ipynb` (bounded tool loop)
+
+Related literature:
+- [Zhu et al., 2024](REFERENCES.md#ref-zhu2024-survey)
+- [Zhong et al., 2020](REFERENCES.md#ref-zhong2020-ts)
+
+---
+
+### Q: "What evidence made you pivot to a tool‑driven ReAct loop?"
+
+Model answer (say this):
+"The partial `results_react_200 (2)` run and the logbook showed that the earlier candidate‑ranking loop had high VA but low EX/TS, and it didn’t clearly separate model reasoning from environment interaction. That meant I couldn’t defend it as true ReAct. The fix was to make actions explicit, add validation and schema linking as tools, and log every accept/reject so the loop is auditable. This aligns with ReAct’s action/observation contract and Ojuri’s agent‑mediated NL→SQL workflow."
+
+Code pointers:
+- `notebooks/03_agentic_eval.ipynb` (tool-driven `react_sql`)
+- `nl2sql/agent_tools.py` (explicit tool interface)
+- `nl2sql/prompts.py` (Thought/Action/Observation prompt)
+- `LOGBOOK.md` (2026‑02‑04 to 2026‑02‑05 entries)
+
+Related literature:
+- [Yao et al., 2023](REFERENCES.md#ref-yao2023-react)
+- [Ojuri et al., 2025](REFERENCES.md#ref-ojuri2025-agents)
+
+---
+
+### Q: "How did you decide which additions were justified vs out of scope?"
+
+Model answer (say this):
+"I prioritized additions that were directly tied to observed failure modes and could be implemented deterministically: projection/intent checks, schema subset linking, validation and forced repair. I avoided learned schema linking and unbounded reflection because they add another model or introduce non‑auditable behavior. The thesis goal is reproducible agent behavior under constrained resources, so I chose explainable controls over complexity."
+
+Code pointers:
+- `6_LIMITATIONS.md` (non‑decisions)
+- `LOGBOOK.md` (decision trail)
+- `notebooks/03_agentic_eval.ipynb` (guardrails + tool loop)
+
+Related literature:
+- [Zhu et al., 2024](REFERENCES.md#ref-zhu2024-survey)
+
+---
 
 ## Model Loading and Quantization (Practical Engineering Questions)
 
@@ -128,10 +192,11 @@ Related literature:
 ### Q: "What does 'heuristic schema linking' mean in your project?"
 
 Model answer (say this):
-"It means I reduce the schema context using simple, transparent keyword-to-table rules rather than training a learned schema linker. In `nl2sql/agent_utils.py:build_schema_subset`, I pick a small set of tables based on NLQ keywords and append join hints. This is auditable and reduces prompt length, but it is brittle to paraphrases."
+"It means I reduce the schema context using simple, transparent keyword-to-table rules rather than training a learned schema linker. In `nl2sql/agent_utils.py:build_schema_subset`, I pick a small set of tables based on NLQ keywords and append join hints. In the tool-driven ReAct loop this is exposed as the `link_schema` tool before generation. It’s auditable and reduces prompt length, but it is brittle to paraphrases."
 
 Code pointers:
 - `nl2sql/agent_utils.py:build_schema_subset`
+- `nl2sql/agent_tools.py:link_schema`
 
 Related literature:
 - [Zhu et al., 2024](REFERENCES.md#ref-zhu2024-survey) (schema linking as a major bottleneck)
