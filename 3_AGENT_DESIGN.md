@@ -1,7 +1,7 @@
 # Agent Design Engineering Log (Reformatted)
 
 **Current status note:** The evaluation notebook now uses a tool‑driven ReAct loop (`notebooks/03_agentic_eval.ipynb`) backed by `nl2sql/agent_tools.py` and `nl2sql/prompts.py`. The legacy candidate‑ranking loop in `nl2sql/agent.py` is kept for comparison and ablations; entries below that reference `ReactSqlAgent.*` reflect that legacy loop.
-**Legend:** Decisions tagged **(Legacy)** refer to the candidate‑ranking loop in `nl2sql/agent.py` and are not executed in the tool‑driven notebook. Active tool‑loop decisions include 3.1–3.3, 3.6–3.8, 3.13 (cleaning only), and 3.16.
+**Legend:** Decisions tagged **(Legacy)** refer to the candidate‑ranking loop in `nl2sql/agent.py` and are not executed in the tool‑driven notebook. Active tool‑loop decisions include 3.1–3.4, 3.6–3.8, 3.13 (cleaning only), and 3.16.
 
 Each decision is presented in a four-part explanation format.
 
@@ -64,18 +64,18 @@ Execution success does not guarantee semantic correctness (Zhong et al., 2020). 
 
 ---
 
-### Decision 3.4 (Legacy) - Use schema-subset prompting to reduce wrong-table errors
+### Decision 3.4 - Use schema-subset prompting to reduce wrong-table errors
 
 **Plain-language**  
 Wrong-table joins were a dominant error mode. Reducing schema scope improves table selection without retraining.
 
 **Technical description**  
-`build_schema_subset` uses keyword hints to select a smaller schema summary and join hints for the prompt. The tool‑driven loop currently uses full schema from `get_schema`, so subset prompting is not active there.
+`build_schema_subset` uses keyword hints to select a smaller schema summary and join hints for the prompt. The tool‑driven loop calls `link_schema` to apply this subset before SQL generation.
 
 **Code locations**  
 `nl2sql/agent_utils.py` (`build_schema_subset`)  
-`nl2sql/schema.py` (`build_schema_summary`)  
-`nl2sql/agent.py` (`ReactSqlAgent._build_react_prompt`)
+`nl2sql/agent_tools.py` (`link_schema`)  
+`notebooks/03_agentic_eval.ipynb` (`react_sql`)
 
 **Justification**  
 Schema linking is a known bottleneck (Li et al., 2023; Zhu et al., 2024). The trade-off is heuristic coverage and weaker generalization.
@@ -279,7 +279,7 @@ Schema validation removes obvious invalid SQL early; error‑type hints make ref
 The agent now follows an explicit Thought → Action → Observation loop where the LLM chooses tools and Python executes them.
 
 **Technical description**  
-The notebook defines a bounded tool loop. The LLM emits `Action: tool_name[json_args]` using a single system prompt. Python executes tool functions (`get_schema`, `generate_sql`, `validate_sql`, `run_sql`, `repair_sql`, `finish`) and appends the Observation back into the trace. Guardrails run between generation/repair and validation/execution; `validate_sql` must pass before `run_sql`, and `run_sql` must succeed before `finish`.
+The notebook defines a bounded tool loop. The LLM emits `Action: tool_name[json_args]` using a single system prompt. Python executes tool functions (`get_schema`, `link_schema`, `extract_constraints`, `generate_sql`, `validate_sql`, `validate_constraints`, `run_sql`, `repair_sql`, `finish`) and appends the Observation back into the trace. Guardrails run between generation/repair and validation/execution; `validate_sql` must pass before `validate_constraints`, `validate_constraints` must pass before `run_sql`, and `run_sql` must succeed before `finish`. Validation/execution failures force a `repair_sql` action, and trace summaries log action sequences and compliance flags.
 
 **Code locations**  
 `notebooks/03_agentic_eval.ipynb` (tool loop `react_sql`)  
