@@ -244,11 +244,11 @@ def enforce_projection_contract(sql: str, nlq: str) -> str:
 
 def classify_intent(nlq: str) -> str:
     nl = (nlq or "").lower()
-    if any(w in nl for w in ["top", "highest", "lowest", "first", "last"]):
+    if re.search(r"\b(top|highest|lowest|first|last|most|least)\b", nl):
         return "topk"
-    if any(w in nl for w in [" per ", " by ", " each "]):
+    if re.search(r"\b(per|by|each)\b", nl):
         return "grouped_aggregate"
-    if any(w in nl for w in ["count", "sum", "average", "avg", "total"]):
+    if re.search(r"\b(how many|number of|count|sum|average|avg|total|how much)\b", nl):
         return "aggregate"
     return "lookup"
 
@@ -297,6 +297,59 @@ _ECHO_CUTOFF_RE = re.compile(
     r")\b"
 )
 
+# Lightweight keyword set for rejecting keyword-soup candidates.
+_SQL_KEYWORDS = {
+    "select",
+    "from",
+    "where",
+    "group",
+    "by",
+    "order",
+    "limit",
+    "having",
+    "join",
+    "left",
+    "right",
+    "inner",
+    "outer",
+    "on",
+    "as",
+    "distinct",
+    "union",
+    "all",
+    "exists",
+    "in",
+    "and",
+    "or",
+    "not",
+    "case",
+    "when",
+    "then",
+    "else",
+    "end",
+    "asc",
+    "desc",
+    "like",
+    "between",
+    "is",
+    "null",
+    "count",
+    "sum",
+    "avg",
+    "min",
+    "max",
+    "show",
+    "explain",
+    "analyze",
+    "optimize",
+    "repair",
+    "checksum",
+    "procedure",
+    "call",
+    "row",
+    "rows",
+}
+
 
 def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
     """Extract a single executable SELECT statement (or explain why it was rejected).
@@ -333,6 +386,35 @@ def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
     # Must contain FROM (allowing newlines/whitespace).
     if not re.search(r"\bfrom\b", lower):
         return None, "no_from"
+
+    # Basic select-list sanity: reject empty / keyword-only projections.
+    m = re.search(r"(?is)^\s*select\s+(.*?)\s+from\s+", sql)
+    if m:
+        select_part = m.group(1).strip()
+        if "*" not in select_part and "(" not in select_part:
+            tokens = re.findall(r"[a-zA-Z_][\w$]*", select_part)
+            if not tokens:
+                return None, "no_select_fields"
+            if all(t.lower() in _SQL_KEYWORDS for t in tokens):
+                return None, "no_select_fields"
+
+    # Basic FROM sanity: reject keyword-only table tokens (allow subqueries).
+    if not re.search(r"(?is)\bfrom\s*\(", sql):
+        m = re.search(r"(?is)\bfrom\s+([a-zA-Z_][\w$\.]*)(?:\s|$)", sql)
+        if not m:
+            return None, "no_from"
+        if m.group(1).lower() in _SQL_KEYWORDS:
+            return None, "no_from_table"
+
+    # Keyword-soup heuristic: too many keywords, too few identifiers.
+    tokens = re.findall(r"[a-zA-Z_][\w$]*", sql)
+    if tokens:
+        kw = sum(1 for t in tokens if t.lower() in _SQL_KEYWORDS)
+        ident = sum(1 for t in tokens if t.lower() not in _SQL_KEYWORDS)
+        if ident == 0:
+            return None, "no_identifiers"
+        if len(tokens) >= 12 and kw >= 3 * ident:
+            return None, "keyword_soup"
 
     # Lightweight junk filters on trimmed SQL.
     bad_phrases = (
