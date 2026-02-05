@@ -14,6 +14,22 @@ The methodology is error-driven and incremental (cf. ReAct and execution-feedbac
 This sequencing makes improvements attributable to specific changes and follows a literature-backed progression from prompting → PEFT → agentic execution feedback.  
 Refs: `REFERENCES.md#ref-brown2020-gpt3`, `REFERENCES.md#ref-ding2023-peft`, `REFERENCES.md#ref-goswami2024-peft`, `REFERENCES.md#ref-yao2023-react`, `REFERENCES.md#ref-zhai2025-excot`, `REFERENCES.md#ref-ojuri2025-agents`.
 
+**Research journey summary (from `LOGBOOK.md` dates)**  
+- 2025-09-29: scoped the problem and identified a reproducibility gap.  
+- 2025-10-06: shifted evaluation emphasis from EM to EX/TS for semantic validity.  
+- 2026-01-31: added guardrails after observing projection/intent/schema errors.  
+- 2026-02-04 to 2026-02-05: rebuilt the loop as tool‑driven ReAct with validation, schema linking, constraint checks, and decision logging.  
+
+**Interpretive narrative (what changed and why)**  
+- Baselines improved VA but not EX, which signaled that syntax fixes alone do not solve semantic alignment.  
+- QLoRA improved EX but still depended on strong schema grounding, so I added explicit guardrails.  
+- The earlier candidate‑ranking loop was not a faithful ReAct implementation, so I pivoted to a tool‑driven Thought→Action→Observation loop with auditable decisions.  
+
+**Explicit non‑decisions (scope control)**  
+- No learned schema linker (kept heuristic for interpretability).  
+- No unbounded reflection (bounded steps for auditability and cost).  
+- No full distilled test‑suite construction (TS remains suite‑based due to time/compute constraints).
+
 ---
 
 ## Dataset and Split
@@ -53,13 +69,15 @@ Implementation notes:
 ## Agentic ReAct Loop (Tool‑Driven Execution Feedback)
 
 The agent uses an explicit Thought → Action → Observation loop with tools. It does not change model weights. The loop is bounded and traceable, mirroring ReAct and agent-mediated NL→SQL workflows:
-- Bootstrap with `get_schema` (schema observation)
-- LLM chooses actions (`generate_sql`, `validate_sql`, `run_sql`, `repair_sql`, `finish`, optional `get_table_samples`)
+- Bootstrap with `get_schema` then `link_schema` (schema observation + heuristic linker)
+- LLM chooses actions (`extract_constraints`, `generate_sql`, `validate_sql`, `validate_constraints`, `run_sql`, `repair_sql`, `finish`, optional `get_table_samples`)
 - Python executes tools and returns observations
 - Guardrails run between `generate_sql`/`repair_sql` and `validate_sql`
-- `validate_sql` must pass before `run_sql`
+- `validate_sql` must pass before `validate_constraints`
+- `validate_constraints` must pass before `run_sql`
 - `run_sql` must succeed before `finish`
 - Deterministic fallback if the loop fails to finish
+Validation or execution failures force a `repair_sql` step. Constraint validation gates execution (e.g., missing COUNT/ORDER/LIMIT), and per‑query trace summaries log action sequences and compliance for auditability.
 Refs: `REFERENCES.md#ref-yao2023-react`, `REFERENCES.md#ref-zhai2025-excot`, `REFERENCES.md#ref-ojuri2025-agents`.
 
 Implementation notes:
