@@ -17,7 +17,8 @@ VA checks whether the predicted SQL runs at all. It separates syntax/schema erro
 `notebooks/03_agentic_eval.ipynb` (evaluation loop in cell `# 9) Full ReAct-style evaluation (VA/EX/EM/TS)`)
 
 **Justification**  
-Execution-based evaluation uses VA as a baseline validity check (Zhong et al., 2020). The trade-off is that VA can be high even when semantics are wrong.
+Execution-based evaluation uses VA as a baseline validity check; the trade-off is that VA can be high even when semantics are wrong.  
+Refs: `REFERENCES.md#ref-zhong2020-ts`.
 
 ---
 
@@ -34,7 +35,8 @@ EX checks whether predicted SQL returns the same rows as the gold SQL on the bas
 `notebooks/03_agentic_eval.ipynb` (evaluation loop)
 
 **Justification**  
-Zhong et al. (2020) show that EM is insufficient and motivate execution-based equivalence. The trade-off is that EX depends on DB state and can be fooled by accidental matches.
+Execution-based equivalence is preferred over EM, but EX depends on DB state and can be fooled by accidental matches.  
+Refs: `REFERENCES.md#ref-zhong2020-ts`.
 
 ---
 
@@ -51,7 +53,8 @@ Predicted and gold SQL are normalized (strip semicolon, lowercased) and compared
 `notebooks/03_agentic_eval.ipynb` (evaluation loop)
 
 **Justification**  
-EM was common in early benchmarks (Yu et al., 2018) but is not a semantic metric. The trade-off is low semantic validity, so EM is treated as diagnostic only.
+EM was common in early benchmarks but is not a semantic metric, so EM is treated as diagnostic only.  
+Refs: `REFERENCES.md#ref-yu2018-spider`.
 
 ---
 
@@ -68,7 +71,8 @@ TS checks whether predicted SQL behaves like gold across multiple perturbed DB r
 `notebooks/03_agentic_eval.ipynb` (TS engine factory and evaluation loop)
 
 **Justification**  
-Zhong et al. (2020) define distilled test suites; this project implements a lightweight suite-based approximation. The trade-off is reliance on perturbation quality rather than full distillation.
+Zhong et al. define distilled test suites; this project implements a lightweight suite-based approximation. The trade-off is reliance on perturbation quality rather than full distillation.  
+Refs: `REFERENCES.md#ref-zhong2020-ts`.
 
 ---
 

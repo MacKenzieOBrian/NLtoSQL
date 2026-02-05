@@ -193,7 +193,7 @@ The dissertation narrative can legitimately focus on whether **small open models
 ### 2026-01-29 — Stage 3 Outputs + Trace Logging Upgrade
 - **Observation:** Stage 3 outputs are mostly valid SQL; remaining issues are projection bloat and unnecessary ORDER BY/GROUP BY that reduce EM (e.g., extra `productLine`, spurious `ORDER BY` on totals).
 - **Change:** Added structured trace logging to the ReAct loop (raw candidate → cleaned SQL → post‑clamp SQL → execution error → repair attempt).
-- **Repair Logging:** `repair_sql` now returns both the repaired SQL and a small metadata dict (status, raw_fix, exec_error), so traces show *why* a repair succeeded or failed.
+- **Reflection Logging:** `reflect_sql` now returns both the reflected SQL and a small metadata dict (status, raw_fix, exec_error), so traces show *why* a reflection succeeded or failed.
 - **Reason:** Traceability is needed to attribute errors to generation vs cleaning vs execution vs repair; aligns with agentic evaluation practice in ReAct/Reflexion‑style loops.
 Code: `notebooks/03_agentic_eval.ipynb`
 
@@ -258,6 +258,37 @@ Code: `notebooks/03_agentic_eval.ipynb`
 
 ### 2026-01-31 — EX Protection Patch (Projection Order + Repair Intent Gate)
 - **Change:** projection contract now preserves explicit NLQ field order; repair acceptance is gated by the same intent constraints used for primary candidates.  
+
+### 2026-02-04 — Tool‑Driven ReAct Loop (Explicit Actions)
+- **Change:** implemented an explicit ReAct loop where the LLM chooses tools and Python executes them.  
+- **Change:** added `nl2sql/agent_tools.py` (tool interface) and `nl2sql/prompts.py` (single system prompt).  
+- **Change:** updated `notebooks/03_agentic_eval.ipynb` to use the tool loop and log full traces.  
+- **Change:** guardrails now run between `generate_sql`/`repair_sql` and `run_sql`, and `run_sql` must succeed before `finish`.  
+- **Reason:** align the implementation with ReAct’s Thought → Action → Observation abstraction and Ojuri‑style agentic workflows.  
+- **Effect:** clearer separation between LLM reasoning and environment interaction; traceable tool calls with execution feedback.  
+
+### 2026-02-05 — Add Explicit Validation Tool (ReAct Step #2)
+- **Change:** added `validate_sql` to the tool interface and prompt; validation checks formatting and schema references without execution.  
+- **Change:** updated the notebook loop to enforce **validate → run** ordering and route failed validation to `repair_sql`.  
+- **Reason:** mirror the Ojuri validation step explicitly and reduce invalid executions before hitting the database.  
+- **Effect:** tighter ReAct compliance and higher VA/EX/TS potential by catching schema errors earlier.  
+
+### 2026-02-04 — ReAct Loop Tuning (Intent + Generation + Budget)
+- **Decision:** reduce false intent rejections and syntax junk seen in the partial `results_react_200 (2)` trace by adjusting intent detection and candidate generation.
+- **Change:** expanded intent cues to include common aggregate phrasing (“how many”, “number of”, “how much”).  
+- **Change:** intent constraints are now configurable as a **soft penalty** instead of a hard reject (`enforce_intent_constraints=False`), while reflection remains hard‑gated.  
+- **Change:** hybrid generation per prompt: **one greedy anchor + sampled candidates** for diversity.  
+- **Change:** default budget shifted to **`max_steps=1`** and higher **`num_cands`** to favor breadth over low‑yield multi‑step retries.
+- **Change:** reduced decoding entropy (`temperature=0.3`, `max_new_tokens=96`) to cut run‑on keyword soup.
+- **Change:** cleaner rejects empty/keyword‑only SELECT lists and keyword‑soup candidates before execution.
+- **Change:** reflection prompt now includes a detected intent label to steer aggregate vs lookup fixes.
+- **Change:** prefilter ranks candidates and keeps only the top `max_exec_cands` before validation to cut wasted DB calls.
+- **Change:** removed the optional tabular prompt variant to reduce loop complexity.
+- **Change:** added schema‑aware validation (reject unknown tables/columns) before execution.
+- **Change:** reflection prompts now include error‑specific guidance keyed to common MySQL codes.
+- **Change:** renamed the repair step to **reflection** in code and docs (`enable_reflection`, `reflect_sql`) to align with ReAct/Reflexion terminology (earlier log entries still use “repair”).
+- **Reason:** the trace showed a large share of candidates dying on syntax errors and intent rejects; multi‑step refinement was not consistently recovering.  
+- **Expected effect:** higher VA/EX by keeping more plausible SQL in the pool, improving syntactic reliability, and reducing avoidable intent‑gate false negatives.
 - **Why:** EX was failing on “almost‑right” outputs due to column order mismatch and repair occasionally overwrote correct intent with executable but irrelevant SQL.  
 - **Effect:** raises EX by aligning output shape with the NLQ and prevents semantic drift during repair.  
 
@@ -338,7 +369,7 @@ Code: `notebooks/03_agentic_eval.ipynb` (`ReactConfig.accept_score`)
 Code: `nl2sql/agent.py` (`evaluate_candidate`), `nl2sql/agent_utils.py` (`missing_explicit_fields`)
 
 ### 2026-02-04 — Join Exemplar Injection for ReAct Prompts
-- **Change:** added a small exemplar set (from the test set) and inject it into ReAct and tabular prompts; also print a schema check for `offices.city`.  
+- **Change:** added a small exemplar set (from the test set) and inject it into the ReAct prompt; also print a schema check for `offices.city`.  
 - **Why:** join errors are the most common EX failure; a single join exemplar can anchor the intended join pattern without changing model weights.  
 - **Effect:** improved join behavior expected on office/city queries; prompts remain auditable.  
 Code: `nl2sql/agent.py` (prompt exemplar formatting), `notebooks/03_agentic_eval.ipynb` (`REACT_EXEMPLARS`)

@@ -4,13 +4,13 @@ This file is intentionally "too detailed": it is meant to be pasted into another
 
 It is written to match the current code in this repo (not vague textbook definitions).
 
-Last updated: 2026-02-04 (ReAct feedback made explicit, scoring hints added, eval JSON save fix)
+Last updated: 2026-02-05 (tool-driven ReAct loop with explicit actions + validation step)
 
 ---
 
 ## 0) One Paragraph Summary (If You Get Interrupted)
 
-This project builds and evaluates a Natural Language -> SQL (MySQL) system over the ClassicModels database. It starts with a baseline prompt + few-shot in-context learning, adds QLoRA adapters for parameter-efficient fine-tuning, and then adds an "agentic" ReAct-style loop that uses execution feedback (error messages) plus deterministic post-processing constraints to improve executability and semantic correctness. Evaluation is reported using VA (valid SQL / executability), EM (normalized exact match), EX (execution accuracy by result-set comparison on the base DB), and TS (test-suite accuracy across multiple perturbed DB replicas).
+This project builds and evaluates a Natural Language -> SQL (MySQL) system over the ClassicModels database. It starts with a baseline prompt + few-shot in-context learning, adds QLoRA adapters for parameter-efficient fine-tuning, and then adds a tool‑driven ReAct loop where the LLM explicitly chooses tools (generate SQL, validate SQL, run SQL, repair SQL) and uses database execution as environment feedback. Deterministic guardrails are applied between generation and execution to improve executability and semantic correctness. Evaluation is reported using VA (valid SQL / executability), EM (normalized exact match), EX (execution accuracy by result-set comparison on the base DB), and TS (test-suite accuracy across multiple perturbed DB replicas).
 
 ---
 
@@ -32,18 +32,20 @@ Code (reusable modules):
 - `nl2sql/prompting.py`: baseline system prompt + few-shot message builder
 - `nl2sql/llm.py`: generation helper + extraction of first SELECT
 - `nl2sql/postprocess.py`: deterministic SQL cleanups / guardrails
-- `nl2sql/agent_utils.py`: lightweight heuristics for schema subset, intent constraints, semantic scoring, etc.
-- `nl2sql/agent.py`: canonical ReAct-style Text-to-SQL agent loop (bounded, traceable)
+- `nl2sql/agent_utils.py`: lightweight heuristics for schema subset, intent constraints, semantic scoring, and cleanup (rejects keyword‑soup outputs)
+- `nl2sql/agent_tools.py`: tool interface used by the explicit ReAct loop
+- `nl2sql/prompts.py`: single system prompt for Thought/Action/Observation
+- `nl2sql/agent.py`: legacy candidate-based loop (kept for comparison)
 - `nl2sql/eval.py`: evaluation harness for VA/EM/EX and TS
 
 Notebooks (Colab-first experiments):
 - `notebooks/02_baseline_prompting_eval.ipynb`: baseline prompt eval (zero-shot vs few-shot)
 - `notebooks/04_build_training_set.ipynb`: train-set validation / leakage checks
 - `notebooks/05_qlora_train_eval.ipynb`: QLoRA fine-tune + eval
-- `notebooks/03_agentic_eval.ipynb`: agentic ReAct loop + evaluation (main "demo" notebook)
+- `notebooks/03_agentic_eval.ipynb`: tool-driven ReAct loop + evaluation (main "demo" notebook)
 
 Scripts (CLI / utilities):
-- `scripts/run_full_pipeline.py`: CLI mirror of baseline + QLoRA + small ReAct sanity check
+- `scripts/run_full_pipeline.py`: CLI mirror of baseline + QLoRA + small reflection sanity check
 - `scripts/analyze_results.py`: quick post-hoc error breakdown from a JSON run
 
 Data + outputs:
@@ -82,9 +84,16 @@ Agent utilities (lightweight heuristics):
 - `nl2sql/agent_utils.py:clean_candidate`: strict SELECT-only cleaner for raw model output
 - `nl2sql/agent_utils.py:build_schema_subset`: heuristic schema linking via keyword->table hints
 - `nl2sql/agent_utils.py:enforce_projection_contract`: drop extra SELECT fields when NLQ enumerates fields (uses synonyms + context-gated “codes” hint)
-- `nl2sql/agent_utils.py:intent_constraints`: reject SQL that contradicts NLQ intent (e.g., top-k)
-- `nl2sql/agent_utils.py:missing_explicit_fields`: detect missing explicitly requested fields for ReAct feedback
+- `nl2sql/agent_utils.py:intent_constraints`: detect NLQ intent mismatches (hard reject or soft penalty depending on config)
+- `nl2sql/agent_utils.py:missing_explicit_fields`: detect missing explicitly requested fields for validation
 - `nl2sql/agent_utils.py:semantic_score` and `count_select_columns`: reranking heuristics (includes literal-value hint for filters + penalty for missing explicitly requested fields)
+
+Agent tools + prompt:
+- `nl2sql/agent_tools.py:get_schema`: structured schema (tables/columns/PK/FK)
+- `nl2sql/agent_tools.py:validate_sql`: schema + formatting validation before execution
+- `nl2sql/agent_tools.py:run_sql`: executes SQL (SELECT-only) and returns success/error + rows
+- `nl2sql/agent_tools.py:generate_sql` / `repair_sql`: LLM-based SQL generation/repair tools
+- `nl2sql/prompts.py:REACT_SYSTEM_PROMPT`: single system prompt for Thought/Action/Observation
 
 Evaluation:
 - `nl2sql/eval.py:eval_run`: baseline/QLoRA evaluation loop for VA/EM/EX
@@ -92,19 +101,15 @@ Evaluation:
 - `nl2sql/eval.py:test_suite_accuracy_for_item`: TS comparator (exec across DB replicas)
 
 Scripts:
-- `scripts/run_full_pipeline.py`: CLI mirror (baseline, qlora, small react check)
+- `scripts/run_full_pipeline.py`: CLI mirror (baseline, qlora, small reflection check)
 - `scripts/analyze_results.py`: heuristic failure breakdown for a JSON run
 
-Agent (canonical ReAct loop lives in code, notebook just configures it):
-- `nl2sql/agent.py:ReactConfig`: explicit bounds/toggles for the loop (steps, candidates, repair, optional `accept_score`, `verbose`).
-- `nl2sql/agent.py:ReactSqlAgent.react_sql`: bounded ReAct-style loop returning `(pred_sql, trace)`.
-- `nl2sql/agent.py:ReactSqlAgent._format_history_item`: explicit Action/Observation formatting used in the prompt.
-- Verbose tracing: set `ReactConfig.verbose=True` to print the full loop (prompt size, candidate evaluation, gates, repair).
-- Notebook config sets `accept_score` to enable multi-step refinement in practice.
-- ReAct prompts can include a small exemplar block (e.g., join example) via `REACT_EXEMPLARS` in the notebook.
-
-Notebooks (agent config + evaluation loop):
-- `notebooks/03_agentic_eval.ipynb`: imports `ReactSqlAgent`, sets `ReactConfig`, runs VA/EM/EX/TS evaluation and saves JSON.
+Agent (tool-driven ReAct loop lives in the notebook, tools live in code):
+- `nl2sql/agent_tools.py`: `get_schema`, `generate_sql`, `validate_sql`, `run_sql`, `repair_sql`, `finish`
+- `nl2sql/prompts.py`: `REACT_SYSTEM_PROMPT` (Thought/Action/Observation)
+- `notebooks/03_agentic_eval.ipynb`: defines `react_sql` tool loop and logs full traces
+- Verbose tracing: set the notebook flags to print full loop outputs for debugging.
+- The loop is bounded by `REACT_MAX_STEPS`.
 
 ---
 
@@ -124,11 +129,11 @@ You can describe the project as three progressively stronger "methods" run on th
    - notebook: `notebooks/05_qlora_train_eval.ipynb`
    - code: still uses `nl2sql/eval.py` for scoring; adapters loaded via PEFT
 
-3. Agentic ReAct loop (execution feedback + deterministic guards)
-   - bounded loop: generate candidates -> postprocess -> execute -> gate -> optionally repair -> repeat
-   - explicit Action/Observation history is injected into prompts; optional `accept_score` can force multi-step refinement
-   - notebook: `notebooks/03_agentic_eval.ipynb`
-   - code: uses `nl2sql/query_runner.py` for execution gating and `nl2sql/agent_utils.py` for constraints/scoring
+3. Agentic ReAct loop (tool-driven execution feedback)
+  - bounded loop: Thought → Action(tool) → Observation → repeat until `finish`
+  - `run_sql` must succeed before `finish`; errors trigger `repair_sql`
+  - notebook: `notebooks/03_agentic_eval.ipynb`
+  - code: tools in `nl2sql/agent_tools.py`, prompt in `nl2sql/prompts.py`
 
 Environment variables (do not hardcode values in write-up):
 - `INSTANCE_CONNECTION_NAME` (GCP Cloud SQL instance connection name)
@@ -330,29 +335,24 @@ Key trade-offs you should be ready to defend:
 
 ---
 
-## 5) The Agent (ReAct-Style Loop) - What Was Added Beyond "Just Prompting"
+## 5) The Agent (Tool‑Driven ReAct Loop) - What Was Added Beyond "Just Prompting"
 
 ### 5.1 What "ReAct" means here
 
 ReAct (Yao et al., 2023) is the pattern "Reasoning + Acting":
-- produce an intermediate trace (thought / action)
+- produce an intermediate trace (Thought / Action)
 - take an action in an external environment (here: execute SQL)
 - observe feedback (result preview or error)
 - use the observation to improve the next attempt
 
-In this project, the "Act" tool is `QueryRunner.run(sql)` (SELECT-only).
+In this project, the "Act" tool is `QueryRunner.run(sql)` (SELECT-only), exposed via `agent_tools.run_sql`.
 
 ### 5.2 Where the agent loop lives
 
 Canonical implementation (single source of truth):
-- `nl2sql/agent.py`:
-  - `ReactConfig` (bounds + toggles)
-  - `ReactSqlAgent.react_sql` (bounded ReAct-style loop returning `(pred_sql, trace)`)
-
-Notebook integration:
-- `notebooks/03_agentic_eval.ipynb`:
-  - config + instantiation: code cell `# 6) Agent implementation (imported)`
-  - evaluation: code cell `# 9) Full ReAct-style evaluation (VA/EX/EM/TS) ...`
+- `nl2sql/agent_tools.py` (tool interface)
+- `nl2sql/prompts.py` (system prompt for Thought/Action/Observation)
+- `notebooks/03_agentic_eval.ipynb` (defines the tool-driven `react_sql` loop)
 
 Reusable shared helpers used by the notebook:
 - `nl2sql/agent_utils.py`:
@@ -366,21 +366,12 @@ Reusable shared helpers used by the notebook:
 
 ### 5.3 The loop at a level you can explain in 60 seconds
 
-1. Build prompt(s): ReAct-style and optionally a "tabular reasoning" prompt.
-2. Generate multiple candidate SQL strings (sampling enabled to get diversity).
-3. Clean each candidate to keep only a usable SELECT.
-4. Apply deterministic postprocessing:
-   - `guarded_postprocess` (single SELECT, strip spurious ORDER BY/LIMIT, etc.)
-   - optional projection contract (only when the NLQ explicitly enumerates fields)
-5. Execution gate (Act):
-   - run candidate using `runner.run(sql)`
-   - on error: optionally run a bounded repair prompt using the DB error message, then re-gate
-6. Intent gate:
-   - reject candidates that violate NLQ intent constraints (e.g., top-k must have ORDER BY + LIMIT)
-7. Score candidates:
-   - lexical "semantic_score" + projection penalty + optional heuristics
-8. Keep best candidate and update observation; repeat for a bounded number of steps.
-9. If nothing works: fallback to a deterministic baseline candidate (few-shot) to avoid returning empty output.
+1. Bootstrap the trace with the user question and a `get_schema` observation.
+2. LLM outputs Thought + Action (tool call).
+3. Python executes the tool and returns Observation.
+4. Guardrails run between `generate_sql`/`repair_sql` and `run_sql`.
+5. `run_sql` must succeed before `finish`; failures feed into `repair_sql`.
+6. Loop is bounded by `REACT_MAX_STEPS`; fallback is used if it never finishes.
 
 ### 5.4 Why the agent is designed as "minimal interventions"
 
@@ -468,17 +459,12 @@ Key choices in `SYSTEM_INSTRUCTIONS` (and why):
 - "Use only tables/columns in schema" reduces hallucinations (schema linking failure).
 - "Routing hints" are a compromise: not full answers, but nudges to reduce common join mistakes.
 
-Agent prompts (used by the ReAct loop):
-- `nl2sql/agent.py` (`ReactSqlAgent._build_react_prompt`) includes:
-  - schema text
-  - NLQ
-  - previous trace
-  - last observation (error/result)
-- `nl2sql/agent.py` (`ReactSqlAgent._build_tabular_prompt`) encourages explicit table/join reasoning (but only outputs final SQL).
+Agent prompt (used by the tool‑driven ReAct loop):
+- `nl2sql/prompts.py:REACT_SYSTEM_PROMPT` defines the Thought/Action/Observation format.
+- The user prompt is the running trace (user question + Action/Observation history).
 
-Why have two prompt variants?
-- diversity: different prompt styles produce different candidates.
-- with sampling enabled, you can get a larger hypothesis space for repairs.
+Why a single system prompt?
+- reduces prompt‑engineering degrees of freedom and keeps the loop easier to audit.
 
 ---
 
@@ -561,7 +547,7 @@ Q: "How do you ensure the model cannot destroy your database?"
 A: "I enforce a read-only policy at the executor level. Both `QueryRunner._safety_check` and the EX harness `_safety_check` block DDL/DML keywords like DROP/DELETE/UPDATE/INSERT. It is not a perfect SQL sandbox, but in a controlled ClassicModels setting it is a pragmatic safety layer."
 
 Q: "What exactly is returned to the agent as observation?"
-A: "In the canonical agent (`nl2sql/agent.py`), each candidate is logged with an explicit Action/Observation pair. Observations are concise strings like `Execution error: ...`, `Intent mismatch: ...`, or `Rejected during cleanup: ...`. This is injected into the next prompt to make the ReAct feedback loop explicit. The QueryRunner also exposes a preview DataFrame, but the loop currently uses error strings rather than full previews."
+A: "In the tool-driven loop (`notebooks/03_agentic_eval.ipynb` + `nl2sql/agent_tools.py`), each tool call returns an Observation: schema text from `get_schema`, row previews or errors from `run_sql`, and validation/guardrail errors when cleanup fails. Those observations are appended to the running trace and fed back to the LLM on the next step."
 
 Q: "Do you commit to a single transaction? Any isolation concerns?"
 A: "For this dissertation harness, each query is executed independently in a short-lived connection. It's read-only SELECT execution. Isolation is not a focus, and consistency is assumed because the underlying dataset is static during evaluation."
@@ -583,13 +569,13 @@ A: "Externally: clone the base ClassicModels DB into multiple databases and appl
 ### 11.4 ReAct Loop Design
 
 Q: "How is your ReAct loop different from simply sampling 10 candidates and picking one?"
-A: "The key difference is observation feedback and bounded repair. I don't just sample and rerank; I execute candidates and use execution errors as observations. On error, I build a repair prompt that includes schema, the bad SQL, and the error string, then generate a bounded number of repairs. That is execution-guided, not just best-of-N sampling."
+A: "The key difference is observation feedback and bounded reflection. I don't just sample and rerank; I execute candidates and use execution errors as observations. On error, I build a reflection prompt that includes schema, the bad SQL, and the error string, then generate a bounded number of reflections. That is execution-guided, not just best-of-N sampling."
 
 Q: "Where is the 'act' step in ReAct?"
 A: "The act step is `runner.run(sql)` in `nl2sql/query_runner.py`. It's called in the agent loop to gate candidates and generate observations (success/error)."
 
 Q: "What stops the agent from looping forever?"
-A: "The loop is explicitly bounded by `CFG['max_steps']` in the notebook, and repair is also bounded (e.g., generate 4 repairs). This is deliberate for auditability and compute control."
+A: "The loop is explicitly bounded by `CFG['max_steps']` in the notebook, and reflection is also bounded (e.g., generate 4 reflections). This is deliberate for auditability and compute control."
 
 Q: "Why not use a real SQL parser / constrained decoder instead of regex guards?"
 A: "A full constrained decoder like PICARD is more principled, but it increases implementation scope and complexity. For an honors dissertation, I chose deterministic guards and lightweight parsing to keep the system explainable and to make each intervention traceable."
@@ -644,8 +630,8 @@ Use these as "just enough" academic justification in a viva. They are paraphrase
   - supports the general principle of output constraints; this project uses simpler deterministic guards
 
 - Zhai et al. (2025) ExCoT:
-  - execution feedback improves Text-to-SQL reasoning/repair
-  - supports the idea of error-guided retries / repair prompts
+  - execution feedback improves Text-to-SQL reasoning/reflection
+  - supports the idea of error-guided retries / reflection prompts
 
 - Ding et al. (2023) PEFT survey:
   - supports LoRA/QLoRA as a pragmatic fine-tuning approach when full fine-tuning is expensive
@@ -664,7 +650,7 @@ DB execution in one sentence:
 - "I connect via Cloud SQL Connector, wrap it in a SQLAlchemy Engine using the creator hook, then run SELECT-only queries through a QueryRunner that returns success/errors and a preview."
 
 ReAct in one sentence:
-- "The agent loops for a small fixed number of steps, generating multiple candidates, applying deterministic guards, executing them for feedback, and using bounded repair prompts when execution fails."
+- "The agent runs a bounded Thought → Action → Observation loop where the LLM selects tools, Python executes them, and execution errors drive `repair_sql` before `finish`."
 
 TS in one sentence:
 - "TS runs gold and predicted SQL across multiple perturbed DB replicas and only passes if they match everywhere, making the evaluation more robust than single-DB execution."

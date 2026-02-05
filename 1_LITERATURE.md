@@ -44,13 +44,14 @@ Key sources:
 
 ---
 
-## Agentic Execution Feedback (ReAct / ExCoT)
+## Agentic Execution Feedback (ReAct / ExCoT / Agent-Mediated NL→SQL)
 
-Execution feedback is the main theoretical justification for the agent loop. ReAct formalizes an action-observation loop, and ExCoT shows execution feedback can improve Text-to-SQL reasoning. This motivates a bounded, explainable loop rather than unstructured self-reflection.
+Execution feedback is the main theoretical justification for the agent loop. ReAct formalizes an action-observation loop, ExCoT shows execution feedback can improve Text-to-SQL reasoning, and Ojuri et al. explicitly frame agent-mediated NL→SQL workflows with validation and remediation steps. This motivates a bounded, explainable loop rather than unstructured self-reflection.
 
 Key sources:
 - `REFERENCES.md#ref-yao2023-react`
 - `REFERENCES.md#ref-zhai2025-excot`
+- `REFERENCES.md#ref-ojuri2025-agents`
 
 ---
 
@@ -73,4 +74,3 @@ The project is intentionally iterative and evaluation-driven:
 - Add an execution-guided agent loop to correct runnable-but-wrong SQL.
 
 This mirrors the methodological ladder in the experiments and keeps claims limited to what the evaluation harness can support.
-
