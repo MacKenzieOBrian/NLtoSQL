@@ -234,10 +234,10 @@ def run_react_small(
             max_steps=3,
             num_cands=4,
             do_sample=True,
-            enable_repair=True,
-            use_tabular_prompt=True,
+            enable_reflection=True,
             use_schema_subset=True,
             use_projection_contract=True,
+            reflection_num_cands=4,
         ),
     )
 

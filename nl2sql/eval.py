@@ -102,6 +102,7 @@ def execution_accuracy(
     gold_sql: str,
     max_compare_rows: int = 10000,
 ) -> tuple[bool, str | None, str | None]:
+    # EX is strict and may penalise semantically equivalent SQL (projection/alias drift).
     # EX is computed by executing BOTH predicted and gold SQL and comparing results.
     # We intentionally compare row tuples as a multiset (Counter) to:
     # - ignore row order when no ORDER BY is specified

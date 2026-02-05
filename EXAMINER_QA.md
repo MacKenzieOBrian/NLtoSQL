@@ -231,12 +231,11 @@ Related literature:
 ### Q: "Why do you penalize the number of selected columns?"
 
 Model answer (say this):
-"In early runs the model often produced executable SQL that selected extra columns 'just in case'. That harms interpretability and can inflate EM mismatches. A simple projection penalty via `count_select_columns` biases selection toward minimal projections once multiple candidates are executable. It is not a proof of correctness, just a tie-breaker aligned with the prompt rule 'select only needed columns'."
+"In early runs the model often produced executable SQL that selected extra columns 'just in case'. That harms interpretability and can inflate EM mismatches. In the legacy candidate‑ranking loop I used a projection penalty via `count_select_columns` as a tie‑breaker; the current tool‑driven ReAct loop relies on deterministic projection contracts instead of scoring."
 
 Code pointers:
-- `nl2sql/agent_utils.py:count_select_columns`
-- `nl2sql/agent.py:ReactConfig` (`column_penalty`)
-- `nl2sql/agent.py:ReactSqlAgent.evaluate_candidate` (where the penalty is applied)
+- `nl2sql/agent_utils.py:count_select_columns` (legacy ranking)
+- `nl2sql/agent.py` (legacy candidate-based loop)
 
 Related literature:
 - [Yu et al., 2018](REFERENCES.md#ref-yu2018-spider) (strictness of evaluation encourages stable, minimal outputs)
@@ -248,10 +247,10 @@ Related literature:
 ### Q: "How do you stop the model from generating a long explanation after the SQL?"
 
 Model answer (say this):
-"In the agent notebook I use a generation stopping criterion that stops at the first semicolon. That reduces a common VA failure where the model appends an explanation after a valid SELECT, making the full output non-executable."
+"In the tool‑driven loop I rely on `clean_candidate_with_reason` and `first_select_only` to trim output at the first SELECT/semicolon and drop trailing explanations. The legacy agent loop also used a stop‑on‑semicolon decoding criterion."
 
 Code pointers:
-- `nl2sql/agent.py:_StopOnSemicolon` (used in `ReactSqlAgent.generate_candidates`)
+- `nl2sql/postprocess.py:first_select_only`
 - `nl2sql/agent_utils.py:clean_candidate_with_reason` (also cuts at first `;`)
 - `nl2sql/llm.py:extract_first_select` (baseline extraction)
 
@@ -263,7 +262,7 @@ Related literature:
 ### Q: "Why do you strip prompt echo and keep only the first SELECT?"
 
 Model answer (say this):
-"Prompt echo and multi-statement outputs were a repeated failure mode: the model sometimes repeats schema text or outputs multiple queries. I handle this in multiple layers: `extract_first_select` and `first_select_only` keep only the first SELECT block, and the agent helper layer strips common echo patterns. This improves VA and keeps traces readable."
+"Prompt echo and multi-statement outputs were a repeated failure mode: the model sometimes repeats schema text or outputs multiple queries. I handle this in multiple layers: `extract_first_select` and `first_select_only` keep only the first SELECT block, and the agent helper layer strips common echo patterns. The cleaner also rejects empty/keyword‑soup projections before execution to avoid wasting reflection cycles. This improves VA and keeps traces readable."
 
 Code pointers:
 - `nl2sql/llm.py:extract_first_select`
@@ -283,18 +282,17 @@ Code pointers:
 
 ---
 
-## Agent Loop (ReAct + Execution Feedback)
+## Agent Loop (Tool‑Driven ReAct + Execution Feedback)
 
 ### Q: "Where is the ReAct loop implemented in your project?"
 
 Model answer (say this):
-"The canonical ReAct-style loop is implemented in code (`nl2sql/agent.py:ReactSqlAgent.react_sql`). The agentic notebook imports it, sets an explicit `ReactConfig` (bounds + toggles), and then runs a per-item evaluation loop that computes VA/EM/EX/TS. Moving the loop into a module makes it easier to defend because there is one source of truth shared between notebooks and scripts."
+"The tool‑driven ReAct loop lives in `notebooks/03_agentic_eval.ipynb` as the `react_sql` function. The tools themselves live in `nl2sql/agent_tools.py`, and the single system prompt for Thought/Action/Observation is in `nl2sql/prompts.py`. This makes the action space explicit and the trace auditable."
 
 Code pointers:
-- `nl2sql/agent.py:ReactSqlAgent.react_sql`
-- `nl2sql/agent.py:ReactConfig`
-- `notebooks/03_agentic_eval.ipynb` (cell `# 6) Agent implementation (imported)` config + instantiation)
-- `nl2sql/agent_utils.py` (`intent_constraints`, `semantic_score`, `count_select_columns`)
+- `notebooks/03_agentic_eval.ipynb` (cell `# 6) Tool-driven ReAct loop`)
+- `nl2sql/agent_tools.py` (tool interface)
+- `nl2sql/prompts.py` (`REACT_SYSTEM_PROMPT`)
 - `nl2sql/query_runner.py:QueryRunner.run` (Act step)
 
 Related literature:
@@ -306,101 +304,83 @@ Related literature:
 ### Q: "What is the 'Act' tool and what is the observation in your ReAct loop?"
 
 Model answer (say this):
-"The Act tool is executing SQL against the database via `runner.run(sql)` (QueryRunner). Each candidate is logged with an explicit Action/Observation pair: observations include cleanup rejections, execution errors, or intent mismatches. Those short observation strings are injected into the next prompt so the ReAct loop is explicit, not implicit."
+"The Act tool is executing SQL against the database via `agent_tools.run_sql` (QueryRunner). Observations are the tool outputs: schema text from `get_schema`, row previews or errors from `run_sql`, and guardrail/intent failures when a query is invalid. Each observation is appended to the trace and fed back to the LLM."
 
 Code pointers:
-- `nl2sql/query_runner.py:QueryRunner.run`
-- `nl2sql/agent.py:ReactSqlAgent.react_sql` (how errors become observations and drive retries/repair)
+- `nl2sql/agent_tools.py:run_sql`
+- `nl2sql/agent_tools.py:get_schema`
+- `notebooks/03_agentic_eval.ipynb` (tool loop trace)
 
 Related literature:
-- [Yao et al., 2023](REFERENCES.md#ref-yao2023-react) (act + observation loop)
-- [Zhai et al., 2025](REFERENCES.md#ref-zhai2025-excot) (execution feedback for Text-to-SQL)
+- [Yao et al., 2023](REFERENCES.md#ref-yao2023-react)
+- [Zhai et al., 2025](REFERENCES.md#ref-zhai2025-excot)
 
 ---
 
-### Q: "How is the Action/Observation history actually represented in the prompt?"
+### Q: "How is the Thought/Action/Observation history represented in the prompt?"
 
 Model answer (say this):
-"The agent formats recent trace items into explicit `Action:` and `Observation:` lines using `ReactSqlAgent._format_history_item`. It keeps only the last few items to control prompt length. This makes the loop ReAct-like in structure rather than just re-trying silently."
+"`REACT_SYSTEM_PROMPT` enforces the Thought/Action/Observation format. The user prompt is the running trace (user question + Action/Observation lines). The LLM emits Thought/Action; Python executes the tool and appends Observation."
 
 Code pointers:
-- `nl2sql/agent.py:ReactSqlAgent._format_history_item`
-- `nl2sql/agent.py:ReactSqlAgent._build_react_prompt`
+- `nl2sql/prompts.py:REACT_SYSTEM_PROMPT`
+- `notebooks/03_agentic_eval.ipynb` (tool loop history)
 
 Related literature:
 - [Yao et al., 2023](REFERENCES.md#ref-yao2023-react)
 
 ---
 
-### Q: "What is `accept_score` and why did you add it?"
-
-Model answer (say this):
-"`accept_score` is an optional threshold in `ReactConfig`. If it’s set, the loop only returns a candidate when its score clears that threshold; otherwise it keeps iterating until it hits the step budget. This makes multi‑step refinement meaningful but still bounded and explainable. In the notebook I set it explicitly so the loop actually performs multi‑step refinement during evaluation."
-
-Code pointers:
-- `nl2sql/agent.py:ReactConfig` (`accept_score`)
-- `nl2sql/agent.py:ReactSqlAgent.react_sql`
-
----
-
 ### Q: "How do you debug the full ReAct process end‑to‑end?"
 
 Model answer (say this):
-"I turn on `ReactConfig.verbose=True`. That prints prompt settings, candidate counts, postprocess changes, gate outcomes, scores, and repair attempts. It gives a full readable trace without changing the model logic."
+"I enable trace printing in the notebook (e.g., `DEBUG_TRACE=True`) and inspect the recorded Thought/Action/Observation steps. The trace makes it clear which tool failed and why."
 
 Code pointers:
-- `nl2sql/agent.py:ReactConfig` (`verbose`)
-- `nl2sql/agent.py:ReactSqlAgent._debug`
+- `notebooks/03_agentic_eval.ipynb` (quick check cell + trace printing)
 
 ---
 
 ### Q: "Did you add any exemplars to the ReAct prompt? Why?"
 
 Model answer (say this):
-"Yes, I inject a very small exemplar block into the ReAct and tabular prompts (via `REACT_EXEMPLARS` in the notebook). The goal is to anchor join patterns, which were the most common EX failures. It’s explicit and logged so the trade‑off (possible leakage if exemplars come from the test set) is transparent."
+"The tool‑driven ReAct prompt itself does not use exemplars; it uses schema + execution feedback. Exemplars are only used in the deterministic fallback (`vanilla_candidate`) to avoid returning empty output."
 
 Code pointers:
-- `nl2sql/agent.py:ReactSqlAgent._format_exemplars`
-- `nl2sql/agent.py:_build_react_prompt` / `_build_tabular_prompt`
-- `notebooks/03_agentic_eval.ipynb` (REACT_EXEMPLARS)
+- `nl2sql/agent_tools.py:generate_sql` (schema‑grounded)
+- `nl2sql/agent_utils.py:vanilla_candidate` (fallback)
 
 ---
 
 ### Q: "How do you keep the agent loop from running forever or becoming un-auditable?"
 
 Model answer (say this):
-"The loop is explicitly bounded by a small maximum number of steps, and repair is also bounded to a small number of candidates. This is deliberate: it controls compute cost and keeps traces short enough to audit and discuss in the dissertation."
+"The loop is explicitly bounded by `REACT_MAX_STEPS`, and each step is a single tool call with a recorded observation. That keeps compute bounded and the trace short enough to audit."
 
 Code pointers:
-- `nl2sql/agent.py:ReactConfig` (`max_steps`, `num_cands`, `enable_repair`, `repair_num_cands`)
-- `notebooks/03_agentic_eval.ipynb` (cell `# 6) Agent implementation (imported)` sets the config explicitly)
+- `notebooks/03_agentic_eval.ipynb` (tool loop settings)
 
 ---
 
-### Q: "Why do you generate multiple candidates per step instead of one?"
+### Q: "Why not generate multiple candidates per step?"
 
 Model answer (say this):
-"Because Text-to-SQL generation is brittle: a single sample can fail due to one wrong column or join. Generating a small set of diverse candidates increases the chance that at least one is executable and semantically close. The system still remains explainable because candidates are postprocessed deterministically, executed, gated by intent constraints, and logged in the trace."
+"In the tool‑driven loop each action produces a single SQL candidate, which keeps the Thought/Action/Observation trace clear. Diversity comes from multiple tool steps (generate → run → repair). If needed, a best‑of‑N variant could be added, but the current design prioritizes auditability."
 
 Code pointers:
-- `nl2sql/agent.py:ReactSqlAgent.generate_candidates`
-- `nl2sql/agent.py:ReactSqlAgent.evaluate_candidate` (gates + scoring)
-- `nl2sql/agent_utils.py:semantic_score`, `count_select_columns`
-
-Related literature:
-- [Zhai et al., 2025](REFERENCES.md#ref-zhai2025-excot) (benefits of execution feedback and iteration)
+- `notebooks/03_agentic_eval.ipynb` (tool loop)
+- `nl2sql/agent_tools.py:generate_sql` / `repair_sql`
 
 ---
 
 ### Q: "Is your agent deterministic? If not, how do you defend the evaluation?"
 
 Model answer (say this):
-"The baseline evaluation harness is deterministic by default (`nl2sql/llm.py:generate_sql_from_messages` sets `do_sample=False`). The agent loop may use sampling to create diverse candidates, so it is stochastic. To defend results, I log full traces and keep the loop bounded; for stronger rigor, I would report variance across multiple seeds/runs."
+"The baseline harness is deterministic by default (`nl2sql/llm.py:generate_sql_from_messages` uses `do_sample=False`). The tool‑driven loop also runs deterministically unless I explicitly enable sampling in the notebook. Full traces are logged, and the loop is bounded."
 
 Code pointers:
 - `nl2sql/llm.py:generate_sql_from_messages` (deterministic baseline)
-- `nl2sql/agent.py:ReactConfig` (`do_sample`, `temperature`, `top_p`)
-- `notebooks/03_agentic_eval.ipynb` (cell `# 6) Agent implementation (imported)` sets sampling explicitly)
+- `notebooks/03_agentic_eval.ipynb` (tool loop settings)
 
 Related literature:
 - [Mosbach et al., 2023](REFERENCES.md#ref-mosbach2023-icl) (fair comparisons; controlling confounds)
@@ -412,12 +392,12 @@ Related literature:
 ### Q: "What are the acceptance criteria for a candidate SQL in your agent loop?"
 
 Model answer (say this):
-"A candidate has to pass an execution gate and an intent gate before it is eligible to be the final answer. The execution gate is `QueryRunner.run(sql)` (it must execute successfully as a SELECT). The intent gate is `nl2sql/agent_utils.py:intent_constraints(nlq, sql)`, which rejects SQL that contradicts the NLQ intent (e.g., top-k requires ORDER BY and LIMIT). Only candidates that pass gates are scored and compared."
+"In the tool‑driven loop, a SQL must pass guardrails and execute successfully via `run_sql` before it can be finished. If execution fails or the intent gate fails, the loop records the error as an observation and triggers `repair_sql`. The acceptance criterion is simply: passes execution + intent constraints."
 
 Code pointers:
-- `nl2sql/query_runner.py:QueryRunner.run`
+- `nl2sql/agent_tools.py:run_sql`
 - `nl2sql/agent_utils.py:intent_constraints`
-- `nl2sql/agent.py:ReactSqlAgent.evaluate_candidate`
+- `notebooks/03_agentic_eval.ipynb` (tool loop)
 
 Related literature:
 - [Yao et al., 2023](REFERENCES.md#ref-yao2023-react) (tool gating via observations)
@@ -428,13 +408,11 @@ Related literature:
 ### Q: "How do you score candidates, exactly?"
 
 Model answer (say this):
-"Candidate scoring is explicit and auditable: `score = semantic_score(nlq, sql) - column_penalty * count_select_columns(sql) + extra_score_fn(nlq, sql)`. `semantic_score` is a lightweight lexical heuristic that includes a small bonus for explicit NLQ values (e.g., 'USA', 'San Francisco') and a penalty if explicitly requested fields are missing. `count_select_columns` penalizes wide projections. `column_penalty` is a config constant, and `extra_score_fn` is an optional hook that defaults to 0.0 so additional heuristics are clearly separated."
+"The current tool‑driven loop does not use candidate scoring; it relies on execution + intent gates and repair when needed. Scoring heuristics (semantic_score, column penalties) are kept in the legacy candidate‑ranking loop for comparison."
 
 Code pointers:
-- `nl2sql/agent.py:ReactConfig` (`column_penalty`)
-- `nl2sql/agent.py:ReactSqlAgent.evaluate_candidate` (implements the formula)
-- `nl2sql/agent_utils.py:semantic_score`
-- `nl2sql/agent_utils.py:count_select_columns`
+- `nl2sql/agent_utils.py:semantic_score` (legacy heuristic)
+- `nl2sql/agent.py` (legacy candidate-based loop)
 
 Related literature:
 - [Ojuri et al., 2025](REFERENCES.md#ref-ojuri2025-agents) (agent + heuristic evaluation framing)
@@ -444,7 +422,7 @@ Related literature:
 ### Q: "You call it semantic_score. Is it actually semantic?"
 
 Model answer (say this):
-"No, it is not a formal semantic parser. It is a transparent lexical heuristic: it gives points when NLQ keywords align with SQL tokens and penalizes missing expected aggregates. I treat it as a lightweight reranker to choose among already executable candidates, not as a correctness proof."
+"No, it is not a formal semantic parser. It is a transparent lexical heuristic used in the legacy candidate‑ranking loop, not in the current tool‑driven ReAct loop."
 
 Code pointers:
 - `nl2sql/agent_utils.py:semantic_score` (token overlap + keyword hints)
@@ -454,7 +432,7 @@ Code pointers:
 ### Q: "Why do you give extra points for literal values like 'USA' or 'San Francisco'?"
 
 Model answer (say this):
-"Those are strong cues that a candidate captured the intended filter. I extract likely literal values from the NLQ (quoted strings, capitalized multi‑word names, abbreviations) and add a small bonus if they appear in the SQL. It’s a lightweight heuristic to avoid returning queries that miss obvious filters."
+"Those are strong cues that a candidate captured the intended filter. That heuristic exists in the legacy ranking loop; the current tool‑driven loop instead relies on execution feedback and explicit repairs."
 
 Code pointers:
 - `nl2sql/agent_utils.py:_extract_value_hints`
@@ -465,19 +443,19 @@ Code pointers:
 ### Q: "How do you handle NLQs that explicitly list fields (e.g., 'names, codes, and MSRPs')?"
 
 Model answer (say this):
-"I detect explicitly enumerated fields with a lightweight synonym map and check whether the SQL includes them. If fields are missing, the candidate gets a scoring penalty and the ReAct trace logs an observation like 'Missing requested fields: productCode' so the next step can correct it. This is still deterministic and doesn’t use gold SQL."
+"I detect explicitly enumerated fields with a lightweight synonym map and use a projection contract to enforce output shape. If a generated SQL misses explicit fields, guardrails flag it and the agent repairs via `repair_sql`. This is deterministic and doesn’t use gold SQL."
 
 Code pointers:
 - `nl2sql/agent_utils.py:missing_explicit_fields`
-- `nl2sql/agent_utils.py:semantic_score`
-- `nl2sql/agent.py:ReactSqlAgent.evaluate_candidate`
+- `nl2sql/agent_utils.py:enforce_projection_contract`
+- `notebooks/03_agentic_eval.ipynb` (guardrail + repair in tool loop)
 
 ---
 
 ### Q: "What is the intent gate doing, concretely?"
 
 Model answer (say this):
-"`intent_constraints` classifies the NLQ into a coarse intent (lookup, aggregate, grouped aggregate, topk) and checks for required SQL structures (e.g., grouped aggregate requires both an aggregate function and GROUP BY; topk requires ORDER BY and LIMIT). This prevents a frequent failure mode where executable SQL answers a different question than asked."
+"`intent_constraints` classifies the NLQ into a coarse intent (lookup, aggregate, grouped aggregate, topk) using cues like “how many/number of/how much,” then checks for required SQL structures (e.g., grouped aggregate requires both an aggregate function and GROUP BY; topk requires ORDER BY and LIMIT). Depending on config, mismatches are hard‑rejected or soft‑penalized. This prevents a frequent failure mode where executable SQL answers a different question than asked."
 
 Code pointers:
 - `nl2sql/agent_utils.py:classify_intent`
@@ -488,17 +466,18 @@ Related literature:
 
 ---
 
-### Q: "When do you trigger repair, and what exactly goes into the repair prompt?"
+### Q: "When do you trigger reflection, and what exactly goes into the reflection prompt?"
 
 Model answer (say this):
-"Repair is triggered only after an execution error. The repair prompt includes the schema context, the user question, the failing SQL, and the database error message. Repair generation is bounded (a small number of fix candidates) and every proposed fix must pass the same execution and intent gates before it can be accepted."
+"Repair is triggered whenever `run_sql` returns an error or the intent gate fails. The repair tool receives the NLQ, the bad SQL, and the error string, and generates a revised query. The loop is bounded by `REACT_MAX_STEPS` and only finishes after a successful `run_sql`."
 
 Code pointers:
-- `nl2sql/agent.py:ReactSqlAgent.repair_sql`
-- `nl2sql/query_runner.py:QueryRunner.run` (execution gate used before and after repair)
+- `nl2sql/agent_tools.py:repair_sql`
+- `nl2sql/agent_tools.py:run_sql`
+- `notebooks/03_agentic_eval.ipynb` (tool loop)
 
 Related literature:
-- [Zhai et al., 2025](REFERENCES.md#ref-zhai2025-excot) (execution feedback for repair)
+- [Zhai et al., 2025](REFERENCES.md#ref-zhai2025-excot) (execution feedback for reflection)
 
 ---
 
