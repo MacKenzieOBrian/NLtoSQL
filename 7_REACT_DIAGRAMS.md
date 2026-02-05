@@ -50,6 +50,54 @@ flowchart TD
 
 ---
 
+**Legacy ReAct‑Inspired Loop (Candidate Ranking, Pre Tool‑Driven)**
+
+This diagram reflects the older loop in `nl2sql/agent.py` (candidate generation, scoring, and optional reflection). It is *not* an explicit tool‑action loop.
+
+```mermaid
+flowchart TD
+  A[User NLQ] --> P[Build ReAct prompt\n(schema + history + observation)]
+  P --> G[Generate candidates\n1 greedy + N sampled]
+  G --> PF[Prefilter + clean candidate]
+  PF --> PP[Postprocess + clamps]
+  PP --> SV{Schema valid?}
+  SV -->|no| OBS[Update observation]
+  SV -->|yes| EXE[run_sql]
+  EXE --> EXOK{Exec OK?}
+  EXOK -->|no| OBS
+  EXOK -->|yes| INT{Intent OK?}
+  INT -->|no| OBS
+  INT -->|yes| SCORE[semantic score]
+  SCORE --> BEST[select best candidate]
+  BEST --> ACC{Score >= threshold?}
+  ACC -->|yes| FIN[return SQL + trace]
+  ACC -->|no| OBS
+
+  OBS --> P
+
+  NONE{No valid candidates?} --> REF{Reflection enabled?}
+  REF -->|yes| R[reflect_sql\n(LLM repair)]
+  R --> PP
+  REF -->|no| FB[Fallback: vanilla candidate]
+  FB --> FIN
+```
+
+---
+
+**Comparison Summary (Legacy vs Tool‑Driven)**
+
+| Aspect | Legacy candidate loop (`nl2sql/agent.py`) | Tool‑driven loop (`notebooks/03_agentic_eval.ipynb`) |
+|---|---|---|
+| Action space | Implicit (LLM only generates SQL) | Explicit tools (get_schema, link_schema, extract_constraints, generate_sql, validate_sql, validate_constraints, run_sql, repair_sql, finish) |
+| Observation | Derived from internal logs | Explicit tool observations appended to trace |
+| Validation | Embedded checks during candidate evaluation | Explicit `validate_sql` + `validate_constraints` tools |
+| Repair policy | Optional reflection after failures | Forced repair on validation/execution errors |
+| Schema linking | Heuristic subset inside prompt builder | Explicit `link_schema` tool |
+| Constraints | Heuristics inside evaluation | Explicit `extract_constraints` tool + validator |
+| Traceability | Candidate log + scores | Decision log + compliance summary |
+
+---
+
 **Methodology Pipeline (Literature‑Aligned Evaluation)**
 
 ```mermaid
