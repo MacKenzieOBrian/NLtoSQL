@@ -29,9 +29,12 @@ REQUIRED_FILES = [
 
 REQUIRED_TOOL_FUNCS = [
     "get_schema",
+    "link_schema",
+    "extract_constraints",
     "get_table_samples",
     "generate_sql",
     "validate_sql",
+    "validate_constraints",
     "run_sql",
     "repair_sql",
     "finish",
@@ -39,9 +42,13 @@ REQUIRED_TOOL_FUNCS = [
 
 REQUIRED_PROMPT_RULES = [
     "Only use tables and columns from get_schema",
+    "After get_schema, call link_schema before generate_sql",
+    "After link_schema, call extract_constraints before generate_sql",
     "After generate_sql or repair_sql, call validate_sql",
+    "If validate_sql passes, call validate_constraints",
+    "If validate_constraints fails, call repair_sql",
+    "If validate_constraints passes, call run_sql",
     "If validate_sql fails, call repair_sql",
-    "If validate_sql passes, call run_sql",
     "Always call run_sql before finish",
 ]
 
@@ -84,8 +91,16 @@ def _check_notebook_loop() -> list[str]:
         errors.append("Notebook missing react_sql definition.")
     if '"validate_sql": validate_sql' not in code:
         errors.append("Notebook TOOLS missing validate_sql.")
+    if '"extract_constraints": extract_constraints' not in code:
+        errors.append("Notebook TOOLS missing extract_constraints.")
+    if '"validate_constraints": validate_constraints' not in code:
+        errors.append("Notebook TOOLS missing validate_constraints.")
+    if '"link_schema": link_schema' not in code:
+        errors.append("Notebook TOOLS missing link_schema.")
     if "Must call validate_sql before run_sql" not in code:
         errors.append("Notebook missing validate_sql -> run_sql gating.")
+    if "Must call validate_constraints before run_sql" not in code:
+        errors.append("Notebook missing validate_constraints -> run_sql gating.")
     if "_apply_guardrails" not in code:
         errors.append("Notebook missing guardrails application.")
     return errors
