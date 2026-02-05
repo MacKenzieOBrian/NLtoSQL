@@ -273,6 +273,28 @@ Code: `notebooks/03_agentic_eval.ipynb`
 - **Reason:** mirror the Ojuri validation step explicitly and reduce invalid executions before hitting the database.  
 - **Effect:** tighter ReAct compliance and higher VA/EX/TS potential by catching schema errors earlier.  
 
+### 2026-02-05 — Add Schema Linking Tool (ReAct Step #1.5)
+- **Change:** added `link_schema` to the tool interface and prompt; it applies heuristic schema‑subset selection with join hints.  
+- **Change:** updated the notebook loop to bootstrap with `get_schema` → `link_schema` before SQL generation.  
+- **Reason:** reduce wrong‑table/join errors by narrowing schema context while keeping the loop explicit and auditable.  
+- **Effect:** improves EX/TS by steering generation toward relevant tables; still heuristic and logged as such.  
+
+### 2026-02-05 — Force Repair After Validation/Execution Errors
+- **Change:** the tool loop now forces `repair_sql` when `validate_sql` or `run_sql` fails, overriding any other model action.  
+- **Reason:** reduces action drift and keeps the ReAct loop faithful to error‑recovery semantics.  
+- **Effect:** higher likelihood of recovery within the step budget; trace logs record forced actions.  
+
+### 2026-02-05 — Add Constraint Extraction + Validation Tools
+- **Change:** added `extract_constraints` and `validate_constraints` to the tool interface and prompt.  
+- **Change:** the loop now extracts structural constraints (aggregation, order, limit, distinct) and enforces them before execution.  
+- **Reason:** many EX/TS failures are structural (missing COUNT/GROUP BY/LIMIT); explicit constraints tighten generation and acceptance.  
+- **Effect:** improved semantic alignment without changing model weights; still heuristic and auditable.  
+
+### 2026-02-05 — Decision Log + Compliance Summary
+- **Change:** added per‑query decision logs (reasoned actions + outcomes) and compliance summaries for the ReAct loop.  
+- **Reason:** dissertation‑grade auditability requires explaining every accept/reject in one sentence.  
+- **Effect:** traces now include formatted decision records and compliance flags suitable for demos and error analysis.  
+
 ### 2026-02-04 — ReAct Loop Tuning (Intent + Generation + Budget)
 - **Decision:** reduce false intent rejections and syntax junk seen in the partial `results_react_200 (2)` trace by adjusting intent detection and candidate generation.
 - **Change:** expanded intent cues to include common aggregate phrasing (“how many”, “number of”, “how much”).  

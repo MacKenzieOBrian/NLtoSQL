@@ -4,13 +4,44 @@ This file is intentionally "too detailed": it is meant to be pasted into another
 
 It is written to match the current code in this repo (not vague textbook definitions).
 
-Last updated: 2026-02-05 (tool-driven ReAct loop with explicit actions + validation step)
+Last updated: 2026-02-05 (tool-driven ReAct loop with explicit actions + validation + schema linking)
 
 ---
 
 ## 0) One Paragraph Summary (If You Get Interrupted)
 
-This project builds and evaluates a Natural Language -> SQL (MySQL) system over the ClassicModels database. It starts with a baseline prompt + few-shot in-context learning, adds QLoRA adapters for parameter-efficient fine-tuning, and then adds a tool‑driven ReAct loop where the LLM explicitly chooses tools (generate SQL, validate SQL, run SQL, repair SQL) and uses database execution as environment feedback. Deterministic guardrails are applied between generation and execution to improve executability and semantic correctness. Evaluation is reported using VA (valid SQL / executability), EM (normalized exact match), EX (execution accuracy by result-set comparison on the base DB), and TS (test-suite accuracy across multiple perturbed DB replicas).
+This project builds and evaluates a Natural Language -> SQL (MySQL) system over the ClassicModels database. It starts with a baseline prompt + few-shot in-context learning, adds QLoRA adapters for parameter-efficient fine-tuning, and then adds a tool‑driven ReAct loop where the LLM explicitly chooses tools (link schema, extract constraints, generate SQL, validate SQL, validate constraints, run SQL, repair SQL) and uses database execution as environment feedback. Deterministic guardrails are applied between generation and execution to improve executability and semantic correctness. Evaluation is reported using VA (valid SQL / executability), EM (normalized exact match), EX (execution accuracy by result-set comparison on the base DB), and TS (test-suite accuracy across multiple perturbed DB replicas).
+
+---
+
+## 0.1) Discovery Narrative (From LOGBOOK Dates)
+
+This is the short, defensible story of *how* the method evolved. It is based on the dated entries in `LOGBOOK.md` and is meant to be said out loud.
+
+**Narrative arc (one paragraph)**  
+I began by scoping the problem and identifying a reproducibility gap (Sep–Oct 2025), then built a deterministic prompting baseline and learned that VA can improve without semantic gains. I introduced QLoRA to test whether lightweight fine‑tuning fixes semantic joins/aggregates (Jan 2026), but execution‑guided experiments showed that feedback alone does not fix semantic routing. That pushed me toward explicit guardrails (projection, intent, schema subset) and then toward a *true* tool‑driven ReAct loop with validation and auditable decision logs (Feb 2026), so each accept/reject can be justified.
+
+**Timeline anchors**  
+- **2025-09-29** — Scoping: identified the reproducibility gap and narrowed the scope to ClassicModels.  
+- **2025-10-06 to 2025-10-13** — Literature consolidation: shifted evaluation emphasis from EM to EX/TS for semantic validity.  
+- **2025-12-14** — Baseline prompting: VA improved, EX remained low; prompted the move to PEFT.  
+- **2026-01-12** — QLoRA: EX improved but still relied on prompting for schema grounding.  
+- **2026-01-23 to 2026-01-25** — Early ReAct/guardrails: VA high, EX low → “semantic bottleneck” diagnosis.  
+- **2026-01-31** — Control layer: projection/intent/schema‑subset guardrails added to target EX failures.  
+- **2026-02-01 to 2026-02-02** — TS harness and quick‑test toggles: enabled semantic robustness checks.  
+- **2026-02-04** — Pivot to explicit ReAct: replaced candidate‑ranking with a tool‑driven Thought→Action→Observation loop.  
+- **2026-02-05** — Tightened loop: added validation, schema linking, constraints, forced repair, and decision logs.
+
+**What I learned at each stage**  
+- Baselines expose *where* errors come from (shape, intent, schema), not just how many.  
+- Execution feedback only helps if the loop is explicit and bounded; otherwise it drifts.  
+- TS reveals semantic errors that EX can miss on a single DB snapshot.  
+
+**What I chose *not* to do (and why)**  
+- **No learned schema linker** — would add a second model and reduce interpretability; kept heuristic and auditable.  
+- **No full distilled test‑suite construction** — TS is suite‑based (perturbed replicas) due to time/compute constraints.  
+- **No unbounded reflection** — bounded steps keep behavior interpretable and evaluation costs stable.  
+- **No heavy search / beam‑ranking pipeline** — candidate ranking obscured the ReAct action/observation contract.  
 
 ---
 
@@ -90,7 +121,10 @@ Agent utilities (lightweight heuristics):
 
 Agent tools + prompt:
 - `nl2sql/agent_tools.py:get_schema`: structured schema (tables/columns/PK/FK)
+- `nl2sql/agent_tools.py:link_schema`: heuristic schema linker (subset + join hints)
+- `nl2sql/agent_tools.py:extract_constraints`: heuristic constraint extraction (aggregate/limit/order/distinct)
 - `nl2sql/agent_tools.py:validate_sql`: schema + formatting validation before execution
+- `nl2sql/agent_tools.py:validate_constraints`: constraint validation before execution
 - `nl2sql/agent_tools.py:run_sql`: executes SQL (SELECT-only) and returns success/error + rows
 - `nl2sql/agent_tools.py:generate_sql` / `repair_sql`: LLM-based SQL generation/repair tools
 - `nl2sql/prompts.py:REACT_SYSTEM_PROMPT`: single system prompt for Thought/Action/Observation
@@ -105,9 +139,9 @@ Scripts:
 - `scripts/analyze_results.py`: heuristic failure breakdown for a JSON run
 
 Agent (tool-driven ReAct loop lives in the notebook, tools live in code):
-- `nl2sql/agent_tools.py`: `get_schema`, `generate_sql`, `validate_sql`, `run_sql`, `repair_sql`, `finish`
+- `nl2sql/agent_tools.py`: `get_schema`, `link_schema`, `extract_constraints`, `generate_sql`, `validate_sql`, `validate_constraints`, `run_sql`, `repair_sql`, `finish`
 - `nl2sql/prompts.py`: `REACT_SYSTEM_PROMPT` (Thought/Action/Observation)
-- `notebooks/03_agentic_eval.ipynb`: defines `react_sql` tool loop and logs full traces
+- `notebooks/03_agentic_eval.ipynb`: defines `react_sql` tool loop and logs full traces + decision logs + compliance summaries (actions/repairs/compliance)
 - Verbose tracing: set the notebook flags to print full loop outputs for debugging.
 - The loop is bounded by `REACT_MAX_STEPS`.
 

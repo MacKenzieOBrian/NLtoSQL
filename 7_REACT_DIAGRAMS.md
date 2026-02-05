@@ -6,11 +6,15 @@ This file collects the diagrams used to explain the tool‑driven ReAct loop, th
 
 **Conceptual ReAct Loop (Tool‑Driven, Validation + Execution Feedback)**
 
+Note: validation/execution/constraint failures force `repair_sql` in the implementation, and trace summaries log action order and compliance.
+
 ```mermaid
 flowchart TD
   A[User NLQ] --> B[Bootstrap trace]
   B --> B1[Action: get_schema]
-  B1 --> B2[Observation: schema text]
+  B1 --> LS[Action: link_schema]
+  LS --> EC[Action: extract_constraints]
+  EC --> B2[Observation: linked schema + constraints]
   B2 --> C[LLM Thought]
 
   C --> D{Action chosen}
@@ -27,7 +31,10 @@ flowchart TD
   VQ -->|no| R[repair_sql tool]
   R --> H
 
-  VQ -->|yes| X[run_sql tool]
+  VQ -->|yes| VC[validate_constraints tool]
+  VC --> VCQ{Constraints OK?}
+  VCQ -->|no| R
+  VCQ -->|yes| X[run_sql tool]
   X --> XQ{Exec OK?}
   XQ -->|no| R
   XQ -->|yes| I{Intent OK?}
@@ -113,18 +120,24 @@ flowchart TD
 
   subgraph AgentTools
     GS[get_schema]
+    LS[link_schema]
+    EC[extract_constraints]
     GTS[get_table_samples]
     GEN[generate_sql]
     VAL[validate_sql]
+    VC[validate_constraints]
     RUN[run_sql]
     REP[repair_sql]
     FIN[finish]
   end
 
   AT --> GS
+  AT --> LS
+  AT --> EC
   AT --> GTS
   AT --> GEN
   AT --> VAL
+  AT --> VC
   AT --> RUN
   AT --> REP
   AT --> FIN
@@ -155,15 +168,20 @@ sequenceDiagram
   participant AT as Agent Tools
   participant PP as Guardrails (clean/postprocess)
   participant VS as validate_sql
+  participant VC as validate_constraints
   participant DB as QueryRunner.run (DB)
   
   U->>NB: NLQ
   NB->>AT: get_schema()
   AT->>AT: schema introspection
   AT-->>NB: schema_text
-  NB->>LLM: System prompt + trace (User question + get_schema observation)
+  NB->>AT: link_schema(nlq, schema_text)
+  AT-->>NB: linked schema_text
+  NB->>AT: extract_constraints(nlq)
+  AT-->>NB: constraints
+  NB->>LLM: System prompt + trace (User question + linked schema observation)
   LLM-->>NB: Thought + Action: generate_sql[...]
-  NB->>AT: generate_sql(nlq, schema_text, constraints)
+  NB->>AT: generate_sql(nlq, linked_schema_text, constraints)
   AT->>LLM: prompt messages (SYSTEM + schema + NLQ)
   LLM-->>AT: raw SQL
   AT-->>NB: raw SQL
@@ -175,7 +193,7 @@ sequenceDiagram
   alt validation failed
     NB->>LLM: Observation: validation error
     LLM-->>NB: Thought + Action: repair_sql[error]
-    NB->>AT: repair_sql(nlq, bad_sql, error, schema_text)
+  NB->>AT: repair_sql(nlq, bad_sql, error, full_schema_text)
     AT->>LLM: repair prompt (schema + NLQ + error)
     LLM-->>AT: repaired SQL
     AT-->>NB: repaired SQL
@@ -186,8 +204,15 @@ sequenceDiagram
   end
 
   alt validation passed
-    NB->>DB: run_sql(cleaned SQL)
-    DB-->>NB: {success: true/false, rows/error}
+    NB->>VC: validate_constraints(cleaned SQL, constraints)
+    VC-->>NB: {valid: true/false, reason}
+    alt constraints failed
+      NB->>LLM: Observation: constraint error
+      LLM-->>NB: Thought + Action: repair_sql[error]
+    else constraints passed
+      NB->>DB: run_sql(cleaned SQL)
+      DB-->>NB: {success: true/false, rows/error}
+    end
   end
 
   alt execution error
@@ -201,6 +226,8 @@ sequenceDiagram
     PP-->>NB: cleaned SQL
     NB->>VS: validate_sql(...)
     VS-->>NB: {valid: true/false}
+    NB->>VC: validate_constraints(...)
+    VC-->>NB: {valid: true/false}
     NB->>DB: run_sql(...)
     DB-->>NB: {success: true/false}
   end
@@ -271,13 +298,18 @@ sequenceDiagram
   participant AT as Agent Tools
   participant PP as Guardrails
   participant VS as validate_sql
+  participant VC as validate_constraints
 
   NB->>PR: Load system prompt
   NB->>AT: get_schema()
   AT-->>NB: schema_text
+  NB->>AT: link_schema(nlq, schema_text)
+  AT-->>NB: linked schema_text
+  NB->>AT: extract_constraints(nlq)
+  AT-->>NB: constraints
   NB->>LLM: System prompt + trace (User question + schema)
   LLM-->>NB: Action: generate_sql[constraints]
-  NB->>AT: generate_sql(nlq, schema_text, constraints)
+  NB->>AT: generate_sql(nlq, linked_schema_text, constraints)
   AT->>LLM: SYSTEM + schema + NLQ message stack
   LLM-->>AT: raw SQL
   AT-->>NB: raw SQL
@@ -285,15 +317,17 @@ sequenceDiagram
   PP-->>NB: cleaned SQL or reject
   NB->>PP: guarded_postprocess + projection contract + casing
   PP-->>NB: final SQL for validation
-  NB->>VS: validate_sql(final SQL, schema_text)
+  NB->>VS: validate_sql(final SQL, full_schema_text)
   VS-->>NB: {valid, reason}
+  NB->>VC: validate_constraints(final SQL, constraints)
+  VC-->>NB: {valid, reason}
 ```
 
 ---
 
 **Code Pointers**
 - `notebooks/03_agentic_eval.ipynb` (tool‑driven `react_sql` loop, trace logging, evaluation loop)
-- `nl2sql/agent_tools.py` (`get_schema`, `get_table_samples`, `generate_sql`, `validate_sql`, `run_sql`, `repair_sql`, `finish`)
+- `nl2sql/agent_tools.py` (`get_schema`, `link_schema`, `extract_constraints`, `get_table_samples`, `generate_sql`, `validate_sql`, `validate_constraints`, `run_sql`, `repair_sql`, `finish`)
 - `nl2sql/prompts.py` (`REACT_SYSTEM_PROMPT`)
 - `nl2sql/agent_utils.py` (guardrails, intent constraints, cleaners)
 - `nl2sql/postprocess.py` (deterministic SQL clamps and normalization)
@@ -311,5 +345,29 @@ sequenceDiagram
 - Execution‑based evaluation and TS: `REFERENCES.md#ref-zhong2020-ts`
 - Benchmark context for EM limitations: `REFERENCES.md#ref-yu2018-spider`
 
+---
 
+**Decision Log (Demo‑Friendly Format)**
 
+The notebook prints a compact, reasoned decision log per query, e.g.:
+
+```
+[step -1] get_schema — loaded schema (ok)
+  data: {"tables": ["customers", "orders", ...]}
+[step -1] link_schema — prune schema context (ok)
+  data: {"schema_text": "...", "changed": true}
+[step 0] extract_constraints — heuristic extraction (ok)
+  data: {"agg": "COUNT", "limit": 10, ...}
+[step 0] generate_sql — model generation (ok)
+  data: {"raw_sql": "SELECT ..."}
+[step 0] guardrails — cleaned (ok)
+  data: {"cleaned_sql": "SELECT ..."}
+[step 0] validate_sql — ok (ok)
+[step 0] validate_constraints — ok (ok)
+[step 0] run_sql — execute (ok)
+  data: {"success": true, "rowcount": 10}
+[step 0] intent_check — ok (ok)
+[step 0] finish — completed (ok)
+```
+
+This makes each decision and its justification visible for demos and dissertation narratives.

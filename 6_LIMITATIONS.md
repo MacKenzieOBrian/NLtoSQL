@@ -24,16 +24,14 @@ Zhong et al. (2020) motivate test-suite evaluation, but distillation is complex.
 ### Decision 6.2 - Use heuristic schema linking rather than a learned linker
 
 **Plain-language**  
-A learned schema linker was out of scope. The tool‑driven loop currently uses full schema context; the keyword‑subset linker remains legacy only.
+A learned schema linker was out of scope. The tool‑driven loop uses a lightweight heuristic linker, which can still miss relevant tables or over‑prune in edge cases.
 
 **Technical description**  
-`get_schema` returns a structured schema and `schema_to_text` renders it for prompting. The keyword‑based `build_schema_subset` exists but is not wired into the tool‑driven loop yet.
+`link_schema` applies `build_schema_subset` to prune the schema and add join hints before SQL generation. This remains heuristic (keyword‑based) rather than learned.
 
 **Code locations**  
-`nl2sql/agent_tools.py` (`get_schema`, `schema_to_text`)  
-Legacy: `nl2sql/agent_utils.py` (`build_schema_subset`)  
-Legacy: `nl2sql/schema.py` (`build_schema_summary`)  
-Legacy: `nl2sql/agent.py` (`ReactSqlAgent._build_react_prompt`)
+`nl2sql/agent_tools.py` (`get_schema`, `schema_to_text`, `link_schema`)  
+`nl2sql/agent_utils.py` (`build_schema_subset`)
 
 **Justification**  
 Schema linking is a known bottleneck (Li et al., 2023; Zhu et al., 2024). The trade-off is heuristic coverage and weaker generalization.
@@ -56,3 +54,19 @@ Legacy: `nl2sql/agent.py` (`ReactSqlAgent.reflect_sql`)
 
 **Justification**  
 ReAct and ExCoT motivate feedback, but do not require unlimited revisions (Yao et al., 2023; Zhai et al., 2025). The trade-off is that some errors may need multiple reflections and will be missed.
+
+---
+
+### Decision 6.4 - Heuristic constraint extraction (no learned parser)
+
+**Plain-language**  
+Constraints (COUNT/ORDER/LIMIT/DISTINCT) are extracted with simple rules, not a learned semantic parser.
+
+**Technical description**  
+`extract_constraints` uses regex cues (e.g., “how many”, “top 5”, “distinct”) and `validate_constraints` enforces those structural requirements. This is lightweight and auditable but can mis-handle paraphrases or nuanced requests.
+
+**Code locations**  
+`nl2sql/agent_tools.py` (`extract_constraints`, `validate_constraints`)
+
+**Justification**  
+This keeps the loop explainable and avoids introducing another learned model. The trade-off is brittleness on unusual phrasing.
