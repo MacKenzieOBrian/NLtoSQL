@@ -18,7 +18,7 @@ from .schema import list_tables, get_table_columns
 from .llm import generate_sql_from_messages
 from .prompting import SYSTEM_INSTRUCTIONS
 from .query_runner import QueryRunner
-from .agent_utils import clean_candidate_with_reason
+from .agent_utils import clean_candidate_with_reason, build_schema_subset
 
 
 @dataclass
@@ -54,6 +54,86 @@ def schema_to_text(schema: dict) -> str:
         cols = [c["name"] for c in table.get("columns", [])]
         lines.append(f"{table['name']}({', '.join(cols)})")
     return "\n".join(lines)
+
+
+def link_schema(nlq: str, schema_text: Optional[str] = None, max_tables: int = 6) -> dict:
+    """Return a pruned schema text + join hints for the NLQ."""
+    if not schema_text:
+        schema_text = _require_ctx().schema_text_cache or schema_to_text(get_schema())
+    subset = build_schema_subset(schema_text, nlq, max_tables=max_tables)
+    return {"schema_text": subset, "changed": subset != schema_text}
+
+
+def extract_constraints(nlq: str) -> dict:
+    """Lightweight, deterministic constraint extraction from NLQ."""
+    nl = (nlq or "").lower()
+
+    agg = None
+    if re.search(r"\\bcount\\b|how many|number of", nl):
+        agg = "COUNT"
+    elif re.search(r"\\baverage\\b|\\bavg\\b|mean", nl):
+        agg = "AVG"
+    elif re.search(r"\\btotal\\b|\\bsum\\b", nl):
+        agg = "SUM"
+    elif re.search(r"\\bmaximum\\b|\\bmax\\b|highest|most", nl):
+        agg = "MAX"
+    elif re.search(r"\\bminimum\\b|\\bmin\\b|lowest|least", nl):
+        agg = "MIN"
+
+    needs_group_by = bool(agg and re.search(r"\\bper\\b|\\bby\\b|for each|each", nl))
+    needs_order_by = bool(re.search(r"\\btop\\b|\\bhighest\\b|\\blowest\\b|\\bmost\\b|\\bleast\\b|sorted|ranked|order by", nl))
+
+    limit = None
+    m = re.search(r"\\b(top|first|last)\\s+(\\d+)\\b", nl)
+    if m:
+        try:
+            limit = int(m.group(2))
+        except ValueError:
+            limit = None
+
+    distinct = bool(re.search(r"\\b(unique|distinct|different)\\b", nl))
+
+    return {
+        "agg": agg,
+        "needs_group_by": needs_group_by,
+        "needs_order_by": needs_order_by,
+        "limit": limit,
+        "distinct": distinct,
+    }
+
+
+def validate_constraints(sql: str, constraints: Optional[dict]) -> dict:
+    """Validate SQL structure against extracted constraints."""
+    if not constraints:
+        return {"valid": True, "reason": "no_constraints"}
+    if not sql or not sql.strip():
+        return {"valid": False, "reason": "empty_sql"}
+
+    sql_low = sql.lower()
+    agg = constraints.get("agg")
+    if constraints.get("distinct") and "select distinct" not in sql_low:
+        return {"valid": False, "reason": "missing_distinct"}
+
+    if agg:
+        agg_low = agg.lower()
+        has_agg = re.search(rf"\\b{re.escape(agg_low)}\\s*\\(", sql_low) is not None
+        if not has_agg and agg in {"MAX", "MIN"}:
+            has_agg = "order by" in sql_low and re.search(r"\\blimit\\s+1\\b", sql_low) is not None
+        if not has_agg:
+            return {"valid": False, "reason": f"missing_agg:{agg}"}
+
+    if constraints.get("needs_group_by") and "group by" not in sql_low:
+        return {"valid": False, "reason": "missing_group_by"}
+
+    if constraints.get("needs_order_by") and "order by" not in sql_low:
+        return {"valid": False, "reason": "missing_order_by"}
+
+    limit = constraints.get("limit")
+    if limit is not None:
+        if re.search(rf"\\blimit\\s+{limit}\\b", sql_low) is None:
+            return {"valid": False, "reason": f"missing_limit:{limit}"}
+
+    return {"valid": True, "reason": "ok"}
 
 
 def get_schema() -> dict:
