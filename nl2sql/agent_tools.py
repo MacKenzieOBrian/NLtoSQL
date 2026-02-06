@@ -71,7 +71,7 @@ def extract_constraints(nlq: str) -> dict:
     nl = (nlq or "").lower()
 
     agg = None
-    if re.search(r"\bcount\b|how many|number of", nl):
+    if re.search(r"\bcount\b|how many|number of|total number of|count of", nl):
         agg = "COUNT"
     elif re.search(r"\baverage\b|\bavg\b|mean", nl):
         agg = "AVG"
@@ -220,10 +220,14 @@ def validate_sql(sql: str, schema_text: Optional[str] = None) -> dict:
     if not cleaned:
         return {"valid": False, "reason": f"clean_reject:{reason}"}
 
-    schema_text = schema_text or _require_ctx().schema_text_cache or schema_to_text(get_schema())
+    if schema_text is None:
+        schema_text = _require_ctx().schema_text_cache or schema_to_text(get_schema())
+    if not schema_text:
+        return {"valid": False, "reason": "schema_missing"}
+
     tables, table_cols = _parse_schema_text(schema_text)
     if not tables:
-        return {"valid": True, "reason": "no_schema"}
+        return {"valid": False, "reason": "schema_missing"}
 
     sql_low = cleaned.lower()
     for m in re.finditer(r"(?is)\b(from|join)\s+([a-zA-Z_][\w$]*)", sql_low):
@@ -240,7 +244,7 @@ def validate_sql(sql: str, schema_text: Optional[str] = None) -> dict:
         if table in table_cols and col not in table_cols[table]:
             return {"valid": False, "reason": f"unknown_column:{table}.{col}"}
 
-    return {"valid": True, "reason": "ok"}
+    return {"valid": True, "reason": "schema_ok"}
 
 
 def get_table_samples(table: str, n: int = 3) -> list[dict]:
