@@ -169,3 +169,13 @@
 - **Dropped/Changed:** Removed a confusing prompt format and softened overly strict intent checks.  
 - **Effect:** A more stable, auditable loop with clearer reasons for success and failure.  
 - **Learning:** Explicit tool order + forced repair yields a more explainable and reliable agent loop.
+
+### 2026-02-06 — Quick Sanity Check + Action Parsing Fix
+- **Activities:** Ran a small sanity set of ClassicModels questions through the step‑by‑step walkthrough to check the end‑to‑end flow (draft → checks → run → refine).  
+- **Sanity set examples:** “List all product lines”, “Which customers are in the USA?”, “Total amount per order number”, “Count employees in the San Francisco office”.  
+- **Observation:** The SQL answers were often correct, but the trace looked inconsistent (e.g., unexpected late schema calls and out‑of‑order tool attempts).  
+- **Diagnosis:** The model sometimes emitted **multiple `Action:` blocks** in one response (especially when it “replayed” the transcript). A greedy action parser could capture from the first `[` to the last `]`, causing the loop to follow the **wrong** action.  
+- **Change:** Updated action parsing to extract **all** `Action:` lines and follow the **last** one (the model’s final decision). This made the loop more stable and the walkthrough easier to explain.  
+- **Also fixed:** Corrected a small regex escape in table-casing normalization so guardrail traces reflect the schema consistently.  
+- **Learning:** Small “plumbing” details (parsing + logging) can dominate perceived agent quality; reliable tool boundaries are part of reproducibility.  
+- **Next:** Re-run sanity checks after a kernel restart to confirm cleaner tool order and reduced trace noise.
