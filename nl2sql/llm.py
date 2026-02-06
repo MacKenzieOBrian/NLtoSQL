@@ -15,17 +15,72 @@ import re
 from typing import Any
 
 
-SQL_RE = re.compile(r"(?is)\\bselect\\b.*?(;|\\Z)")
+# Regex reference: https://docs.python.org/3/library/re.html
+#
+# Rationale: try to extract a single executable SELECT from model output while
+# tolerating explanatory text before/after.
+#
+# We bias toward "SQL-ish" statements:
+# - the SELECT should start a line (or be prefixed by "SQL:")
+# - the statement should contain a FROM clause
+#
+# This avoids common false positives like "please select ... from ..." in prose.
+SQL_START_RE = re.compile(r"(?im)^\s*(?:sql\s*:\s*)?select\b")
+
+# Tiny stopword list to filter obvious prose like "from the ...".
+_PROSE_FROM_STOPWORDS = {"the", "a", "an", "this", "that", "these", "those"}
+
+
+def _read_from_target(s: str) -> str | None:
+    """
+    Return the first token after FROM:
+    - '(' for subqueries: FROM (SELECT ...)
+    - unquoted or quoted identifier (optionally schema-qualified)
+    """
+    s = (s or "").lstrip()
+    if not s:
+        return None
+    if s.startswith("("):
+        return "("
+    if s[0] in ('`', '"', "["):
+        closing = {"`": "`", '"': '"', "[": "]"}[s[0]]
+        end = s.find(closing, 1)
+        if end == -1:
+            return None
+        return s[1:end].strip()
+    m = re.match(r"[a-zA-Z_][\w$]*(?:\.[a-zA-Z_][\w$]*)*", s)
+    return m.group(0) if m else None
 
 
 def extract_first_select(text: str) -> str | None:
-    m = SQL_RE.search((text or "").strip())
-    if not m:
-        return None
-    sql = m.group(0).strip()
-    if not sql.endswith(";"):
-        sql += ";"
-    return sql
+    # Strip common markdown code-fence wrappers before trying to extract SQL.
+    # This keeps downstream postprocess deterministic and avoids fence fragments
+    # leaking into execution.
+    t = (text or "").strip()
+    t = t.replace("```json", "```").replace("```sql", "```")
+    t = re.sub(r"```(.*?)```", r"\1", t, flags=re.DOTALL).strip()
+
+    for m in SQL_START_RE.finditer(t):
+        start = m.start()
+        tail = t[start:]
+        semi = tail.find(";")
+        stmt = tail if semi == -1 else tail[: semi + 1]
+        stmt = re.sub(r"(?im)^\s*sql\s*:\s*", "", stmt, count=1).strip()
+
+        # Must look like a table-backed query (ClassicModels items are).
+        from_m = re.search(r"(?is)\bfrom\b", stmt)
+        if not from_m:
+            continue
+        target = _read_from_target(stmt[from_m.end() :])
+        if not target:
+            continue
+        if target != "(" and target.lower() in _PROSE_FROM_STOPWORDS:
+            continue
+
+        if not stmt.endswith(";"):
+            stmt += ";"
+        return stmt
+    return None
 
 
 def generate_sql_from_messages(
@@ -43,13 +98,23 @@ def generate_sql_from_messages(
         add_generation_prompt=True,
         return_tensors="pt",
     ).to(model.device)
+    # Some tokenizers share pad/eos ids, which prevents generate() from inferring an
+    # attention mask reliably. Our prompts are not padded, so an all-ones mask is valid.
+    attention_mask = torch.ones_like(input_ids)
+
+    pad_token_id = getattr(tokenizer, "pad_token_id", None)
+    if pad_token_id is None:
+        pad_token_id = getattr(tokenizer, "eos_token_id", None)
+    eos_token_id = getattr(tokenizer, "eos_token_id", None)
 
     with torch.no_grad():
         out = model.generate(
             input_ids,
+            attention_mask=attention_mask,
             max_new_tokens=max_new_tokens,
             do_sample=False,
-            pad_token_id=tokenizer.eos_token_id,
+            pad_token_id=pad_token_id,
+            eos_token_id=eos_token_id,
         )
 
     gen_ids = out[0][input_ids.shape[-1] :]
