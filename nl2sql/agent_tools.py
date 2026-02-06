@@ -71,29 +71,29 @@ def extract_constraints(nlq: str) -> dict:
     nl = (nlq or "").lower()
 
     agg = None
-    if re.search(r"\\bcount\\b|how many|number of", nl):
+    if re.search(r"\bcount\b|how many|number of", nl):
         agg = "COUNT"
-    elif re.search(r"\\baverage\\b|\\bavg\\b|mean", nl):
+    elif re.search(r"\baverage\b|\bavg\b|mean", nl):
         agg = "AVG"
-    elif re.search(r"\\btotal\\b|\\bsum\\b", nl):
+    elif re.search(r"\btotal\b|\bsum\b", nl):
         agg = "SUM"
-    elif re.search(r"\\bmaximum\\b|\\bmax\\b|highest|most", nl):
+    elif re.search(r"\bmaximum\b|\bmax\b|highest|most", nl):
         agg = "MAX"
-    elif re.search(r"\\bminimum\\b|\\bmin\\b|lowest|least", nl):
+    elif re.search(r"\bminimum\b|\bmin\b|lowest|least", nl):
         agg = "MIN"
 
-    needs_group_by = bool(agg and re.search(r"\\bper\\b|\\bby\\b|for each|each", nl))
-    needs_order_by = bool(re.search(r"\\btop\\b|\\bhighest\\b|\\blowest\\b|\\bmost\\b|\\bleast\\b|sorted|ranked|order by", nl))
+    needs_group_by = bool(agg and re.search(r"\bper\b|\bby\b|for each|each", nl))
+    needs_order_by = bool(re.search(r"\btop\b|\bhighest\b|\blowest\b|\bmost\b|\bleast\b|sorted|ranked|order by", nl))
 
     limit = None
-    m = re.search(r"\\b(top|first|last)\\s+(\\d+)\\b", nl)
+    m = re.search(r"\b(top|first|last)\s+(\d+)\b", nl)
     if m:
         try:
             limit = int(m.group(2))
         except ValueError:
             limit = None
 
-    distinct = bool(re.search(r"\\b(unique|distinct|different)\\b", nl))
+    distinct = bool(re.search(r"\b(unique|distinct|different)\b", nl))
 
     return {
         "agg": agg,
@@ -119,9 +119,9 @@ def validate_constraints(sql: str, constraints: Optional[dict]) -> dict:
 
     if agg:
         agg_low = agg.lower()
-        has_agg = re.search(rf"\\b{re.escape(agg_low)}\\s*\\(", sql_low) is not None
+        has_agg = re.search(rf"\b{re.escape(agg_low)}\s*\(", sql_low) is not None
         if not has_agg and agg in {"MAX", "MIN"}:
-            has_agg = "order by" in sql_low and re.search(r"\\blimit\\s+1\\b", sql_low) is not None
+            has_agg = "order by" in sql_low and re.search(r"\blimit\s+1\b", sql_low) is not None
         if not has_agg:
             return {"valid": False, "reason": f"missing_agg:{agg}"}
 
@@ -133,7 +133,7 @@ def validate_constraints(sql: str, constraints: Optional[dict]) -> dict:
 
     limit = constraints.get("limit")
     if limit is not None:
-        if re.search(rf"\\blimit\\s+{limit}\\b", sql_low) is None:
+        if re.search(rf"\blimit\s+{limit}\b", sql_low) is None:
             return {"valid": False, "reason": f"missing_limit:{limit}"}
 
     return {"valid": True, "reason": "ok"}
@@ -199,7 +199,7 @@ def _parse_schema_text(schema_text: str) -> tuple[set[str], dict[str, set[str]]]
         line = line.strip()
         if not line:
             continue
-        m = re.match(r"(?is)^([a-zA-Z_][\\w$]*)\\s*\\((.*)\\)\\s*$", line)
+        m = re.match(r"(?is)^([a-zA-Z_][\w$]*)\s*\((.*)\)\s*$", line)
         if not m:
             continue
         table = m.group(1).strip().lower()
@@ -226,7 +226,7 @@ def validate_sql(sql: str, schema_text: Optional[str] = None) -> dict:
         return {"valid": True, "reason": "no_schema"}
 
     sql_low = cleaned.lower()
-    for m in re.finditer(r"(?is)\\b(from|join)\\s+([a-zA-Z_][\\w$]*)", sql_low):
+    for m in re.finditer(r"(?is)\b(from|join)\s+([a-zA-Z_][\w$]*)", sql_low):
         table = m.group(2)
         after = sql_low[m.end() : m.end() + 1]
         if after == "(":
@@ -234,7 +234,7 @@ def validate_sql(sql: str, schema_text: Optional[str] = None) -> dict:
         if table not in tables:
             return {"valid": False, "reason": f"unknown_table:{table}"}
 
-    for m in re.finditer(r"(?is)\\b([a-zA-Z_][\\w$]*)\\.([a-zA-Z_][\\w$]*)\\b", sql_low):
+    for m in re.finditer(r"(?is)\b([a-zA-Z_][\w$]*)\.([a-zA-Z_][\w$]*)\b", sql_low):
         table = m.group(1)
         col = m.group(2)
         if table in table_cols and col not in table_cols[table]:
