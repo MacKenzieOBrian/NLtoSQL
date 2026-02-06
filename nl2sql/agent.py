@@ -145,6 +145,8 @@ class ReactSqlAgent:
             return True, "no_schema"
 
         sql_low = sql.lower()
+        # Rationale: early runs failed on misspelled tables/columns; this check makes
+        # those errors explicit before execution so the loop can repair them.
         # Validate explicit table names in FROM/JOIN (skip subqueries).
         for m in re.finditer(r"(?is)\b(from|join)\s+([a-zA-Z_][\w$]*)", sql_low):
             table = m.group(2)
@@ -193,6 +195,7 @@ class ReactSqlAgent:
             table_lines = [ln for ln in schema_view.splitlines() if "(" in ln and ")" in ln]
             self._debug(f"[prompt] react schema_subset={self.cfg.use_schema_subset} tables={len(table_lines)}")
         # Keep only the most recent items to limit prompt size.
+        # Rationale: long histories dilute the latest error signal and increase prompt cost.
         history_text = "\n\n".join(self._format_history_item(h) for h in history[-4:]) or "None yet."
         exemplars_text = self._format_exemplars(getattr(self, "_prompt_exemplars", None))
         exemplars_block = f"Examples:\n{exemplars_text}\n\n" if exemplars_text else ""
@@ -232,6 +235,7 @@ Respond with only the final SQL statement.
             num = 1
 
         # Prefixing with SELECT reduces non-SQL continuations.
+        # Rationale: the model is less likely to start with explanations when anchored.
         prompt = prompt.rstrip() + "\nSELECT "
         inputs = self.tok(prompt, return_tensors="pt").to(self.model.device)
 
@@ -269,6 +273,7 @@ Respond with only the final SQL statement.
     # -----------------
     def postprocess_sql(self, *, sql: str, nlq: str) -> str:
         # Deterministic postprocess layer (no weight changes).
+        # Rationale: keeps behavior inspectable and consistent across runs.
         if self.cfg.verbose:
             self._debug("[guard] calling guarded_postprocess")
         cleaned = guarded_postprocess(sql, nlq)
@@ -303,6 +308,8 @@ Respond with only the final SQL statement.
                 "obs": f"Rejected during cleanup: {reason}",
             }
 
+        # Rationale: normalize/guard before any schema or execution checks so
+        # errors are attributable to the SQL itself, not formatting noise.
         sql = self.postprocess_sql(sql=sql, nlq=nlq)
         self._debug(f"[eval] postprocess sql: {_trim(sql)}")
 
@@ -321,6 +328,7 @@ Respond with only the final SQL statement.
             }
 
         # Execution gate (Act): must run successfully.
+        # Rationale: invalid SQL should not be scored as "correct" in EX/TS.
         if self.cfg.verbose:
             self._debug("[guard] calling runner.run (execution gate)")
         meta = self.runner.run(sql, capture_df=False)
@@ -335,6 +343,7 @@ Respond with only the final SQL statement.
             }
 
         # Intent gate: prevent executable-but-wrong-shape answers.
+        # Rationale: a runnable query can still be semantically wrong (e.g., missing COUNT).
         if self.cfg.verbose:
             self._debug("[guard] calling intent_constraints")
         ok, why = intent_constraints(nlq, sql)
@@ -352,6 +361,7 @@ Respond with only the final SQL statement.
             self._debug(f"[eval] intent_soft reason={why} penalty={intent_penalty:.2f}")
 
         # Simple, auditable scoring.
+        # Rationale: lightweight heuristics beat "first candidate wins" without hiding logic.
         s_sem = semantic_score(nlq, sql)
         s_cols = count_select_columns(sql)
         s_extra = float(self.extra_score_fn(nlq, sql)) - float(intent_penalty)
@@ -389,6 +399,7 @@ Respond with only the final SQL statement.
         if len(raw_cands) <= cfg.max_exec_cands:
             return raw_cands
 
+        # Rationale: limit expensive execution checks to plausible candidates.
         scored: list[tuple[float, int, str]] = []
         for idx, raw in enumerate(raw_cands):
             sql, reason = clean_candidate_with_reason(raw)
@@ -419,6 +430,7 @@ Respond with only the final SQL statement.
         schema_index = self._parse_schema_text(schema_text)
 
         err_hint = ""
+        # Rationale: MySQL error codes give targeted repair hints without guessing semantics.
         m = re.search(r"\((\d+),", str(error_msg or ""))
         if m:
             code = m.group(1)
@@ -521,8 +533,10 @@ Output ONLY the corrected SELECT statement.
         observation = "Start."
         last_failure: Optional[dict] = None
         last_failure_rank = -1
+        # Rationale: prioritize failures that are most informative for repair.
         failure_rank = {"exec_fail": 3, "schema_reject": 2, "intent_reject": 1}
         # Store exemplars on the agent so prompt builders can include them.
+        # Rationale: a small number of examples improves structure without overfitting.
         self._prompt_exemplars = exemplars or []
         schema_index = self._parse_schema_text(schema_text)
 
@@ -580,6 +594,7 @@ Output ONLY the corrected SELECT statement.
             if best is not None:
                 sql, score = best
                 # Optional multi-step refinement: only stop early if the score clears a threshold.
+                # Rationale: gives the loop a chance to correct near-miss candidates.
                 if cfg.accept_score is None or score >= cfg.accept_score:
                     self._debug(f"[step {step}] accept final score={score:.2f}")
                     history.append({"step": step, "phase": "final", "sql": sql, "score": score})

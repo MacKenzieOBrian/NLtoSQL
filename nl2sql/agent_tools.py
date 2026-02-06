@@ -66,6 +66,8 @@ def link_schema(nlq: str, schema_text: Optional[str] = None, max_tables: int = 6
 
 def extract_constraints(nlq: str) -> dict:
     """Lightweight, deterministic constraint extraction from NLQ."""
+    # Regex reference: https://docs.python.org/3/library/re.html
+    # Rationale: structural cues (COUNT, ORDER BY, LIMIT) were a common source of EX failures.
     nl = (nlq or "").lower()
 
     agg = None
@@ -104,6 +106,7 @@ def extract_constraints(nlq: str) -> dict:
 
 def validate_constraints(sql: str, constraints: Optional[dict]) -> dict:
     """Validate SQL structure against extracted constraints."""
+    # Rationale: prevents "runs but wrong shape" (e.g., missing GROUP BY or LIMIT).
     if not constraints:
         return {"valid": True, "reason": "no_constraints"}
     if not sql or not sql.strip():
@@ -209,6 +212,7 @@ def _parse_schema_text(schema_text: str) -> tuple[set[str], dict[str, set[str]]]
 
 def validate_sql(sql: str, schema_text: Optional[str] = None) -> dict:
     """Validate SQL formatting + schema references without executing."""
+    # Rationale: catch obvious formatting/schema errors before hitting the database.
     if not sql or not sql.strip():
         return {"valid": False, "reason": "empty_sql"}
 

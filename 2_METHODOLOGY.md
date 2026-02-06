@@ -9,7 +9,7 @@ This section explains how the experiments are designed and executed. The aim is 
 The methodology is error-driven and incremental (cf. ReAct and execution-feedback work):
 1. Establish a deterministic prompting baseline.
 2. Add PEFT (QLoRA) to test whether training improves SQL generation.
-3. Add a bounded ReAct-style agent loop with explicit tools and validation to use execution feedback without changing model weights.
+3. Add an agentic phase: first a candidate‑ranking utility study (Jan 2026) to identify EX‑relevant controls, then a bounded tool‑driven ReAct loop (Feb 2026) that formalizes those controls as explicit tools.
 
 This sequencing makes improvements attributable to specific changes and follows a literature-backed progression from prompting → PEFT → agentic execution feedback.  
 Refs: `REFERENCES.md#ref-brown2020-gpt3`, `REFERENCES.md#ref-ding2023-peft`, `REFERENCES.md#ref-goswami2024-peft`, `REFERENCES.md#ref-yao2023-react`, `REFERENCES.md#ref-zhai2025-excot`, `REFERENCES.md#ref-ojuri2025-agents`.
@@ -17,13 +17,17 @@ Refs: `REFERENCES.md#ref-brown2020-gpt3`, `REFERENCES.md#ref-ding2023-peft`, `RE
 **Research journey summary (from `LOGBOOK.md` dates)**  
 - 2025-09-29: scoped the problem and identified a reproducibility gap.  
 - 2025-10-06: shifted evaluation emphasis from EM to EX/TS for semantic validity.  
-- 2026-01-31: added guardrails after observing projection/intent/schema errors.  
+- 2026-01-31: candidate‑ranking utility study to see which guards improved EX and which were noise.  
+- 2026-02-01: planned the explicit tool sequence (schema → generate → validate → run → reflect).  
 - 2026-02-04 to 2026-02-05: rebuilt the loop as tool‑driven ReAct with validation, schema linking, constraint checks, and decision logging.  
 
 **Interpretive narrative (what changed and why)**  
 - Baselines improved VA but not EX, which signaled that syntax fixes alone do not solve semantic alignment.  
 - QLoRA improved EX but still depended on strong schema grounding, so I added explicit guardrails.  
-- The earlier candidate‑ranking loop was not a faithful ReAct implementation, so I pivoted to a tool‑driven Thought→Action→Observation loop with auditable decisions.  
+- The candidate‑ranking loop was used to test which utilities actually lifted EX; it improved validity but masked root causes by filtering errors away.  
+- I then pivoted to a tool‑driven Thought→Action→Observation loop so errors became explicit observations and tool order could be enforced.  
+- Carried forward: cleaning/normalization, schema‑aware validation, constraint checks, semantic scoring signals, and reflection logic.  
+- Dropped or de‑emphasized: candidate‑ranking as the control structure, the tabular prompt variant, and hard intent rejection (softened to a penalty).  
 
 **Explicit non‑decisions (scope control)**  
 - No learned schema linker (kept heuristic for interpretability).  
@@ -79,6 +83,11 @@ The agent uses an explicit Thought → Action → Observation loop with tools. I
 - Deterministic fallback if the loop fails to finish
 Validation or execution failures force a `repair_sql` step. Constraint validation gates execution (e.g., missing COUNT/ORDER/LIMIT), and per‑query trace summaries log action sequences and compliance for auditability.
 Refs: `REFERENCES.md#ref-yao2023-react`, `REFERENCES.md#ref-zhai2025-excot`, `REFERENCES.md#ref-ojuri2025-agents`.
+
+**Evolution from candidate‑ranking**  
+- Candidate‑ranking utilities that improved EX were retained but converted into explicit tools or guardrails.  
+- The ranking decision itself was removed; the loop now relies on ordered actions with observations and forced repair on failure.  
+- This conversion made the pipeline auditable and aligned with ReAct’s explicit action/observation semantics.  
 
 Implementation notes:
 - Tool interface: `nl2sql/agent_tools.py`

@@ -22,6 +22,8 @@ from typing import Iterable
 
 
 def normalize_sql(s: str) -> str:
+    # Regex reference: https://docs.python.org/3/library/re.html
+    # Rationale: early evals showed formatting noise dominating EM; normalization keeps EM focused on real errors.
     # Used for EM (Exact Match): normalize surface form so EM detects real regressions
     # (missing JOIN, wrong predicate) rather than harmless whitespace/casing differences.
     s = (s or "").strip()

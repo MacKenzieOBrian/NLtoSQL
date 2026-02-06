@@ -1,30 +1,10 @@
 # Logbook (Research & Development Timeline)
 
-## At‑a‑Glance
-- Four phases from scoping → baselines → QLoRA → agentic refinement
-- Each phase anchored by a research question
-- Entries emphasise **decisions, evidence, and evaluation outcomes** (not raw implementation logs)
-
-## Index
-1. Phase 1 — Planning & Scoping (Sep–Oct 2025)  
-2. Phase 2 — Infra & Data Prep (Nov–Dec 2025)  
-3. Phase 3 — QLoRA Fine‑Tuning (Jan 2026)  
-4. Phase 4 — ReAct Exploration & Refinement (Jan 2026)  
-
-This logbook documents the research trajectory across four phases, emphasising
-(1) literature‑aligned decision making,
-(2) hypothesis‑driven experimentation, and
-(3) evaluation‑centred interpretation rather than implementation logs.
-
-Each phase is anchored to a guiding research question, consistent with NL→SQL
-methodologies in recent literature (Yu et al., 2018; Zhu et al., 2024; Hong et al., 2025; Ojuri et al., 2025).
 
 ---
 
 ## Phase 1 — Planning & Scoping (Sep–Oct 2025)
 
-> **Research Question:**  
-> _What components are required to reproduce an NL→SQL pipeline and how do prompting and schema grounding behave before any training?_
 
 ### 2025-09-29 — Literature Mapping & Scope Setting
 - **Activities:** Supervisor meeting; initial outline; reading on ReAct, PEFT, agentic NL→SQL.
@@ -102,9 +82,6 @@ methodologies in recent literature (Yu et al., 2018; Zhu et al., 2024; Hong et a
 
 ## Phase 4 — ReAct Exploration & Refinement (Jan 2026)
 
-> **Research Question:**  
-> _Does execution feedback reduce semantic errors without additional training?_
-
 ### 2026-01-23 — Micro-Slice Stability Check
 - **Activities:** Projection guard + ORDER/LIMIT clamp; slice reached VA/EX/EM = 1.0.
 - **Lit Link:** Consistent with constrained decoding (PICARD-style) literature.
@@ -127,104 +104,18 @@ methodologies in recent literature (Yu et al., 2018; Zhu et al., 2024; Hong et a
   2) add critic/reranker (surveyed in Zhu et al., 2024; Gao et al., 2025)  
   3) schema linking enhancements (RESDSQL-style; Li, Zhang, Li, and Chen, 2023 (RESDSQL))
 
-### 2026-01-26 — Dev Note (fallback robustness)
-- **Change:** Relaxed `clean_candidate` and made `vanilla_candidate` baseline-aligned (extract first SELECT + guarded_postprocess, minimal filtering).
-- **Reason:** Strict filtering was suppressing valid baseline SQL, producing empty `pred_sql` even on simple queries.
-- **Effect:** Fallback now returns a valid SELECT more reliably while keeping strict filters for agentic candidates.
-
 ### 2026-01-27 — Staged Decision Process (minimal → clamp → rerank → repair)
-- **Decision:** Re-structured the notebook into staged ablations (STAGE 0–3) to restore validity before re‑introducing complexity.
+- **Activities:** Re-structured the notebook into staged ablations (STAGE 0–3) to restore validity before re‑introducing complexity.
 - **Motivation:** Debug evidence showed valid SQL was being discarded by downstream filters; a minimal execution‑gated generator isolates the bottleneck.
-- **Process (lit‑guided):** Start with execution‑guided decoding only (Zhong, Yu, and Klein, 2020), then add constraints (PICARD‑style; Scholak, Schucher, and Bahdanau, 2021 (PICARD)), then reranking/critics (Zhu et al., 2024; Gao et al., 2025), then repair (Zhai et al., 2025).
+- **Lit Link:** Start with execution‑guided decoding only (Zhong, Yu, and Klein, 2020), then add constraints (PICARD‑style; Scholak, Schucher, and Bahdanau, 2021 (PICARD)), then reranking/critics (Zhu et al., 2024; Gao et al., 2025), then repair (Zhai et al., 2025).
 - **Outcome:** Made the pipeline evidence‑driven rather than feature‑driven; each component is now re‑introduced only after validation.
-
-### 2026-01-27 — Debug Note (spaced SQL tokens)
-- **Issue:** Model output contained valid SQL but with letter‑spaced tokens (e.g., `S E L E C T ... F R O M ...`), causing `extract_first_select` and `clean_candidate` to reject it.
-- **Fix:** Added normalization to collapse spaced keywords before filtering; updated notebook to wrap `clean_candidate` with the normalizer.
-- **Effect:** Valid SQL now passes the filter even when spacing artifacts appear, restoring non‑empty predictions at STAGE 0.
-
-### 2026-01-27 — Notebook Debug Guide (stage-gated ablation)
-- **Change:** Added a “Staged Debugging Guide” markdown cell and stage‑gated `react_sql` in the notebook.
-- **Rationale:** Aligns with ablation practice in NL→SQL and execution‑guided decoding—validate minimal execution‑gated behaviour first, then re‑introduce clamps, reranking, and repair only after stability.
-- **Outcome:** Reduces accidental overwrites of the minimal agent and makes failures attributable to a specific stage.
-
-### 2026-01-28 — Scaled Back for Baseline Validity
-- **Decision:** Dialed the notebook back to the minimal execution‑gated ReAct stage to confirm the model can produce valid SQL before layering clamps, reranking, and repair.
-- **Reason:** Recent failures showed that complex filters were masking whether the generator itself was working; restoring a minimal baseline isolates the true bottleneck.
-- **Effect:** Establishes a reliable “known‑good” starting point for staged re‑introduction of features (literature‑aligned ablation).
-
-### 2026-01-28 — ReAct Agent Staging (Stages 0 & 1)
-- **Goal:** Bring up a minimal but working ReAct‑style NL→SQL agent in `notebooks/03_agentic_eval.ipynb`, then progressively add structure:  
-  **Stage 0** = minimal execution‑gated generator; **Stage 1** = add projection/ORDER clamps.  
-  The aim was a stable, debuggable baseline before sampling/reranking/repair.
-- **Stage 0 wiring:** Implemented `_react_sql_minimal` (STAGE=0) vs `_react_sql_full` (STAGE≥1) with stage dispatch. Stage 0 builds a prompt, generates candidates, cleans them, runs via `QueryRunner`, then **falls back to `vanilla_candidate`** if all candidates fail.
-- **Cleaning failures diagnosed:** Blank `PRED` traces were caused by **over‑strict cleaning**, not model failure. Two issues were observed:  
-  1) `FROM` check failed after `extract_first_select + split(';',1)` returned only the prefix;  
-  2) prompt‑echo tails (“output only sql / no explanation”) triggered `bad_phrase` even when valid SQL preceded them.
-- **Fix implemented:** Added a shared `_clean_candidate_core` that:
-  - normalises spaced‑out tokens (`S E L E C T` → `SELECT`),  
-  - realigns to first `SELECT`,  
-  - trims prompt‑echo tails,  
-  - splits at the first `;`,  
-  - **does not enforce a strict FROM check** (execution gating catches invalid SQL).  
-  The relaxed cleaner is used for ReAct **and** monkey‑patched into `agent_utils.clean_candidate` so `vanilla_candidate` is consistent.
-- **Stage 0 sanity checks:**  
-  - “List all product lines.” → correct SQL returned.  
-  - “Show product names, codes, and MSRPs.” → correct columns, order mismatch (EX ok, EM ≠).  
-  - “USA customers” → extra column trimmed only after Stage 1 clamps.  
-  - “SF office count” and “total per order” remained **semantic routing** errors (wrong table/aggregation).
-- **Stage 1 clamps:** Enabled `strip_order_by_if_not_requested` and `trim_to_first_column` to improve minimal projection and remove ORDER/LIMIT artifacts. This improved EM/projection alignment but **did not fix semantic routing**, confirming clamps affect style not semantics.
-- **Conclusion:** Stage 0 is now stable and debuggable; Stage 1 improves projection hygiene; remaining errors are semantic (joins/aggregation), requiring reranking/repair or better priors.
-
----
-
-## Current State (Jan 2026)
-
-- Prompting fixes syntax
-- QLoRA fixes semantics
-- Execution fixes robustness
-- Critic/curriculum expected to fix compositional reasoning
-
-The dissertation narrative can legitimately focus on whether **small open models + PEFT + execution** can approximate proprietary agent performance under reproducible resource constraints.
-
----
-
 
 ### 2026-01-29 — Stage 3 Outputs + Trace Logging Upgrade
 - **Observation:** Stage 3 outputs are mostly valid SQL; remaining issues are projection bloat and unnecessary ORDER BY/GROUP BY that reduce EM (e.g., extra `productLine`, spurious `ORDER BY` on totals).
-- **Change:** Added structured trace logging to the ReAct loop (raw candidate → cleaned SQL → post‑clamp SQL → execution error → repair attempt).
-- **Reflection Logging:** `reflect_sql` now returns both the reflected SQL and a small metadata dict (status, raw_fix, exec_error), so traces show *why* a reflection succeeded or failed.
+- **Activities:** Added structured trace logging to the ReAct loop (raw candidate → cleaned SQL → post‑clamp SQL → execution error → repair attempt).
+- **Reflection Logging:** `reflect_sql` now returns both the reflected SQL and a metadata dict (status, raw_fix, exec_error) so traces show why a reflection succeeded or failed.
 - **Reason:** Traceability is needed to attribute errors to generation vs cleaning vs execution vs repair; aligns with agentic evaluation practice in ReAct/Reflexion‑style loops.
-Code: `notebooks/03_agentic_eval.ipynb`
-
-### 2026-01-29 — Biggest Win: Output‑Control + Semantic Acceptance Gate
-- **Finding:** Two failure modes dominated:  
-  1) **Prompt‑echo garbage** after a valid SQL fragment (causing syntax errors).  
-  2) **Executable but irrelevant repairs** (e.g., `SELECT 1 FROM dual;`) that inflate VA but fail task intent.
-- **Decision:** Treat output control and acceptance as *first‑class* components of the agent loop:  
-  - **Stop‑on‑semicolon** generation to end decoding at the first `;` (prevents prompt‑echo tails).  
-  - **Prompt‑echo stripping** before cleaning (generic regex, not NLQ‑specific).  
-  - **Semantic acceptance gate** (use `semantic_score` as a *threshold*, not only a reranker) so executable but irrelevant SQL is rejected.
-- **Rationale (literature‑backed):**  
-  Constrained decoding reduces invalid continuations (PICARD; Scholak, Schucher, and Bahdanau, 2021 (PICARD)), while execution‑guided decoding alone can accept spurious SQL unless paired with a semantic filter (Zhong, Yu, and Klein, 2020; Zhu et al., 2024; Gao et al., 2025). ReAct‑style agent loops require *format control + acceptance criteria* to avoid “valid‑but‑wrong” completions (Yao et al., 2023).
-- **Outcome:** Stabilizes Stage‑3 correctness by separating **VA (runs)** from **task success (semantics)**, improving traceability and narrative clarity for the dissertation.
-Code: `nl2sql/agent_utils.py#L263`, `nl2sql/agent_utils.py#L414`, `nl2sql/postprocess.py#L125`
-
-### 2026-01-29 — Stage 3 Stabilisation (Intent Constraints + Canonicalisation)
-- **Fixes applied:**  
-  - **Intent constraints:** added grouped‑aggregate checks (GROUP BY + aggregate + key in SELECT) and measure checks (total/amount ⇒ SUM), preventing “exec‑ok but wrong metric” outputs.  
-  - **Table‑casing canonicalisation:** rewrote `FROM/JOIN` table names to the schema’s canonical case to remove case‑sensitive “table doesn’t exist” failures.  
-  - **Cleaner hardening:** blocked `FROM dual`, `GROUP BY NULL`, dangling clauses, and prompt‑echo remnants that survived trimming.  
-  - **Repair filtering:** multi‑candidate repair + best‑SELECT extraction to reject keyword‑soup fixes.
-- **Effect:** Stage 3 now accepts **semantically plausible** SQL rather than any executable SQL; trace logs cleanly show where failures originate (generation vs cleaning vs execution vs repair).
-Code: `nl2sql/agent_utils.py#L235`, `nl2sql/postprocess.py#L45`
-
-### 2026-01-29 — Stage‑Gated Justification (Ablation + ReAct Pattern)
-- **Why STAGE 0–3:** stage‑gating is an **ablation ladder** that isolates the impact of clamps, reranking, and repair. This prevents “opaque agent” claims and supports attribution of VA/EX changes to specific mechanisms (aligned with execution‑guided decoding and ReAct ablations).
-Code: `notebooks/03_agentic_eval.ipynb`
-- **STAGE 0 vs STAGE ≥1:** Stage 0 is **minimal execution‑gated decoding** (generate → extract → execute), while Stage ≥1 operationalises a **ReAct‑style loop** (generate → execute → observe → refine) with multi‑candidate search, clamping, and repair.
-- **Trace logging:** structured traces (raw → cleaned → post‑clamp → exec → repair) create an audit trail for failure‑mode analysis and reproducibility.
-- **Fallback rationale:** deterministic few‑shot fallback preserves benchmark coverage and comparability across configurations.
+- **Code:** `notebooks/03_agentic_eval.ipynb`
 
 ### 2026-01-30 — Stage‑3 Full Run (200 queries)
 - **Run:** Stage‑3 ReAct on 200 ClassicModels NLQs (`results_react_200`).
@@ -235,163 +126,38 @@ Code: `notebooks/03_agentic_eval.ipynb`
 - **Literature alignment:** matches reports that execution feedback stabilises validity but does not guarantee semantic correctness (Ojuri et al., 2025; ExCoT; execution‑guided decoding).
 - **Next steps logged:** introduce **Test‑Suite Accuracy (TS)** and a structured **error taxonomy** (projection, aggregation scope, join selection) to explain EX failures.
 - **Dissertation narrative hook:** this run is the first **full‑set, agentic** result that isolates the “execution‑valid vs semantically‑correct” gap. It provides a concrete anchor for claims about why execution guidance improves stability but requires stronger semantic grounding or critic signals for EX gains.
+   
+### 2026-01-31 — Candidate‑Ranking Utilities (EX‑Focused Testing)
+- **Activities:** Tested which agent utilities materially improved EX within a candidate‑ranking loop (generate many → score/filter → execute best).  
+- **Guards/Utilities:** cleaning + normalization, projection guards, ORDER/LIMIT clamps, intent constraints, schema‑aware validation, `semantic_score`, `missing_explicit_fields`, prefilter to `max_exec_cands`, reflection/repair as fallback.  
+- **Observation:** These utilities boosted VA and made EX failure modes legible, but the loop remained post‑hoc ranking rather than tool‑grounded ReAct.  
+- **Reason:** Needed to isolate which controls affected EX before re‑architecting the loop.  
+- **Outcome:** Evidence base for which utilities should become first‑class tools in February.  
+- **Carried forward (Feb):** cleaning/normalization, schema‑aware validation logic, projection/clamp guardrails, semantic scoring signals, and reflection logic.  
+- **Not carried forward:** candidate‑ranking as the control structure; hard intent rejection (softened later); tabular prompt variant.  
 
-### 2026-01-30 — EX Stabilisation Plan (Projection + Intent + Schema Linking)
-- **Adjustment 1 — Projection contract:** enforce NLQ‑requested columns and drop extras; targets EX loss from projection drift.
-- **Adjustment 2 — Intent classifier:** constrain query type (lookup vs aggregate vs grouped vs top‑k) to stop “wrong‑question” outputs.
-- **Adjustment 3 — Schema‑subset prompting:** light schema linking (keyword→table + join hints) to reduce wrong table selection.
-- **Rationale:** these are output‑shape and selection controls (not answer injection), aligned with constrained decoding and schema‑linking guidance in NL→SQL surveys.
+### Late January 2026 Summary (Jan 23–31)
+- **What dominated:** rapid iteration on the agent loop, safety checks, and evaluation.  
+- **Why so much iteration:** many small, testable changes were needed to see where the system failed.  
+- **What I learned:** running the SQL helps prevent invalid output, but “meaning” errors (wrong joins/aggregations) still persist without stronger guidance.  
+- **Outcome:** a stable, debuggable loop with clear stages and a full‑run anchor on 200 items.
 
-### 2026-01-31 — Implemented EX Stabilisation (Projection + Intent + Schema Subset)
-- **Implemented:** projection contract, intent classifier constraints, and schema‑subset prompting in the ReAct helper layer and notebook pipeline.  
-- **Why (dissertation framing):** targets the dominant EX failure modes (projection drift, wrong question type, wrong table selection) without changing model weights. These are *control‑layer* interventions aligned with execution‑guided decoding and schema‑linking recommendations.  
-- **Notes:**  
-  - Projection contract enforces *output shape* when NLQ explicitly names fields.  
-  - Intent constraints prevent valid‑but‑wrong query types (e.g., aggregate vs list).  
-  - Schema subset reduces prompt scope using keyword‑to‑table hints + join hints.  
-- **Expected impact:** raises EX by correcting “almost‑right” outputs while preserving VA.  
+### January 2026 Summary (Month‑Level)
+- **Phase shift:** moved from QLoRA results into agent‑loop refinement with execution feedback.  
+- **Key insight:** prompts fix syntax, QLoRA helps meaning, and execution checks stabilize validity — but none alone solves semantic alignment.  
+- **Methodological takeaway:** explicit tool boundaries and clear checks are necessary to make the process explainable and defensible.  
+- **Evidence:** the full‑set run (Jan 30) exposed a gap between “runs correctly” and “answers the question,” motivating tighter guidance.
 
-### 2026-01-31 — Simplified ReAct Loop (No STAGE Branching)
-- **Change:** removed STAGE gating and replaced with a single, explainable ReAct loop that always follows: generate → clean → postprocess → execute → intent‑gate → score → (repair) → fallback.  
-- **Config:** one `CFG` dict controls sampling, candidate count, clamps, projection contract, and repair.  
-- **Reason:** improves traceability and removes branch‑specific behavior so results are easier to interpret and reproduce.  
+### Transition Note (Late Jan → Early Feb)
+- **Realization:** I was still picking the best from a batch of answers rather than guiding the model step‑by‑step with tools.  
+- **Change (Early Feb):** I rebuilt the loop into a clear, tool‑driven process where each step is checked and logged.  
 
-### 2026-01-31 — EX Protection Patch (Projection Order + Repair Intent Gate)
-- **Change:** projection contract now preserves explicit NLQ field order; repair acceptance is gated by the same intent constraints used for primary candidates.  
+### 2026-02-01–02 — ReAct Rebuild Plan + Evaluation Cleanup
+- **Activities:** Turned the old safety checks into a step‑by‑step plan; simplified the notebook; added quicker tests; clarified how we judge correctness so it focuses on meaning, not formatting.  
+- **Reason:** Make mistakes visible, speed iteration, and keep evaluation focused on the answer rather than SQL style.  
+- **Outcome:** Clear rebuild plan and a cleaner, faster evaluation setup.  
 
-### 2026-02-04 — Tool‑Driven ReAct Loop (Explicit Actions)
-- **Change:** implemented an explicit ReAct loop where the LLM chooses tools and Python executes them.  
-- **Change:** added `nl2sql/agent_tools.py` (tool interface) and `nl2sql/prompts.py` (single system prompt).  
-- **Change:** updated `notebooks/03_agentic_eval.ipynb` to use the tool loop and log full traces.  
-- **Change:** guardrails now run between `generate_sql`/`repair_sql` and `run_sql`, and `run_sql` must succeed before `finish`.  
-- **Reason:** align the implementation with ReAct’s Thought → Action → Observation abstraction and Ojuri‑style agentic workflows.  
-- **Effect:** clearer separation between LLM reasoning and environment interaction; traceable tool calls with execution feedback.  
-
-### 2026-02-05 — Add Explicit Validation Tool (ReAct Step #2)
-- **Change:** added `validate_sql` to the tool interface and prompt; validation checks formatting and schema references without execution.  
-- **Change:** updated the notebook loop to enforce **validate → run** ordering and route failed validation to `repair_sql`.  
-- **Reason:** mirror the Ojuri validation step explicitly and reduce invalid executions before hitting the database.  
-- **Effect:** tighter ReAct compliance and higher VA/EX/TS potential by catching schema errors earlier.  
-
-### 2026-02-05 — Add Schema Linking Tool (ReAct Step #1.5)
-- **Change:** added `link_schema` to the tool interface and prompt; it applies heuristic schema‑subset selection with join hints.  
-- **Change:** updated the notebook loop to bootstrap with `get_schema` → `link_schema` before SQL generation.  
-- **Reason:** reduce wrong‑table/join errors by narrowing schema context while keeping the loop explicit and auditable.  
-- **Effect:** improves EX/TS by steering generation toward relevant tables; still heuristic and logged as such.  
-
-### 2026-02-05 — Force Repair After Validation/Execution Errors
-- **Change:** the tool loop now forces `repair_sql` when `validate_sql` or `run_sql` fails, overriding any other model action.  
-- **Reason:** reduces action drift and keeps the ReAct loop faithful to error‑recovery semantics.  
-- **Effect:** higher likelihood of recovery within the step budget; trace logs record forced actions.  
-
-### 2026-02-05 — Add Constraint Extraction + Validation Tools
-- **Change:** added `extract_constraints` and `validate_constraints` to the tool interface and prompt.  
-- **Change:** the loop now extracts structural constraints (aggregation, order, limit, distinct) and enforces them before execution.  
-- **Reason:** many EX/TS failures are structural (missing COUNT/GROUP BY/LIMIT); explicit constraints tighten generation and acceptance.  
-- **Effect:** improved semantic alignment without changing model weights; still heuristic and auditable.  
-
-### 2026-02-05 — Decision Log + Compliance Summary
-- **Change:** added per‑query decision logs (reasoned actions + outcomes) and compliance summaries for the ReAct loop.  
-- **Reason:** dissertation‑grade auditability requires explaining every accept/reject in one sentence.  
-- **Effect:** traces now include formatted decision records and compliance flags suitable for demos and error analysis.  
-
-### 2026-02-04 — ReAct Loop Tuning (Intent + Generation + Budget)
-- **Decision:** reduce false intent rejections and syntax junk seen in the partial `results_react_200 (2)` trace by adjusting intent detection and candidate generation.
-- **Change:** expanded intent cues to include common aggregate phrasing (“how many”, “number of”, “how much”).  
-- **Change:** intent constraints are now configurable as a **soft penalty** instead of a hard reject (`enforce_intent_constraints=False`), while reflection remains hard‑gated.  
-- **Change:** hybrid generation per prompt: **one greedy anchor + sampled candidates** for diversity.  
-- **Change:** default budget shifted to **`max_steps=1`** and higher **`num_cands`** to favor breadth over low‑yield multi‑step retries.
-- **Change:** reduced decoding entropy (`temperature=0.3`, `max_new_tokens=96`) to cut run‑on keyword soup.
-- **Change:** cleaner rejects empty/keyword‑only SELECT lists and keyword‑soup candidates before execution.
-- **Change:** reflection prompt now includes a detected intent label to steer aggregate vs lookup fixes.
-- **Change:** prefilter ranks candidates and keeps only the top `max_exec_cands` before validation to cut wasted DB calls.
-- **Change:** removed the optional tabular prompt variant to reduce loop complexity.
-- **Change:** added schema‑aware validation (reject unknown tables/columns) before execution.
-- **Change:** reflection prompts now include error‑specific guidance keyed to common MySQL codes.
-- **Change:** renamed the repair step to **reflection** in code and docs (`enable_reflection`, `reflect_sql`) to align with ReAct/Reflexion terminology (earlier log entries still use “repair”).
-- **Reason:** the trace showed a large share of candidates dying on syntax errors and intent rejects; multi‑step refinement was not consistently recovering.  
-- **Expected effect:** higher VA/EX by keeping more plausible SQL in the pool, improving syntactic reliability, and reducing avoidable intent‑gate false negatives.
-- **Why:** EX was failing on “almost‑right” outputs due to column order mismatch and repair occasionally overwrote correct intent with executable but irrelevant SQL.  
-- **Effect:** raises EX by aligning output shape with the NLQ and prevents semantic drift during repair.  
-
-### 2026-02-01 — TS Harness + Quick‑Test Toggles
-- **Change:** added Test‑Suite Accuracy (TS) evaluation harness and quick‑test toggles (limit, TS_N, max rows) to the agentic eval notebook.  
-- **Why:** TS provides semantic‑equivalence evaluation across perturbed DBs, while quick‑test toggles make iterative debugging feasible without full‑run cost.  
-- **Effect:** enables rapid validation of EX improvements and supports a rigorous, reproducible evaluation narrative.  
-Code: `nl2sql/eval.py#L201`, `notebooks/03_agentic_eval.ipynb`
-
-### 2026-02-02 — Simplified Cell 6 (Readable ReAct Utilities)
-- **Change:** refactored Cell 6 into small, named helpers (normalize, trim prompt‑echo, clean candidate, post‑process, clamps, repair) with plain‑English comments.  
-- **Why:** improves explainability for examiners and makes the control‑layer logic defendable without reading dense regex.  
-- **Effect:** same behavior, clearer narrative and easier debugging.  
-Code: `nl2sql/agent_utils.py#L263`, `notebooks/03_agentic_eval.ipynb`
-
-### 2026-02-02 — Notebook Cleanup (TS util + score helper)
-- **Change:** moved TS harness into `nl2sql/eval.py` and imported it in the notebook; added a single `score_sql()` helper cell to centralize candidate scoring.  
-- **Why:** keeps the notebook as an orchestration document and reduces “wall‑of‑code” sections; easier to justify and audit.  
-- **Effect:** same evaluation behavior, cleaner notebook structure, clearer explanation for examiners.  
-Code: `nl2sql/eval.py#L201`, `notebooks/03_agentic_eval.ipynb`
-
-### 2026-02-02 — EX Comparator Relaxed + Quick‑Check Snapshot
-- **Change:** removed column‑name strictness from EX (execution_accuracy) so EX compares **row contents only**.  
-- **Why:** EX was penalizing correct answers due to column order / header mismatches; this aligns EX closer to semantic equivalence and to TS‑style comparison.  
-- **Quick check (N=20):** VA **0.8**, EX **0.4**, EM **0.2**, TS **0.6**.  
-- **My interpretation:** encouraging — validity remains stable, EX improves when projection noise is discounted, TS remains higher than EX but still below ideal.  
-- **Next plan:**  
-  - make TS “truer” by using **distilled/perturbed DBs** (not mere clones),  
-  - keep EX less strict (row‑equivalence) while reporting EM separately for formatting differences.  
-Code: `nl2sql/eval.py#L104`
-
-### 2026-02-02 — TS Definition Clarified (Suite‑Based, Not Distilled)
-- **Clarification:** TS in this project is a **suite‑based robustness check** using multiple perturbed DB replicas; it is **not** full distilled test suites in the Zhong et al. sense.  
-- **Reason for note:** prevents over‑claiming; still a defensible step beyond single‑DB EX and EM.  
-- **Ref:** Zhong, Yu, and Klein (2020)
-Code: `nl2sql/eval.py#L201`
-
-### 2026-02-04 — ReAct Feedback Made Explicit (Action/Observation)
-- **Change:** ReAct history now uses real action/observation fields, and each rejection logs an explicit observation string (clean reject, exec fail, intent reject).  
-- **Why:** the prompt claimed ReAct structure but history text was blank; explicit observations align the loop with ReAct/ExCoT feedback without changing model weights.  
-- **Effect:** trace is now auditable and the model receives concrete error feedback in the next step.  
-Code: `nl2sql/agent.py` (`_format_history_item`, `_build_react_prompt`, `evaluate_candidate`)
-
-### 2026-02-04 — Optional Multi‑Step Threshold (accept_score)
-- **Change:** added `accept_score` to `ReactConfig`; if set, the loop keeps iterating until a candidate clears the threshold.  
-- **Why:** makes multi‑step refinement meaningful while keeping the loop bounded and explainable.  
-- **Effect:** enables true “try‑improve‑accept” behavior without changing the generation method.  
-Code: `nl2sql/agent.py` (`ReactConfig`, `react_sql`)
-
-### 2026-02-04 — Eval Save Robustness (Decimal‑safe JSON)
-- **Change:** JSON saving now uses `default=str` to serialize Decimal values in TS debug outputs.  
-- **Why:** SQLAlchemy returns Decimal for numeric columns; JSON serialization would fail during result persistence.  
-- **Effect:** results can be saved without stripping debug detail.  
-Code: `notebooks/03_agentic_eval.ipynb` (evaluation save block)
-
-### 2026-02-04 — Field Synonyms + Literal‑Value Scoring
-- **Change:** expanded NLQ field synonyms (plural forms) and added a small literal‑value scoring signal (e.g., “USA”, “San Francisco”) in `semantic_score`.  
-- **Why:** missing explicit fields (“codes”) and filters were causing avoidable EX/TS misses; a lightweight lexical signal improves candidate selection without adding learned components.  
-- **Effect:** better alignment with NLQ field lists and improved selection of candidates that include key filter values.  
-Code: `nl2sql/agent_utils.py` (`_FIELD_SYNONYMS`, `_SPECIAL_FIELD_HINTS`, `_extract_value_hints`, `semantic_score`)
-
-### 2026-02-04 — Explicit Field Missing Penalty + More Candidates
-- **Change:** added a penalty in `semantic_score` when explicitly requested fields are missing, and increased agent candidate count in the notebook config.  
-- **Why:** some NLQs enumerated fields (e.g., “names, codes, and MSRPs”) but the chosen candidate dropped a field; increasing candidates and penalizing omissions improves selection without altering model weights.  
-- **Effect:** higher chance of selecting candidates that include all requested fields; modest EX/TS improvement expected.  
-Code: `nl2sql/agent_utils.py` (`semantic_score`), `notebooks/03_agentic_eval.ipynb` (`ReactConfig.num_cands`)
-
-### 2026-02-04 — ReAct Multi-step Enabled in Notebook
-- **Change:** set `accept_score` in the notebook `ReactConfig` so the loop can perform true multi-step refinement instead of always stopping at the first executable candidate.  
-- **Why:** ReAct’s core benefit is observe → revise; without a threshold the loop behaves like a single-pass sampler.  
-- **Effect:** encourages an additional step when the best candidate is weak, improving alignment with ReAct/ExCoT behavior.  
-Code: `notebooks/03_agentic_eval.ipynb` (`ReactConfig.accept_score`)
-
-### 2026-02-04 — Missing-field Observation in ReAct Trace
-- **Change:** when explicitly requested fields are missing, the agent logs an observation string (e.g., “Missing requested fields: productCode”) so it can be used in the next step.  
-- **Why:** makes the feedback loop more actionable and aligns with ReAct-style correction.  
-- **Effect:** clearer traces and better guidance for multi-step refinement.  
-Code: `nl2sql/agent.py` (`evaluate_candidate`), `nl2sql/agent_utils.py` (`missing_explicit_fields`)
-
-### 2026-02-04 — Join Exemplar Injection for ReAct Prompts
-- **Change:** added a small exemplar set (from the test set) and inject it into the ReAct prompt; also print a schema check for `offices.city`.  
-- **Why:** join errors are the most common EX failure; a single join exemplar can anchor the intended join pattern without changing model weights.  
-- **Effect:** improved join behavior expected on office/city queries; prompts remain auditable.  
-Code: `nl2sql/agent.py` (prompt exemplar formatting), `notebooks/03_agentic_eval.ipynb` (`REACT_EXEMPLARS`)
+### 2026-02-04–05 — Tool‑Driven Loop Implemented
+- **Activities:** Implemented the step‑by‑step loop with checks for schema, structure, and execution; forced a fix‑and‑retry step on failure; improved feedback and logging; enabled multi‑step refinement.  
+- **Dropped/Changed:** Removed a confusing prompt format and softened overly strict intent checks.  
+- **Effect:** A more stable, auditable loop with clearer reasons for success and failure.  
