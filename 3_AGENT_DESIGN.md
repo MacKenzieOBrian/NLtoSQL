@@ -54,14 +54,6 @@ This makes failures attributable to a specific step (validation vs constraints v
 
 ---
 
-## What Changed From Earlier Candidate-Ranking
-
-- **Kept:** deterministic cleaning, projection control, heuristic schema linking, constraint checks, safe execution, and error-driven repair.
-- **Dropped:** “generate many → rank → pick best” as the main control structure; hard intent rejection; extra prompt variants.
-- **Result:** clearer action/observation traces and more defensible evaluation behavior.
-
----
-
 ## Where to Demo / Verify
 
 - Notebook loop: `notebooks/03_agentic_eval.ipynb` (cell “Tool-driven ReAct loop (explicit Thought/Action/Observation)”)
@@ -75,4 +67,3 @@ This makes failures attributable to a specific step (validation vs constraints v
 ## Legacy / Experimental Code
 
 `nl2sql/agent.py` (`ReactSqlAgent`) is retained for ablations and comparison; it is not the reference evaluation loop.
-
