@@ -1,7 +1,11 @@
 """
 Agent prompts (single source of truth).
+Rationale: the prompt encodes the ordered tool workflow so the loop is explicit,
+auditable, and aligned with ReAct-style action/observation structure.
 """
 
+# Rationale: each rule prevents a specific failure observed in early runs
+# (skipping validation, using unknown tables, or finishing without execution).
 REACT_SYSTEM_PROMPT = """You are a text-to-SQL agent for a MySQL database.
 
 You must follow this loop:

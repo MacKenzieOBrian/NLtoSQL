@@ -7,7 +7,7 @@ This validates that:
 - prompt lists required tools and rules
 - agent_tools defines required tool functions
 - notebook contains validate_sql and run_sql gating
-- documentation/logbook are updated for the validation step
+- technical reference exists (kept intentionally short) and mentions key loop guarantees
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ REQUIRED_FILES = [
     "nl2sql/prompts.py",
     "notebooks/03_agentic_eval.ipynb",
     "LOGBOOK.md",
-    "context.md",
+    "TOOL_DRIVEN_REACT_LOOP_TECHNICAL_REFERENCE.md",
 ]
 
 REQUIRED_TOOL_FUNCS = [
@@ -108,12 +108,11 @@ def _check_notebook_loop() -> list[str]:
 
 def _check_docs() -> list[str]:
     errors = []
-    logbook = (ROOT / "LOGBOOK.md").read_text(encoding="utf-8")
-    if "Add Explicit Validation Tool" not in logbook:
-        errors.append("LOGBOOK missing validation-step entry.")
-    context = (ROOT / "context.md").read_text(encoding="utf-8")
-    if "validate_sql" not in context:
-        errors.append("context.md missing validate_sql mention.")
+    ref = (ROOT / "TOOL_DRIVEN_REACT_LOOP_TECHNICAL_REFERENCE.md").read_text(encoding="utf-8")
+    required_mentions = ["react_sql", "validate_sql", "validate_constraints", "run_sql", "repair_sql", "trace", "decision_log"]
+    for m in required_mentions:
+        if m not in ref:
+            errors.append(f"Technical reference missing mention: {m}")
     return errors
 
 

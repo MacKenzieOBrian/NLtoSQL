@@ -123,6 +123,7 @@ def execution_accuracy(
 
     # NOTE: we compare rows only (not column names) because earlier experiments showed
     # EX was dominated by projection/alias drift even when the underlying row sets matched.
+    # Rationale: keeps EX focused on semantic equivalence rather than presentation.
     return Counter(pred_rows) == Counter(gold_rows), None, None
 
 
@@ -133,6 +134,8 @@ def execution_accuracy(
 # This mirrors the notebook TS harness but lives here for reuse in scripts.
 
 TS_ORDER_BY_RE = re.compile(r"(?is)\border\s+by\b")
+# Regex reference: https://docs.python.org/3/library/re.html
+# Rationale: ordering only matters for TS when the gold query explicitly orders results.
 
 
 def _has_order_by(sql: str) -> bool:

@@ -41,6 +41,7 @@ DEFAULT_FORBIDDEN_TOKENS = [
     "update ",
     "insert ",
 ]
+# Rationale: simple SELECT-only guard to keep evaluation safe and reproducible.
 
 
 @dataclass(frozen=True)

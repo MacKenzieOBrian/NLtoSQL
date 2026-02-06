@@ -22,6 +22,8 @@ from nl2sql.prompting import make_few_shot_messages
 
 
 def _normalize_spaced_keywords(text: str) -> str:
+    # Regex reference: https://docs.python.org/3/library/re.html
+    # Rationale: early traces showed "S E L E C T" / spaced keywords that break parsing.
     # Fix outputs like "S E L E C T" / "F R O M".
     keywords = [
         "select",
@@ -284,6 +286,8 @@ def intent_constraints(nlq: str, sql: str) -> tuple[bool, str]:
 
 # Prompt-echo trimming: models sometimes repeat instruction text ("output only SQL"),
 # which makes the candidate non-executable. Keep this deterministic and transparent.
+# Regex reference: https://docs.python.org/3/library/re.html
+# Rationale: seen in Jan traces when the model echoed system rules into the SQL.
 _ECHO_CUTOFF_RE = re.compile(
     r"(?is)\b("
     r"output\s+only|"
@@ -373,21 +377,25 @@ def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
     lower = sql.lower()
 
     # Cut off instruction echo that sometimes appears inside the same text span.
+    # Rationale: avoids VA=0 caused by prompt echo in early baseline runs.
     m = _ECHO_CUTOFF_RE.search(sql)
     if m:
         sql = sql[: m.start()].strip()
         lower = sql.lower()
 
     # Cut at the first ';' so trailing text does not poison execution.
+    # Rationale: model often adds explanations after the SQL.
     if ";" in sql:
         sql = sql.split(";", 1)[0].strip()
         lower = sql.lower()
 
     # Must contain FROM (allowing newlines/whitespace).
+    # Rationale: ensures a real SELECT statement instead of partial output.
     if not re.search(r"\bfrom\b", lower):
         return None, "no_from"
 
     # Basic select-list sanity: reject empty / keyword-only projections.
+    # Rationale: prevents "SELECT FROM" or keyword-soup outputs observed in early runs.
     m = re.search(r"(?is)^\s*select\s+(.*?)\s+from\s+", sql)
     if m:
         select_part = m.group(1).strip()
@@ -407,6 +415,7 @@ def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
             return None, "no_from_table"
 
     # Keyword-soup heuristic: too many keywords, too few identifiers.
+    # Rationale: rejects degenerate outputs that look like SQL but contain no fields/tables.
     tokens = re.findall(r"[a-zA-Z_][\w$]*", sql)
     if tokens:
         kw = sum(1 for t in tokens if t.lower() in _SQL_KEYWORDS)
@@ -508,6 +517,9 @@ def semantic_score(nlq: str, sql: str) -> float:
         if any(a in nlq_low for a in aliases) and key in sql_low:
             score += 2.0
 
+    # Regex reference: https://docs.python.org/3/library/re.html
+    # Rationale: lightweight lexical overlap helped pick better candidates than
+    # shortest/first SQL in Jan candidate-ranking tests.
     nl_tokens = set(re.findall(r"[a-zA-Z]+", nlq_low))
     sql_tokens = set(re.findall(r"[a-zA-Z]+", sql_low))
     overlap = len(nl_tokens & sql_tokens)
