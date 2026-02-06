@@ -109,6 +109,8 @@ def validate_constraints(sql: str, constraints: Optional[dict]) -> dict:
     # Rationale: prevents "runs but wrong shape" (e.g., missing GROUP BY or LIMIT).
     if not constraints:
         return {"valid": True, "reason": "no_constraints"}
+    if not isinstance(constraints, dict):
+        return {"valid": True, "reason": "no_constraints"}
     if not sql or not sql.strip():
         return {"valid": False, "reason": "empty_sql"}
 
