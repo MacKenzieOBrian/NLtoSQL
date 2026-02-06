@@ -178,4 +178,5 @@
 - **Change:** Updated action parsing to extract **all** `Action:` lines and follow the **last** one (the model’s final decision). This made the loop more stable and the walkthrough easier to explain.  
 - **Also fixed:** Corrected a small regex escape in table-casing normalization so guardrail traces reflect the schema consistently.  
 - **Learning:** Small “plumbing” details (parsing + logging) can dominate perceived agent quality; reliable tool boundaries are part of reproducibility.  
+- **Additional fixes (same day):** Forced finish after a successful run to prevent post‑run tool noise; blocked setup tools inside the loop; made schema validation explicit (`schema_ok`/`schema_missing`); expanded COUNT cues in constraint extraction.  
 - **Next:** Re-run sanity checks after a kernel restart to confirm cleaner tool order and reduced trace noise.
