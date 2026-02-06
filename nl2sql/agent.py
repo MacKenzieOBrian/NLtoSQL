@@ -450,7 +450,12 @@ Respond with only the final SQL statement.
             phase = validation.get("phase")
             reason = validation.get("reason") or validation.get("error") or ""
             obs = validation.get("obs") or ""
-            validation_block = f\"\"\"\nValidation findings:\n- phase: {phase}\n- detail: {reason}\n- observation: {obs}\n\"\"\".rstrip()
+            validation_block = f"""
+Validation findings:
+- phase: {phase}
+- detail: {reason}
+- observation: {obs}
+""".rstrip()
 
         prompt = f"""
 You are an expert MySQL engineer.

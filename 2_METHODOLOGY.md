@@ -94,6 +94,7 @@ Implementation notes:
 - System prompt: `nl2sql/prompts.py`
 - Notebook loop: `notebooks/03_agentic_eval.ipynb` (tool-driven `react_sql`)
 - Execution gate: `nl2sql/query_runner.py:QueryRunner.run`
+- Technical reference: `TOOL_DRIVEN_REACT_LOOP_TECHNICAL_REFERENCE.md`
 
 ---
 

@@ -753,7 +753,8 @@ Model answer (say this):
 Code pointers:
 - `nl2sql/eval.py` (VA/EM/EX)
 - `nl2sql/eval.py:test_suite_accuracy_for_item` (TS)
-- `5_ITERATIVE_REFINEMENTS.md` (decision records)
+- `notebooks/03_agentic_eval.ipynb` (`decision_log` + per-query traces)
+- `LOGBOOK.md` (high-level trade-offs and learning narrative)
 
 Related literature:
 - [Zhong et al., 2020](REFERENCES.md#ref-zhong2020-ts) (metric limitations motivate semantic checks)

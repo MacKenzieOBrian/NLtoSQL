@@ -52,6 +52,7 @@
 - **Lit Link:** ICL boosts structure, weak on semantics (as reported in NL→SQL surveys).
 - **Observation:** VA increased; EX remained low.
 - **Interpretation:** Prompting solves syntax; semantic joins/aggregates remain unmet.
+- **Learning:** Prompting alone fixes form, not meaning — the semantic gap is the real bottleneck.
 - **Next:** Test whether weight adaptation addresses semantic gap.
 
 ### 2025-12-23 — Full Baseline Results (200 items)
@@ -59,6 +60,7 @@
   - k=0 → VA 0.810 / EX 0.000  
   - k=3 → VA 0.865 / EX 0.250
 - **Lit Alignment:** Matches literature: exemplars induce schema patterns but not numeric reasoning or compositional semantics.
+- **Learning:** Few-shot helps structure, but deeper reasoning still fails without adaptation.
 
 ---
 
@@ -86,12 +88,14 @@
 - **Activities:** Projection guard + ORDER/LIMIT clamp; slice reached VA/EX/EM = 1.0.
 - **Lit Link:** Consistent with constrained decoding (PICARD-style) literature.
 - **Insight:** Some EX failures are structural, not semantic.
+- **Learning:** Tight guardrails can fix structural errors, but they don’t solve semantics.
 
 ### 2026-01-25 — Full-Set Reality Check
 - **Results:** VA ~1.0, EX ~0.05
 - **Failure Modes:** revenue/grouping, multi-hop joins, misaligned filters.
 - **Lit Link:** Execution guidance insufficient for semantic leaps; matches survey findings.
 - **Reflection:** We entered “semantic bottleneck” regime.
+- **Learning:** Execution feedback stabilises validity, but meaning errors persist at scale.
 
 ### 2026-01-26 — Literature-Aligned Diagnosis
 - **Conclusion:**  
@@ -135,6 +139,7 @@
 - **Outcome:** Evidence base for which utilities should become first‑class tools in February.  
 - **Carried forward (Feb):** cleaning/normalization, schema‑aware validation logic, projection/clamp guardrails, semantic scoring signals, and reflection logic.  
 - **Not carried forward:** candidate‑ranking as the control structure; hard intent rejection (softened later); tabular prompt variant.  
+- **Learning:** Utility gains were real, but the *loop structure* still hid error causes.
 
 ### Late January 2026 Summary (Jan 23–31)
 - **What dominated:** rapid iteration on the agent loop, safety checks, and evaluation.  
@@ -151,13 +156,16 @@
 ### Transition Note (Late Jan → Early Feb)
 - **Realization:** I was still picking the best from a batch of answers rather than guiding the model step‑by‑step with tools.  
 - **Change (Early Feb):** I rebuilt the loop into a clear, tool‑driven process where each step is checked and logged.  
+- **Learning:** A true ReAct loop requires explicit actions + observations, not just better ranking.
 
 ### 2026-02-01–02 — ReAct Rebuild Plan + Evaluation Cleanup
 - **Activities:** Turned the old safety checks into a step‑by‑step plan; simplified the notebook; added quicker tests; clarified how we judge correctness so it focuses on meaning, not formatting.  
 - **Reason:** Make mistakes visible, speed iteration, and keep evaluation focused on the answer rather than SQL style.  
 - **Outcome:** Clear rebuild plan and a cleaner, faster evaluation setup.  
+- **Learning:** Visibility and evaluation design were prerequisites for meaningful progress.
 
 ### 2026-02-04–05 — Tool‑Driven Loop Implemented
 - **Activities:** Implemented the step‑by‑step loop with checks for schema, structure, and execution; forced a fix‑and‑retry step on failure; improved feedback and logging; enabled multi‑step refinement.  
 - **Dropped/Changed:** Removed a confusing prompt format and softened overly strict intent checks.  
 - **Effect:** A more stable, auditable loop with clearer reasons for success and failure.  
+- **Learning:** Explicit tool order + forced repair yields a more explainable and reliable agent loop.
