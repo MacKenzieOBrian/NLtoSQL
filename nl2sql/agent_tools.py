@@ -18,7 +18,7 @@ from .schema import list_tables, get_table_columns
 from .llm import generate_sql_from_messages
 from .prompting import SYSTEM_INSTRUCTIONS
 from .query_runner import QueryRunner
-from .agent_utils import clean_candidate_with_reason, build_schema_subset
+from .agent_utils import clean_candidate_with_reason, build_schema_subset, _extract_value_hints
 
 
 @dataclass
@@ -75,7 +75,7 @@ def extract_constraints(nlq: str) -> dict:
         agg = "COUNT"
     elif re.search(r"\baverage\b|\bavg\b|mean", nl):
         agg = "AVG"
-    elif re.search(r"\btotal\b|\bsum\b", nl):
+    elif re.search(r"\btotal\b|\bsum\b|how much", nl):
         agg = "SUM"
     elif re.search(r"\bmaximum\b|\bmax\b|highest|most", nl):
         agg = "MAX"
@@ -95,12 +95,19 @@ def extract_constraints(nlq: str) -> dict:
 
     distinct = bool(re.search(r"\b(unique|distinct|different)\b", nl))
 
+    value_hints = _extract_value_hints(nlq)
+    needs_location = bool(
+        value_hints and re.search(r"\b(in|from|located|based|office)\b", nl)
+    )
+
     return {
         "agg": agg,
         "needs_group_by": needs_group_by,
         "needs_order_by": needs_order_by,
         "limit": limit,
         "distinct": distinct,
+        "value_hints": value_hints,
+        "needs_location": needs_location,
     }
 
 
@@ -137,6 +144,14 @@ def validate_constraints(sql: str, constraints: Optional[dict]) -> dict:
     if limit is not None:
         if re.search(rf"\blimit\s+{limit}\b", sql_low) is None:
             return {"valid": False, "reason": f"missing_limit:{limit}"}
+
+    value_hints = constraints.get("value_hints") or []
+    if value_hints and not any(v in sql_low for v in value_hints):
+        return {"valid": False, "reason": "missing_value_hint"}
+
+    if constraints.get("needs_location"):
+        if re.search(r"\b(city|country|state|territory|region)\b", sql_low) is None:
+            return {"valid": False, "reason": "missing_location_column"}
 
     return {"valid": True, "reason": "ok"}
 

@@ -39,10 +39,10 @@ The loop only parses/enforces `Action` (not `Thought`). The notebook parser uses
 Core actions:
 - `get_schema`: retrieve full schema (tables/columns/PK/FK)
 - `link_schema`: prune schema context before generation (RESDSQL-style separation of linking vs generation **[17]**; relation-aware schema linking in RAT-SQL **[22]**)
-- `extract_constraints`: extract structural requirements (`agg`, `needs_group_by`, `needs_order_by`, `limit`, `distinct`)
+- `extract_constraints`: extract structural requirements (`agg`, `needs_group_by`, `needs_order_by`, `limit`, `distinct`) plus **value hints** for lightweight value linking (BRIDGE **[23]**)
 - `generate_sql`: generate a raw SQL candidate (guardrails run immediately after)
 - `validate_sql`: check "single executable SELECT" + schema references
-- `validate_constraints`: post-hoc structural checks (PICARD-style *constraint idea* **[13]**, implemented as validation + repair)
+- `validate_constraints`: post-hoc structural checks (PICARD-style *constraint idea* **[13]**, implemented as validation + repair); also enforces value-hint presence and location cues when extracted **[23]**
 - `run_sql`: execute via `QueryRunner` (SELECT-only safety; execution feedback aligns with ExCoT **[2]** and execution-guided decoding **[25]**)
 - `repair_sql`: revise SQL using the most recent error feedback
 - `finish`: terminate (gated; see below)
