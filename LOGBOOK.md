@@ -180,3 +180,11 @@
 - **Learning:** Small “plumbing” details (parsing + logging) can dominate perceived agent quality; reliable tool boundaries are part of reproducibility.  
 - **Additional fixes (same day):** Forced finish after a successful run to prevent post‑run tool noise; blocked setup tools inside the loop; made schema validation explicit (`schema_ok`/`schema_missing`); expanded COUNT cues in constraint extraction; re‑added the interactive walkthrough cell; added guardrail stage debug output; set sanity checks to `auto_order=True`; hardened constraint handling to ignore non‑dict inputs.  
 - **Next:** Re-run sanity checks after a kernel restart to confirm cleaner tool order and reduced trace noise.
+
+### 2026-02-07 — Quick Check Error Log (Tool-Driven ReAct)
+- **Activities:** Reviewed 10-item quick check outputs in `results/agent/results_react_200 (4).json`; classified errors and failure causes.
+- **Results:** VA 1.00, EX 0.30, EM 0.20, TS 0.30 (3/10 correct).
+- **Error taxonomy:** Off-topic fallback reuse (5/10; “San Francisco employee count” query used for unrelated NLQs); projection/field selection errors (2/10); EM-only mismatch from alias/ORDER BY differences (1/10; EX/TS still correct).
+- **Diagnostics:** Fallback triggered 6/10 items; in 5 cases it replaced earlier candidates and yielded wrong semantics. Blocked steps totaled 15 across the set, suggesting control-flow interruptions precede fallback misuse.
+- **Justification (lit):** Execution-guided decoding rejects faulty programs using execution feedback, aligning with gating fallback candidates through validation/execution before accepting them. [Robust Text-to-SQL Generation with Execution-Guided Decoding](https://www.microsoft.com/en-us/research/publication/robust-text-to-sql-generation-with-execution-guided-decoding/)
+- **Next:** Prevent fallback from overwriting validated candidates; add a guard that retains the best schema-validated SQL when fallback fires.

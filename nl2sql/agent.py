@@ -540,6 +540,8 @@ Output ONLY the corrected SELECT statement.
         last_failure_rank = -1
         # Rationale: prioritize failures that are most informative for repair.
         failure_rank = {"exec_fail": 3, "schema_reject": 2, "intent_reject": 1}
+        best_overall: Optional[tuple[str, float]] = None
+        best_overall_info: Optional[dict] = None
         # Store exemplars on the agent so prompt builders can include them.
         # Rationale: a small number of examples improves structure without overfitting.
         self._prompt_exemplars = exemplars or []
@@ -595,6 +597,9 @@ Output ONLY the corrected SELECT statement.
                     if best is None or score > best[1]:
                         best = (sql, score)
                         best_info = log
+                    if best_overall is None or score > best_overall[1]:
+                        best_overall = (sql, score)
+                        best_overall_info = log
 
             if best is not None:
                 sql, score = best
@@ -638,6 +643,14 @@ Output ONLY the corrected SELECT statement.
             history.append({"step": step, "phase": "observation", "obs": _trim(observation)})
 
         # Deterministic fallback (few-shot baseline) if provided.
+        if best_overall is not None:
+            sql, score = best_overall
+            note = "best_overall_below_threshold"
+            if best_overall_info and best_overall_info.get("missing_fields"):
+                note += f" missing_fields={','.join(best_overall_info['missing_fields'])}"
+            history.append({"step": cfg.max_steps, "phase": "final", "sql": sql, "score": score, "note": note})
+            return sql, history
+
         if schema_summary is not None:
             fallback = vanilla_candidate(
                 nlq=nlq,
@@ -647,9 +660,14 @@ Output ONLY the corrected SELECT statement.
                 exemplars=exemplars or [],
             )
             if fallback:
-                self._debug("[fallback] using deterministic baseline candidate")
-                history.append({"step": cfg.max_steps, "phase": "fallback", "sql": fallback})
-                return fallback, history
+                result, log = self.evaluate_candidate(nlq=nlq, raw=fallback, schema_index=schema_index)
+                log = {"step": cfg.max_steps, "source": "fallback", **log}
+                history.append({k: _trim(v) for k, v in log.items()})
+                if result is not None:
+                    sql, score = result
+                    self._debug("[fallback] using validated baseline candidate")
+                    history.append({"step": cfg.max_steps, "phase": "final", "sql": sql, "score": score, "source": "fallback"})
+                    return sql, history
 
         history.append({"step": cfg.max_steps, "phase": "fail", "reason": "No valid SQL found"})
         return "", history
