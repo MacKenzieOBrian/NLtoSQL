@@ -38,6 +38,7 @@ from .agent_utils import (
     vanilla_candidate,
     _extract_value_hints,
 )
+from .validation import parse_schema_text, schema_validate
 from .postprocess import guarded_postprocess
 from .query_runner import QueryRunner
 
@@ -68,6 +69,8 @@ class ReactConfig:
     # Explicit field/value gates (projection + literal filters).
     enforce_explicit_fields: bool = True
     enforce_value_hints: bool = True
+    # Join-key validation for known table pairs.
+    enforce_join_hints: bool = True
     # Optional prefilter: limit how many candidates are executed per step.
     max_exec_cands: Optional[int] = 8
     # Optional early-stop threshold for multi-step refinement.
@@ -125,50 +128,15 @@ class ReactSqlAgent:
     # Schema validation
     # -----------------
     def _parse_schema_text(self, schema_text: str) -> tuple[set[str], dict[str, set[str]]]:
-        tables: set[str] = set()
-        table_cols: dict[str, set[str]] = {}
-        if not schema_text:
-            return tables, table_cols
-        for line in schema_text.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            m = re.match(r"(?is)^([a-zA-Z_][\w$]*)\s*\((.*)\)\s*$", line)
-            if not m:
-                continue
-            table = m.group(1).strip().lower()
-            cols_raw = m.group(2)
-            cols = [c.strip().lower() for c in cols_raw.split(",") if c.strip()]
-            tables.add(table)
-            table_cols[table] = set(cols)
-        return tables, table_cols
+        return parse_schema_text(schema_text)
 
     def _schema_validate(self, *, sql: str, schema_index: tuple[set[str], dict[str, set[str]]]) -> tuple[bool, str]:
-        tables, table_cols = schema_index
-        if not tables:
-            return True, "no_schema"
-
-        sql_low = sql.lower()
-        # Rationale: early runs failed on misspelled tables/columns; this check makes
-        # those errors explicit before execution so the loop can repair them.
-        # Validate explicit table names in FROM/JOIN (skip subqueries).
-        for m in re.finditer(r"(?is)\b(from|join)\s+([a-zA-Z_][\w$]*)", sql_low):
-            table = m.group(2)
-            # Skip if this is followed by a "(" (derived table).
-            after = sql_low[m.end() : m.end() + 1]
-            if after == "(":
-                continue
-            if table not in tables:
-                return False, f"unknown_table:{table}"
-
-        # Validate qualified columns table.column when table is known.
-        for m in re.finditer(r"(?is)\b([a-zA-Z_][\w$]*)\.([a-zA-Z_][\w$]*)\b", sql_low):
-            table = m.group(1)
-            col = m.group(2)
-            if table in table_cols and col not in table_cols[table]:
-                return False, f"unknown_column:{table}.{col}"
-
-        return True, "ok"
+        ok, why, detail = schema_validate(sql=sql, schema_index=schema_index, enforce_join_hints=self.cfg.enforce_join_hints)
+        if not ok and detail:
+            missing = detail.get("missing") if isinstance(detail, dict) else None
+            if missing:
+                return False, f"{why}:{missing[0]}"
+        return ok, why
 
     # -----------------
     # Prompt builders

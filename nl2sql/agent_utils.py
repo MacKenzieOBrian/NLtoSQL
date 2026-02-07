@@ -76,6 +76,77 @@ _JOIN_HINTS = [
 ]
 
 
+def _parse_join_hints() -> list[tuple[str, str, str, str]]:
+    pairs: list[tuple[str, str, str, str]] = []
+    for hint in _JOIN_HINTS:
+        m = re.match(
+            r"(?is)^\s*([a-zA-Z_][\w$]*)\.([a-zA-Z_][\w$]*)\s*=\s*([a-zA-Z_][\w$]*)\.([a-zA-Z_][\w$]*)\s*$",
+            hint,
+        )
+        if not m:
+            continue
+        t1, c1, t2, c2 = (m.group(1).lower(), m.group(2).lower(), m.group(3).lower(), m.group(4).lower())
+        pairs.append((t1, c1, t2, c2))
+    return pairs
+
+
+_JOIN_HINT_PAIRS = _parse_join_hints()
+
+
+def validate_join_hints(sql: str) -> tuple[bool, str, dict]:
+    """
+    Validate that joins between known table pairs use expected key columns.
+    Returns (ok, reason, detail). If no applicable join hints exist, returns ok.
+    """
+    if not sql or not sql.strip():
+        return False, "empty_sql", {}
+
+    sql_low = sql.lower()
+
+    # Collect tables and aliases from FROM/JOIN.
+    tables_in_query: set[str] = set()
+    alias_to_table: dict[str, str] = {}
+    for m in re.finditer(
+        r"(?is)\b(from|join)\s+([a-zA-Z_][\w$]*)(?:\s+(?:as\s+)?([a-zA-Z_][\w$]*))?",
+        sql_low,
+    ):
+        table = m.group(2)
+        after = sql_low[m.end() : m.end() + 1]
+        if after == "(":
+            continue
+        tables_in_query.add(table)
+        alias = (m.group(3) or "").strip()
+        if alias and alias not in _SQL_KEYWORDS:
+            alias_to_table[alias] = table
+        alias_to_table[table] = table
+
+    if len(tables_in_query) < 2:
+        return True, "ok", {}
+
+    # Gather observed join predicates table.col = table.col.
+    observed: set[tuple[str, str, str, str]] = set()
+    for m in re.finditer(
+        r"(?is)\b([a-zA-Z_][\w$]*)\.([a-zA-Z_][\w$]*)\s*=\s*([a-zA-Z_][\w$]*)\.([a-zA-Z_][\w$]*)",
+        sql_low,
+    ):
+        t1, c1, t2, c2 = m.group(1), m.group(2), m.group(3), m.group(4)
+        t1 = alias_to_table.get(t1, t1)
+        t2 = alias_to_table.get(t2, t2)
+        observed.add((t1, c1, t2, c2))
+
+    # For any table pair with a known join hint, require the key join.
+    missing: list[str] = []
+    for t1, c1, t2, c2 in _JOIN_HINT_PAIRS:
+        if t1 in tables_in_query and t2 in tables_in_query:
+            if (t1, c1, t2, c2) in observed or (t2, c2, t1, c1) in observed:
+                continue
+            missing.append(f"{t1}.{c1}={t2}.{c2}")
+
+    if missing:
+        return False, "missing_join_hint", {"missing": missing}
+    return True, "ok", {}
+
+
 def _parse_schema_summary(schema_summary: str) -> dict[str, list[str]]:
     tables: dict[str, list[str]] = {}
     for line in (schema_summary or "").splitlines():
@@ -156,6 +227,25 @@ def build_schema_subset(
         if score > 0:
             table_scores[t] = score
             table_reasons[t] = reasons
+
+    # Relation-aware boost: include tables directly connected to relevant tables.
+    # Rationale: join mistakes often occur when the linked schema omits a needed neighbor.
+    rel_boost = 0.75
+    adjacency: dict[str, set[str]] = {}
+    for t1, _c1, t2, _c2 in _JOIN_HINT_PAIRS:
+        adjacency.setdefault(t1, set()).add(t2)
+        adjacency.setdefault(t2, set()).add(t1)
+    relation_boosts: dict[str, float] = {}
+    for t in table_scores:
+        for nb in adjacency.get(t, set()):
+            relation_boosts[nb] = relation_boosts.get(nb, 0.0) + rel_boost
+    for nb, boost in relation_boosts.items():
+        if nb in table_scores:
+            table_scores[nb] += boost
+            table_reasons[nb].append(f"relation_boost:{boost:.2f}")
+        else:
+            table_scores[nb] = boost
+            table_reasons[nb] = [f"relation_boost:{boost:.2f}"]
 
     # Rank tables by score.
     picked = [t for t, _ in sorted(table_scores.items(), key=lambda kv: (-kv[1], kv[0]))][:max_tables]
