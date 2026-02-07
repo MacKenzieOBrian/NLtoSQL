@@ -87,7 +87,9 @@ def _parse_schema_summary(schema_summary: str) -> dict[str, list[str]]:
     return tables
 
 
-def build_schema_subset(schema_summary: str, nlq: str, max_tables: int = 6) -> str:
+def build_schema_subset(
+    schema_summary: str, nlq: str, max_tables: int = 6, return_debug: bool = False
+) -> str | tuple[str, dict]:
     """
     Return a reduced schema summary + join hints for the NLQ.
     This is a light schema-linking step: it narrows the prompt scope,
@@ -96,23 +98,105 @@ def build_schema_subset(schema_summary: str, nlq: str, max_tables: int = 6) -> s
     tables = _parse_schema_summary(schema_summary)
     nl = (nlq or "").lower()
 
-    picked: list[str] = []
-    # Heuristic keyword-to-table matching. This is intentionally simple and auditable:
-    # it may miss rare paraphrases, but it avoids introducing a learned linker.
-    for key, tbls in _TABLE_HINTS.items():
-        if key in nl:
-            for t in tbls:
-                if t in tables and t not in picked:
-                    picked.append(t)
-        if len(picked) >= max_tables:
-            break
+    def _tokenize(text: str) -> set[str]:
+        return set(re.findall(r"[a-zA-Z]+", (text or "").lower()))
+
+    def _split_ident(name: str) -> set[str]:
+        parts = re.findall(r"[A-Z]?[a-z]+|[0-9]+", name or "")
+        if not parts:
+            parts = re.split(r"_+", name or "")
+        tokens = [p.lower() for p in parts if p]
+        low = (name or "").lower()
+        if low.endswith("s"):
+            tokens.append(low[:-1])
+        tokens.append(low)
+        return set(t for t in tokens if t)
+
+    nl_tokens = _tokenize(nlq)
+    value_hints = _extract_value_hints(nlq)
+
+    location_cols = {"city", "country", "state", "territory", "region"}
+    location_tables = sorted([t for t, cols in tables.items() if set(c.lower() for c in cols) & location_cols])
+
+    table_scores: dict[str, float] = {}
+    table_reasons: dict[str, list[str]] = {}
+
+    for t, cols in tables.items():
+        score = 0.0
+        reasons: list[str] = []
+
+        # Keyword-to-table mapping (auditable, deterministic).
+        for key, tbls in _TABLE_HINTS.items():
+            if key in nl and t in tbls:
+                score += 3.0
+                reasons.append(f"hint:{key}")
+
+        # Table name overlap.
+        t_tokens = _split_ident(t)
+        overlap = t_tokens & nl_tokens
+        if overlap:
+            score += 2.0
+            reasons.append("table_overlap")
+
+        # Column name overlap (cap to avoid over-weighting).
+        col_hits = 0
+        for col in cols:
+            c_tokens = _split_ident(col)
+            if c_tokens & nl_tokens:
+                col_hits += 1
+        if col_hits:
+            score += min(3.0, float(col_hits))
+            reasons.append(f"col_hits:{col_hits}")
+
+        # If NLQ has explicit values and this table contains location columns, boost.
+        if value_hints and (set(c.lower() for c in cols) & location_cols):
+            score += 1.5
+            reasons.append("location_cols")
+
+        if score > 0:
+            table_scores[t] = score
+            table_reasons[t] = reasons
+
+    # Rank tables by score.
+    picked = [t for t, _ in sorted(table_scores.items(), key=lambda kv: (-kv[1], kv[0]))][:max_tables]
 
     if not picked:
+        if return_debug:
+            return schema_summary, {
+                "selected_tables": [],
+                "table_scores": {},
+                "table_reasons": {},
+                "value_hints": value_hints,
+                "location_tables": location_tables,
+                "join_hints": [],
+            }
         return schema_summary
 
     subset_lines = [f"{t}({', '.join(tables[t])})" for t in picked]
-    join_hint_text = "Join hints: " + "; ".join(_JOIN_HINTS)
-    return "\n".join(subset_lines + [join_hint_text])
+
+    # Filter join hints to selected tables for clarity.
+    join_hints = []
+    for hint in _JOIN_HINTS:
+        parts = re.findall(r"([a-zA-Z_][\\w$]*)\\.", hint)
+        if len(parts) >= 2:
+            left, right = parts[0], parts[1]
+            if left in picked and right in picked:
+                join_hints.append(hint)
+    if not join_hints:
+        join_hints = _JOIN_HINTS[:]
+    join_hint_text = "Join hints: " + "; ".join(join_hints)
+
+    subset = "\n".join(subset_lines + [join_hint_text])
+    if return_debug:
+        return subset, {
+            "selected_tables": picked,
+            "table_scores": table_scores,
+            "table_reasons": table_reasons,
+            "value_hints": value_hints,
+            "location_tables": location_tables,
+            "join_hints": join_hints,
+        }
+    return subset
 
 
 # --- Projection contract + intent constraints ---

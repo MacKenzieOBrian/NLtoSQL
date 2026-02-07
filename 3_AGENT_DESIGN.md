@@ -17,8 +17,8 @@ For a code-truth specification (tool order, gates/overrides, state variables, an
 ## Tool Actions (What Exists and Why)
 
 - `get_schema`: ground the model in real tables/columns.
-- `link_schema`: reduce schema scope before generation to reduce wrong joins **[17, 22]**.
-- `extract_constraints`: infer structural needs (aggregation, grouping, ordering, limit, distinct) and **value hints** for lightweight value linking **[13, 23]**.
+- `link_schema`: reduce schema scope before generation to reduce wrong joins **[17, 22]**. Returns `link_debug` (selected tables + scores + value hints) for traceable schema linking.
+- `extract_constraints`: infer structural needs (aggregation, grouping, ordering, limit, distinct) and **value hints** (plus location cues/tables) for lightweight value linking **[13, 23]**.
 - `generate_sql`: propose a SQL candidate using the focused schema + constraints.
 - `validate_sql`: catch formatting/schema-reference issues before execution.
 - `validate_constraints`: enforce NLQ-implied structure before execution (PICARD-style constraint idea) **[13]**.

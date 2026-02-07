@@ -60,8 +60,14 @@ def link_schema(nlq: str, schema_text: Optional[str] = None, max_tables: int = 6
     """Return a pruned schema text + join hints for the NLQ."""
     if not schema_text:
         schema_text = _require_ctx().schema_text_cache or schema_to_text(get_schema())
-    subset = build_schema_subset(schema_text, nlq, max_tables=max_tables)
-    return {"schema_text": subset, "changed": subset != schema_text}
+    subset, debug = build_schema_subset(
+        schema_text, nlq, max_tables=max_tables, return_debug=True
+    )
+    return {
+        "schema_text": subset,
+        "changed": subset != schema_text,
+        "link_debug": debug,
+    }
 
 
 def extract_constraints(nlq: str) -> dict:
@@ -100,6 +106,13 @@ def extract_constraints(nlq: str) -> dict:
         value_hints and re.search(r"\b(in|from|located|based|office)\b", nl)
     )
 
+    schema_text = _require_ctx().schema_text_cache or schema_to_text(get_schema())
+    _, table_cols = _parse_schema_text(schema_text)
+    location_cols = {"city", "country", "state", "territory", "region"}
+    location_tables = sorted(
+        [t for t, cols in table_cols.items() if cols & location_cols]
+    )
+
     return {
         "agg": agg,
         "needs_group_by": needs_group_by,
@@ -108,6 +121,7 @@ def extract_constraints(nlq: str) -> dict:
         "distinct": distinct,
         "value_hints": value_hints,
         "needs_location": needs_location,
+        "location_tables": location_tables,
     }
 
 
@@ -150,6 +164,12 @@ def validate_constraints(sql: str, constraints: Optional[dict]) -> dict:
         return {"valid": False, "reason": "missing_value_hint"}
 
     if constraints.get("needs_location"):
+        tables_in_query: set[str] = set()
+        for m in re.finditer(r"(?is)\b(from|join)\s+([a-zA-Z_][\w$]*)", sql_low):
+            tables_in_query.add(m.group(2))
+        location_tables = set(constraints.get("location_tables") or [])
+        if location_tables and not (tables_in_query & location_tables):
+            return {"valid": False, "reason": "missing_location_table"}
         if re.search(r"\b(city|country|state|territory|region)\b", sql_low) is None:
             return {"valid": False, "reason": "missing_location_column"}
 
