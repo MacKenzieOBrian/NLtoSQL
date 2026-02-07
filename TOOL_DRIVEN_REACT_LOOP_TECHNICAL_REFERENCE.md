@@ -13,7 +13,7 @@ The project's reference evaluation agent is a bounded **Thought -> Action -> Obs
 - The LLM emits **structured tool calls** (`Action: tool_name[json_args]`).
 - Python executes the tool and appends an **Observation** back into the transcript.
 - Critical steps are **gated** (cannot execute without validation; cannot finish without a successful run).
-- Failures trigger **forced recovery** (`repair_sql`) inspired by execution-feedback repair patterns (e.g., ExCoT) **[2]**.
+- Failures trigger **forced recovery** (`repair_sql`) inspired by execution-feedback repair patterns (e.g., ExCoT **[2]** and execution-guided decoding **[25]**).
 - Every step is logged (trace + decision log) to support auditability (traceability principles surveyed by Xi et al. **[21]**).
 
 **Important:** this is **not** `ReactSqlAgent` in `nl2sql/agent.py`. That class is retained for comparison/ablations; the notebook `react_sql` loop is treated as the authoritative evaluation loop.
@@ -38,12 +38,12 @@ The loop only parses/enforces `Action` (not `Thought`). The notebook parser uses
 
 Core actions:
 - `get_schema`: retrieve full schema (tables/columns/PK/FK)
-- `link_schema`: prune schema context before generation (RESDSQL-style separation of linking vs generation **[17]**)
+- `link_schema`: prune schema context before generation (RESDSQL-style separation of linking vs generation **[17]**; relation-aware schema linking in RAT-SQL **[22]**)
 - `extract_constraints`: extract structural requirements (`agg`, `needs_group_by`, `needs_order_by`, `limit`, `distinct`)
 - `generate_sql`: generate a raw SQL candidate (guardrails run immediately after)
 - `validate_sql`: check "single executable SELECT" + schema references
 - `validate_constraints`: post-hoc structural checks (PICARD-style *constraint idea* **[13]**, implemented as validation + repair)
-- `run_sql`: execute via `QueryRunner` (SELECT-only safety)
+- `run_sql`: execute via `QueryRunner` (SELECT-only safety; execution feedback aligns with ExCoT **[2]** and execution-guided decoding **[25]**)
 - `repair_sql`: revise SQL using the most recent error feedback
 - `finish`: terminate (gated; see below)
 

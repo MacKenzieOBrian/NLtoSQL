@@ -21,3 +21,9 @@
 19. <a id="ref-yu2018-spider"></a> T. Yu et al., "Spider: A Large-Scale Human-Labeled Dataset for Complex and Cross-Domain Semantic Parsing and Text-to-SQL Task," Proceedings of EMNLP 2018, pp. 3911–3921, Oct. 2018. DOI: 10.18653/v1/D18-1425.
 20. <a id="ref-gao2025-llm-sql"></a> D. Gao et al., "Text-to-SQL Empowered by Large Language Models: A Benchmark Evaluation," arXiv:2308.15363v4, accessed Nov. 13, 2025. URL: https://arxiv.org/abs/2308.15363v4
 21. <a id="ref-xi2025-agents"></a> Z. Xi et al., "The rise and potential of large language model based agents: a survey," Science China Information Sciences, vol. 68, no. 2, pp. 1–44, Jan. 2025. DOI: 10.1007/s11432-024-4222-0.
+22. <a id="ref-wang2020-ratsql"></a> B. Wang et al., "RAT-SQL: Relation-Aware Schema Encoding and Linking for Text-to-SQL Parsers," Proceedings of ACL 2020, Aug. 2020. DOI: 10.18653/v1/2020.acl-main.677.
+23. <a id="ref-lin2020-bridge"></a> X. V. Lin et al., "Bridging Textual and Tabular Data for Cross-Domain Text-to-SQL Semantic Parsing," Findings of EMNLP 2020, Nov. 2020. DOI: 10.18653/v1/2020.findings-emnlp.438.
+24. <a id="ref-guo2019-irnet"></a> J. Guo et al., "Towards Complex Text-to-SQL in Cross-Domain Database with Intermediate Representation," Proceedings of ACL 2019, Jul. 2019. DOI: 10.18653/v1/P19-1444.
+25. <a id="ref-wang2018-eg-decoding"></a> C. Wang et al., "Robust Text-to-SQL Generation with Execution-Guided Decoding," arXiv preprint, Sep. 2018. URL: https://www.microsoft.com/en-us/research/publication/robust-text-to-sql-generation-with-execution-guided-decoding/
+26. <a id="ref-pourreza2023-dinsql"></a> M. Pourreza and D. Rafiei, "DIN-SQL: Decomposed In-Context Learning of Text-to-SQL with Self-Correction," arXiv:2304.11015, Apr. 2023. DOI: 10.48550/arXiv.2304.11015.
+27. <a id="ref-sun2023-sqlpalm"></a> R. Sun et al., "SQL-PaLM: Improved Large Language Model Adaptation for Text-to-SQL," arXiv:2306.00739, Jun. 2023. DOI: 10.48550/arXiv.2306.00739.

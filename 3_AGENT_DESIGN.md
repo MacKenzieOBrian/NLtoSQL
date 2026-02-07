@@ -10,20 +10,20 @@ For a code-truth specification (tool order, gates/overrides, state variables, an
 
 - **Input:** natural-language question (NLQ) + ClassicModels schema context.
 - **Output:** exactly one executable MySQL `SELECT` statement.
-- **Method:** bounded **Thought → Action → Observation** loop where the model emits tool calls and Python executes them.
+- **Method:** bounded **Thought → Action → Observation** loop where the model emits tool calls and Python executes them **[16]**.
 
 ---
 
 ## Tool Actions (What Exists and Why)
 
 - `get_schema`: ground the model in real tables/columns.
-- `link_schema`: reduce schema scope before generation to reduce wrong joins.
+- `link_schema`: reduce schema scope before generation to reduce wrong joins **[17, 22]**.
 - `extract_constraints`: infer structural needs (aggregation, grouping, ordering, limit, distinct) from the NLQ.
 - `generate_sql`: propose a SQL candidate using the focused schema + constraints.
 - `validate_sql`: catch formatting/schema-reference issues before execution.
-- `validate_constraints`: enforce NLQ-implied structure before execution.
-- `run_sql`: execute safely and return the key observation (success/error + preview rows).
-- `repair_sql`: fix failed SQL using the latest error feedback.
+- `validate_constraints`: enforce NLQ-implied structure before execution (PICARD-style constraint idea) **[13]**.
+- `run_sql`: execute safely and return the key observation (success/error + preview rows), consistent with execution-feedback signals **[2, 25]**.
+- `repair_sql`: fix failed SQL using the latest error feedback **[2, 25]**.
 - `finish`: terminate only after a successful execution.
 - `get_table_samples` (optional): provide example rows for ambiguous column usage.
 
