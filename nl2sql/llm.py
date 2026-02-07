@@ -14,6 +14,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from transformers import StoppingCriteria, StoppingCriteriaList
+
 
 # Regex reference: https://docs.python.org/3/library/re.html
 #
@@ -92,6 +94,18 @@ def generate_sql_from_messages(
 ) -> str:
     import torch
 
+    class _StopOnSemicolon(StoppingCriteria):
+        """Stop generation at the first ';' to reduce run-on explanations."""
+
+        def __init__(self, tok: Any):
+            semi = tok.encode(";", add_special_tokens=False)
+            self._semi_id = semi[-1] if semi else None
+
+        def __call__(self, input_ids, scores, **kwargs):  # type: ignore[override]
+            if self._semi_id is None:
+                return False
+            return input_ids[0, -1].item() == self._semi_id
+
     input_ids = tokenizer.apply_chat_template(
         messages,
         tokenize=True,
@@ -115,6 +129,7 @@ def generate_sql_from_messages(
             do_sample=False,
             pad_token_id=pad_token_id,
             eos_token_id=eos_token_id,
+            stopping_criteria=StoppingCriteriaList([_StopOnSemicolon(tokenizer)]),
         )
 
     gen_ids = out[0][input_ids.shape[-1] :]

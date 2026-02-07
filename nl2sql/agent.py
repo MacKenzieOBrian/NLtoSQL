@@ -531,6 +531,7 @@ Output ONLY the corrected SELECT statement.
         last_failure_rank = -1
         # Rationale: prioritize failures that are most informative for repair.
         failure_rank = {"exec_fail": 3, "schema_reject": 2, "intent_reject": 1}
+        recent_errors: list[str] = []
         best_overall: Optional[tuple[str, float]] = None
         best_overall_info: Optional[dict] = None
         # Store exemplars on the agent so prompt builders can include them.
@@ -570,11 +571,39 @@ Output ONLY the corrected SELECT statement.
             best: Optional[tuple[str, float]] = None
             best_info: Optional[dict] = None
 
+            def _note_error(log: dict) -> None:
+                phase = log.get("phase")
+                if phase in {
+                    "clean_reject",
+                    "schema_reject",
+                    "exec_fail",
+                    "intent_reject",
+                    "explicit_fields_reject",
+                    "value_hint_reject",
+                }:
+                    reason = log.get("reason") or log.get("error") or log.get("obs")
+                    if reason:
+                        recent_errors.append(str(reason))
+                        if len(recent_errors) > 3:
+                            del recent_errors[:-3]
+
+            def _recent_error_note() -> str:
+                if not recent_errors:
+                    return ""
+                # de-dup consecutive repeats
+                deduped: list[str] = []
+                for err in recent_errors:
+                    if not deduped or err != deduped[-1]:
+                        deduped.append(err)
+                tail = deduped[-2:]
+                return " Recent errors: " + "; ".join(tail) + "."
+
             for idx, raw in enumerate(raw_cands, start=1):
                 self._debug(f"[step {step}] candidate {idx}/{len(raw_cands)}")
                 result, log = self.evaluate_candidate(nlq=nlq, raw=raw, schema_index=schema_index)
                 log = {"step": step, **log}
                 history.append({k: _trim(v) for k, v in log.items()})
+                _note_error(log)
 
                 phase = log.get("phase")
                 if phase in failure_rank:
@@ -606,6 +635,7 @@ Output ONLY the corrected SELECT statement.
                 observation = _trim(
                     f"Best candidate scored {score:.2f} (below threshold). "
                     f"Re-evaluate joins/filters.{missing_note} Candidate: {sql}"
+                    f"{_recent_error_note()}"
                 )
                 history.append({"step": step, "phase": "observation", "obs": observation})
                 continue
@@ -613,6 +643,8 @@ Output ONLY the corrected SELECT statement.
             # Optional reflection: use validation feedback, then re-run gates.
             if cfg.enable_reflection and last_failure and last_failure.get("sql"):
                 error_msg = last_failure.get("error") or last_failure.get("reason") or last_failure.get("obs") or ""
+                if recent_errors:
+                    error_msg = f"{error_msg}. Recent errors: {', '.join(recent_errors[-2:])}."
                 reflected, repinfo = self.reflect_sql(
                     nlq=nlq,
                     bad_sql=last_failure["sql"],

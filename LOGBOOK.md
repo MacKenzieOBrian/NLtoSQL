@@ -210,3 +210,8 @@
 - **Change:** Added relation‑aware boosts in schema linking so tables connected by known joins are more likely to be included in the pruned schema context.  
 - **Change:** Added join‑key validation that rejects SQL missing expected key joins (e.g., `customers.customerNumber = orders.customerNumber`) when both tables appear.  
 - **Justification (lit):** Relation‑aware schema encoding/linking improves join accuracy (RAT‑SQL), and decoupling schema linking from SQL skeleton parsing improves schema selection in complex queries (RESDSQL). Join‑key validation operationalizes these insights by enforcing expected relational structure. [RAT-SQL: Relation-Aware Schema Encoding and Linking for Text-to-SQL Parsers](https://aclanthology.org/2020.acl-main.677/) [RESDSQL: Decoupling Schema Linking and Skeleton Parsing for Text-to-SQL](https://arxiv.org/abs/2302.05965)
+
+### 2026-02-07 — Phase 3 Implemented: Constrained Decoding + Reflection Memory
+- **Change:** Added semicolon‑stopping criteria in LLM generation for tool calls to reduce run‑on text and enforce single‑statement decoding.  
+- **Change:** Added lightweight reflection memory in the class‑based agent: recent validation errors are appended to observations and repair prompts to discourage repeated mistakes.  
+- **Justification (lit):** Constrained decoding (PICARD) reduces invalid SQL by restricting generation to syntactically valid forms; reflection memory follows Reflexion‑style feedback to improve iterative repairs without retraining. [PICARD: Parsing Incrementally for Constrained Auto-Regressive Decoding](https://aclanthology.org/2021.emnlp-main.779/) [Reflexion: Language Agents with Verbal Reinforcement Learning](https://arxiv.org/abs/2303.11366)

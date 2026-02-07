@@ -84,6 +84,10 @@ The agent uses an explicit Thought → Action → Observation loop with tools. I
 Validation or execution failures force a `repair_sql` step. Constraint validation gates execution (e.g., missing COUNT/ORDER/LIMIT), and per‑query trace summaries log action sequences and compliance for auditability.
 Refs: `REFERENCES.md#ref-yao2023-react`, `REFERENCES.md#ref-zhai2025-excot`, `REFERENCES.md#ref-ojuri2025-agents`.
 
+**Tightening for accuracy (constraint‑driven gating)**  
+We progressively tightened acceptance criteria by enforcing explicit field/value constraints, schema‑aware validation (including join‑key checks), and execution‑gated acceptance. This mirrors execution‑guided decoding (rejecting candidates via execution feedback) and constrained decoding principles that restrict outputs to valid/consistent SQL, while relation‑aware linking helps avoid join/table errors.  
+Refs: `REFERENCES.md#ref-wang2018-eg-decoding`, `REFERENCES.md#ref-scholak2021-picard`, `REFERENCES.md#ref-wang2020-ratsql`, `REFERENCES.md#ref-li2023-resdsql`.
+
 **Evolution from candidate‑ranking**  
 - Candidate‑ranking utilities that improved EX were retained but converted into explicit tools or guardrails.  
 - The ranking decision itself was removed; the loop now relies on ordered actions with observations and forced repair on failure.  
