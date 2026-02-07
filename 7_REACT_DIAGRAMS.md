@@ -8,10 +8,9 @@ This file keeps a single high-level diagram for explaining the tool-driven ReAct
 ```mermaid
 flowchart TD
   A[User NLQ] --> B[Bootstrap trace]
-  B --> B1[Action: get_schema]
-  B1 --> LS[Action: link_schema]
-  LS --> EC[Action: extract_constraints]
-  EC --> B2[Observation: linked schema + constraints]
+  B --> B1[Setup: get_schema]
+  B1 --> LS[Setup: link_schema]
+  LS --> B2[Observation: focused schema + join hints]
   B2 --> C[LLM Thought]
 
   C --> D{Action chosen}
@@ -19,7 +18,13 @@ flowchart TD
   S --> S1[Observation: sample rows]
   S1 --> C
 
-  D -->|get_schema| B1
+  D -->|get_schema / link_schema| BLK[Blocked: setup-only]
+  BLK --> C
+
+  D -->|non-repair + constraints missing| FC[Forced: extract_constraints]
+  FC --> EC[extract_constraints tool]
+  EC --> EC1[Observation: constraints]
+  EC1 --> C
 
   D -->|generate_sql| G[generate_sql tool]
   G --> H[Guardrails: clean + postprocess + projection + casing]
@@ -36,7 +41,8 @@ flowchart TD
   XQ -->|no| R
   XQ -->|yes| I{Intent OK?}
   I -->|no| R
-  I -->|yes| F[finish tool]
+  I -->|yes| AF[Auto-finish]
+  AF --> F[finish tool]
 
   F --> Z[Return SQL + trace]
 
