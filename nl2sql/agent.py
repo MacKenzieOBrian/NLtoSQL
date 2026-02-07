@@ -36,6 +36,7 @@ from .agent_utils import (
     missing_explicit_fields,
     semantic_score,
     vanilla_candidate,
+    _extract_value_hints,
 )
 from .postprocess import guarded_postprocess
 from .query_runner import QueryRunner
@@ -64,6 +65,9 @@ class ReactConfig:
     # Intent alignment: hard gate or soft penalty.
     enforce_intent_constraints: bool = False
     intent_penalty: float = 1.0
+    # Explicit field/value gates (projection + literal filters).
+    enforce_explicit_fields: bool = True
+    enforce_value_hints: bool = True
     # Optional prefilter: limit how many candidates are executed per step.
     max_exec_cands: Optional[int] = 8
     # Optional early-stop threshold for multi-step refinement.
@@ -316,6 +320,25 @@ Respond with only the final SQL statement.
         missing_fields = missing_explicit_fields(nlq, sql)
         if missing_fields:
             self._debug(f"[eval] missing explicit fields: {missing_fields}")
+            if self.cfg.enforce_explicit_fields:
+                return None, {
+                    "phase": "explicit_fields_reject",
+                    "sql": sql,
+                    "reason": "missing_required_field",
+                    "missing_fields": missing_fields,
+                    "obs": f"Missing required fields: {', '.join(missing_fields)}",
+                }
+
+        if self.cfg.enforce_value_hints:
+            value_hints = _extract_value_hints(nlq)
+            if value_hints and not any(v in (sql or "").lower() for v in value_hints):
+                return None, {
+                    "phase": "value_hint_reject",
+                    "sql": sql,
+                    "reason": "missing_value_hint",
+                    "value_hints": value_hints,
+                    "obs": "Missing required value hint(s)",
+                }
 
         ok_schema, why_schema = self._schema_validate(sql=sql, schema_index=schema_index)
         if not ok_schema:

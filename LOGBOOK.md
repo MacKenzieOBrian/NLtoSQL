@@ -183,8 +183,25 @@
 
 ### 2026-02-07 — Quick Check Error Log (Tool-Driven ReAct)
 - **Activities:** Reviewed 10-item quick check outputs in `results/agent/results_react_200 (4).json`; classified errors and failure causes.
-- **Results:** VA 1.00, EX 0.30, EM 0.20, TS 0.30 (3/10 correct).
+- **Results (pre-fix):** VA 1.00, EX 0.30, EM 0.20, TS 0.30 (3/10 correct).
+- **Results (post-fix, 10 items):** VA 1.00, EX 0.70, EM 0.50, TS 0.70.
 - **Error taxonomy:** Off-topic fallback reuse (5/10; “San Francisco employee count” query used for unrelated NLQs); projection/field selection errors (2/10); EM-only mismatch from alias/ORDER BY differences (1/10; EX/TS still correct).
 - **Diagnostics:** Fallback triggered 6/10 items; in 5 cases it replaced earlier candidates and yielded wrong semantics. Blocked steps totaled 15 across the set, suggesting control-flow interruptions precede fallback misuse.
 - **Justification (lit):** Execution-guided decoding rejects faulty programs using execution feedback, aligning with gating fallback candidates through validation/execution before accepting them. [Robust Text-to-SQL Generation with Execution-Guided Decoding](https://www.microsoft.com/en-us/research/publication/robust-text-to-sql-generation-with-execution-guided-decoding/)
 - **Next:** Prevent fallback from overwriting validated candidates; add a guard that retains the best schema-validated SQL when fallback fires.
+
+### 2026-02-07 — Literature‑Backed Error‑Reduction Plan (v1)
+- **Trigger:** 50‑item slice in `results/agent/results_react_200 (5).json` showed projection/filter mismatch as the dominant EX failure, followed by join/table mismatch, with smaller invalid‑SQL and fallback‑reuse tails.
+- **Gate fallback + candidate acceptance with execution and value/field constraints** — execution‑guided decoding shows that rejecting faulty programs via execution feedback improves text‑to‑SQL accuracy; this directly supports hard‑gating fallback and enforcing explicit NLQ fields/values. [Robust Text-to-SQL Generation with Execution-Guided Decoding](https://www.microsoft.com/en-us/research/publication/robust-text-to-sql-generation-with-execution-guided-decoding/)
+- **Relation‑aware schema linking to reduce join/table errors** — RAT‑SQL demonstrates that explicit relation encoding and schema linking materially improves cross‑schema generalization. [RAT-SQL: Relation-Aware Schema Encoding and Linking for Text-to-SQL Parsers](https://aclanthology.org/2020.acl-main.677/)
+- **Decouple schema linking from skeleton generation** — RESDSQL shows that separating schema item selection from SQL skeleton parsing reduces schema confusion in complex queries. [RESDSQL: Decoupling Schema Linking and Skeleton Parsing for Text-to-SQL](https://arxiv.org/abs/2302.05965)
+- **Constrained decoding to reduce invalid SQL** — PICARD constrains decoding via incremental parsing, improving validity on Spider/CoSQL; aligns with reducing VA failures before execution. [PICARD: Parsing Incrementally for Constrained Auto-Regressive Decoding](https://aclanthology.org/2021.emnlp-main.779/)
+- **Maintain tool‑grounded ReAct loop for interpretability** — ReAct formalizes interleaved reasoning/action/observation, providing a principled basis for the tool‑driven loop. [ReAct: Synergizing Reasoning and Acting in Language Models](https://arxiv.org/abs/2210.03629)
+- **Add reflection memory for repeated errors** — Reflexion shows verbal feedback memory improves agent decisions without retraining; supports caching recent error patterns. [Reflexion: Language Agents with Verbal Reinforcement Learning](https://arxiv.org/abs/2303.11366)
+- **Evaluation framing** — Spider formalizes cross‑domain text‑to‑SQL and motivates EM/EX as primary metrics for semantic correctness and generalization. [Spider: A Large-Scale Human-Labeled Dataset for Text-to-SQL](https://aclanthology.org/D18-1425/)
+
+### 2026-02-07 — Phase 1 Implemented: Hard Gates for Explicit Fields + Value Hints
+- **Change:** Added `explicit_fields` to constraint extraction and enforced it in `validate_constraints` (tool‑driven loop). This hard‑rejects candidates missing explicitly requested columns (e.g., “names, codes, and MSRPs”).  
+- **Change:** Tightened value‑hint extraction by adding numeric literals and excluding common “instruction” words (e.g., Top/Most), then enforced missing value hints as a hard gate.  
+- **Change (agent path):** Added explicit‑field and value‑hint hard gates in `ReactSqlAgent.evaluate_candidate` so fallback and candidate acceptance use the same constraints.  
+- **Justification (lit):** Execution‑guided decoding supports rejecting candidates that fail semantic constraints before acceptance, and constrained decoding literature supports enforcing structure/constraints early to prevent invalid or mis‑shaped SQL. [Robust Text-to-SQL Generation with Execution-Guided Decoding](https://www.microsoft.com/en-us/research/publication/robust-text-to-sql-generation-with-execution-guided-decoding/) [PICARD: Parsing Incrementally for Constrained Auto-Regressive Decoding](https://aclanthology.org/2021.emnlp-main.779/)

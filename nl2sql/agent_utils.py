@@ -271,8 +271,12 @@ def _extract_required_columns(nlq: str) -> list[str]:
     if cols:
         return cols
     # default list-style questions imply name-only
-    if ("which customers" in nl or "list customers" in nl) and "customerName" not in cols:
+    if re.search(r"\b(which|list)\s+customers\b", nl) and "customerName" not in cols:
         cols.append("customerName")
+    if re.search(r"\bcustomers?\s+(with|who|that)\b", nl) and "customerName" not in cols:
+        cols.append("customerName")
+    if re.search(r"\b(which|list)\s+products\b", nl) and "productName" not in cols:
+        cols.append("productName")
     return cols
 
 
@@ -640,6 +644,16 @@ _VALUE_STOPWORDS = {
     "Count",
     "Total",
     "Average",
+    "Top",
+    "Highest",
+    "Lowest",
+    "First",
+    "Last",
+    "Most",
+    "Least",
+    "Per",
+    "By",
+    "Each",
     "Find",
     "Give",
     "Display",
@@ -665,6 +679,9 @@ def _extract_value_hints(nlq: str) -> list[str]:
 
     # Multi-word proper nouns (e.g., San Francisco).
     hints.update(re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b", text))
+
+    # Numeric literals (e.g., 100000, 12.5).
+    hints.update(re.findall(r"\b\d+(?:\.\d+)?\b", text))
 
     # Single capitalized words (filter common question words).
     for w in re.findall(r"\b[A-Z][a-z]+\b", text):

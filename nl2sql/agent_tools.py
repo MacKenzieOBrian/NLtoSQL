@@ -18,7 +18,12 @@ from .schema import list_tables, get_table_columns
 from .llm import generate_sql_from_messages
 from .prompting import SYSTEM_INSTRUCTIONS
 from .query_runner import QueryRunner
-from .agent_utils import clean_candidate_with_reason, build_schema_subset, _extract_value_hints
+from .agent_utils import (
+    clean_candidate_with_reason,
+    build_schema_subset,
+    _extract_value_hints,
+    _extract_required_columns,
+)
 
 
 @dataclass
@@ -102,6 +107,7 @@ def extract_constraints(nlq: str) -> dict:
     distinct = bool(re.search(r"\b(unique|distinct|different)\b", nl))
 
     value_hints = _extract_value_hints(nlq)
+    explicit_fields = _extract_required_columns(nlq)
     needs_location = bool(
         value_hints and re.search(r"\b(in|from|located|based|office)\b", nl)
     )
@@ -120,6 +126,7 @@ def extract_constraints(nlq: str) -> dict:
         "limit": limit,
         "distinct": distinct,
         "value_hints": value_hints,
+        "explicit_fields": explicit_fields,
         "needs_location": needs_location,
         "location_tables": location_tables,
     }
@@ -162,6 +169,11 @@ def validate_constraints(sql: str, constraints: Optional[dict]) -> dict:
     value_hints = constraints.get("value_hints") or []
     if value_hints and not any(v in sql_low for v in value_hints):
         return {"valid": False, "reason": "missing_value_hint"}
+
+    explicit_fields = constraints.get("explicit_fields") or []
+    if explicit_fields and not all(f.lower() in sql_low for f in explicit_fields):
+        missing = [f for f in explicit_fields if f.lower() not in sql_low]
+        return {"valid": False, "reason": "missing_required_field", "missing_fields": missing}
 
     if constraints.get("needs_location"):
         tables_in_query: set[str] = set()
