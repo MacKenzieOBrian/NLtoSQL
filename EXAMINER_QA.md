@@ -39,7 +39,7 @@ Code pointers:
 ## Q: What tools exist, and why?
 
 A: Tools break the task into explicit, checkable steps:
-- schema grounding: `get_schema`, `link_schema`, optional `get_table_samples`
+- schema grounding: `get_schema`, `link_schema`
 - generation: `generate_sql`
 - checks: `validate_sql`, `validate_constraints`, `intent_constraints`
 - environment interaction: `run_sql`

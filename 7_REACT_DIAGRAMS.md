@@ -14,10 +14,6 @@ flowchart TD
   B2 --> C[LLM Thought]
 
   C --> D{Action chosen}
-  D -->|get_table_samples| S[get_table_samples]
-  S --> S1[Observation: sample rows]
-  S1 --> C
-
   D -->|get_schema / link_schema| BLK[Blocked: setup-only]
   BLK --> C
 

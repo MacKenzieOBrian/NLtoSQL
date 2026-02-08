@@ -18,7 +18,14 @@ from .schema import list_tables, get_table_columns
 from .llm import generate_sql_from_messages
 from .prompting import SYSTEM_INSTRUCTIONS
 from .query_runner import QueryRunner
-from .agent_utils import build_schema_subset, _extract_value_hints, _extract_required_columns
+from .agent_utils import (
+    build_schema_subset,
+    _extract_value_hints,
+    _extract_required_columns,
+    _projection_hints,
+    _value_linked_columns_from_tables,
+    _parse_schema_summary,
+)
 from .validation import parse_schema_text, validate_sql as _validate_sql, validate_constraints as _validate_constraints
 
 
@@ -104,6 +111,9 @@ def extract_constraints(nlq: str) -> dict:
 
     value_hints = _extract_value_hints(nlq)
     explicit_fields = _extract_required_columns(nlq)
+    projection_hints = _projection_hints(nlq)
+    schema_text = _require_ctx().schema_text_cache or schema_to_text(get_schema())
+    value_columns = _value_linked_columns_from_tables(nlq, _parse_schema_summary(schema_text))
     needs_location = bool(
         value_hints and re.search(r"\b(in|from|located|based|office)\b", nl)
     )
@@ -123,6 +133,8 @@ def extract_constraints(nlq: str) -> dict:
         "distinct": distinct,
         "value_hints": value_hints,
         "explicit_fields": explicit_fields,
+        "projection_hints": projection_hints,
+        "value_columns": value_columns,
         "needs_location": needs_location,
         "location_tables": location_tables,
     }
@@ -192,21 +204,6 @@ def validate_sql(sql: str, schema_text: Optional[str] = None) -> dict:
     if not schema_text:
         return {"valid": False, "reason": "schema_missing"}
     return _validate_sql(sql, schema_text, enforce_join_hints=True)
-
-
-def get_table_samples(table: str, n: int = 3) -> list[dict]:
-    """Return example rows to ground column usage."""
-    ctx = _require_ctx()
-    if not table:
-        return [{"_error": "Missing table name"}]
-    try:
-        with safe_connection(ctx.engine) as conn:
-            res = conn.execute(text(f"SELECT * FROM {table} LIMIT :n"), {"n": n})
-            cols = list(res.keys())
-            rows = res.fetchmany(n)
-        return [dict(zip(cols, row)) for row in rows]
-    except Exception as e:
-        return [{"_error": str(e)}]
 
 
 def _call_llm(messages: list[dict[str, str]], *, max_new_tokens: Optional[int] = None) -> str:

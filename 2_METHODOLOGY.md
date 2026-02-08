@@ -74,7 +74,7 @@ Implementation notes:
 
 The agent uses an explicit Thought → Action → Observation loop with tools. It does not change model weights. The loop is bounded and traceable, mirroring ReAct and agent-mediated NL→SQL workflows:
 - Bootstrap with `get_schema` then `link_schema` (schema observation + heuristic linker)
-- LLM chooses actions (`extract_constraints`, `generate_sql`, `validate_sql`, `validate_constraints`, `run_sql`, `repair_sql`, `finish`, optional `get_table_samples`)
+- LLM chooses actions (`extract_constraints`, `generate_sql`, `validate_sql`, `validate_constraints`, `run_sql`, `repair_sql`, `finish`)
 - Python executes tools and returns observations
 - Guardrails run between `generate_sql`/`repair_sql` and `validate_sql`
 - `validate_sql` must pass before `validate_constraints`
@@ -83,6 +83,18 @@ The agent uses an explicit Thought → Action → Observation loop with tools. I
 - Deterministic fallback if the loop fails to finish
 Validation or execution failures force a `repair_sql` step. Constraint validation gates execution (e.g., missing COUNT/ORDER/LIMIT), and per‑query trace summaries log action sequences and compliance for auditability.
 Refs: `REFERENCES.md#ref-yao2023-react`, `REFERENCES.md#ref-zhai2025-excot`, `REFERENCES.md#ref-ojuri2025-agents`.
+
+**Tightening for accuracy (constraint‑driven gating)**  
+We progressively tightened acceptance criteria by enforcing explicit field/value constraints, schema‑aware validation (including join‑key checks), and execution‑gated acceptance. This mirrors execution‑guided decoding (rejecting candidates via execution feedback) and constrained decoding principles that restrict outputs to valid/consistent SQL, while relation‑aware linking helps avoid join/table errors.  
+Refs: `REFERENCES.md#ref-wang2018-eg-decoding`, `REFERENCES.md#ref-scholak2021-picard`, `REFERENCES.md#ref-wang2020-ratsql`, `REFERENCES.md#ref-li2023-resdsql`.
+
+**Schema item ranking (table + column shortlist)**  
+Before generation, the linker ranks both tables and columns to present a compact schema subset. This operationalizes relation‑aware schema linking and decoupled schema selection to reduce projection/join mistakes without retraining.  
+Refs: `REFERENCES.md#ref-wang2020-ratsql`, `REFERENCES.md#ref-li2023-resdsql`.
+
+**Lightweight value linking (column hints)**  
+NLQ literals are linked to likely columns using lexical cues (e.g., date patterns, location phrases, ID‑style phrases). These value‑column hints bias schema pruning toward correct filter columns without database lookups.  
+Refs: `REFERENCES.md#ref-lin2020-bridge`, `REFERENCES.md#ref-wang2020-ratsql`.
 
 **Evolution from candidate‑ranking**  
 - Candidate‑ranking utilities that improved EX were retained but converted into explicit tools or guardrails.  

@@ -17,7 +17,6 @@ Available tools:
 - get_schema
 - link_schema
 - extract_constraints
-- get_table_samples
 - generate_sql
 - validate_sql
 - validate_constraints
