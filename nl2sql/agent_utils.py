@@ -191,8 +191,10 @@ def build_schema_subset(
     value_hints = _extract_value_hints(nlq)
     explicit_fields = _extract_required_columns(nlq)
     projection_hints = _projection_hints(nlq)
+    value_columns = _value_linked_columns_from_tables(nlq, tables)
     explicit_set = {c.lower() for c in explicit_fields}
     projection_set = {c.lower() for c in projection_hints}
+    value_set = {c.lower() for c in value_columns}
 
     location_cols = {"city", "country", "state", "territory", "region"}
     location_tables = sorted([t for t, cols in tables.items() if set(c.lower() for c in cols) & location_cols])
@@ -235,6 +237,9 @@ def build_schema_subset(
         if projection_set & col_lows:
             score += 1.5
             reasons.append("projection_hints")
+        if value_set & col_lows:
+            score += 1.5
+            reasons.append("value_columns")
 
         # If NLQ has explicit values and this table contains location columns, boost.
         if value_hints and (set(c.lower() for c in cols) & location_cols):
@@ -276,6 +281,7 @@ def build_schema_subset(
                 "value_hints": value_hints,
                 "explicit_fields": explicit_fields,
                 "projection_hints": projection_hints,
+                "value_columns": value_columns,
                 "location_tables": location_tables,
                 "join_hints": [],
             }
@@ -303,6 +309,8 @@ def build_schema_subset(
             score += 5.0
         if col_low in projection_set:
             score += 3.0
+        if col_low in value_set:
+            score += 3.5
         c_tokens = _split_ident(col)
         overlap = c_tokens & nl_tokens
         if overlap:
@@ -358,6 +366,7 @@ def build_schema_subset(
             "value_hints": value_hints,
             "explicit_fields": explicit_fields,
             "projection_hints": projection_hints,
+            "value_columns": value_columns,
             "location_tables": location_tables,
             "join_hints": join_hints,
             "selected_columns": selected_columns,
@@ -480,6 +489,107 @@ def _projection_hints(nlq: str) -> list[str]:
                     hints.append(c)
 
     return list(dict.fromkeys(hints))
+
+
+_VALUE_COLUMN_HINTS = {
+    "orderNumber": ["order number", "order id", "order #"],
+    "customerNumber": ["customer number", "customer id", "customer #"],
+    "employeeNumber": ["employee number", "employee id", "employee #"],
+    "officeCode": ["office code"],
+    "productCode": ["product code"],
+    "checkNumber": ["check number", "check #"],
+    "creditLimit": ["credit limit"],
+    "amount": ["amount", "total payment", "payment amount"],
+    "priceEach": ["price each", "price"],
+    "buyPrice": ["buy price", "cost price"],
+    "MSRP": ["msrp", "list price"],
+    "quantityOrdered": ["quantity ordered", "qty ordered", "quantity"],
+    "quantityInStock": ["quantity in stock", "stock", "inventory"],
+    "status": ["status", "cancelled", "shipped", "resolved", "on hold", "disputed", "in process"],
+    "orderDate": ["order date", "order dates", "ordered on"],
+    "requiredDate": ["required date", "required by"],
+    "shippedDate": ["shipped date", "shipping date"],
+    "paymentDate": ["payment date", "paid on"],
+    "country": ["country", "nation"],
+    "city": ["city", "town"],
+    "state": ["state", "province"],
+    "postalCode": ["postal", "zip"],
+}
+
+
+_DATE_VALUE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+_MONTH_NAMES = {
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
+}
+
+
+def _looks_like_date(value: str) -> bool:
+    v = (value or "").lower().strip()
+    if not v:
+        return False
+    if _DATE_VALUE_RE.search(v):
+        return True
+    if any(m in v for m in _MONTH_NAMES):
+        return True
+    return False
+
+
+def _value_linked_columns_from_tables(nlq: str, tables: dict[str, list[str]]) -> list[str]:
+    """
+    Lightweight value-to-column linking using NLQ context + value patterns.
+    Returns canonical column names present in the schema.
+    """
+    if not tables:
+        return []
+
+    nl = (nlq or "").lower()
+    value_hints = _extract_value_hints(nlq)
+
+    # Map lower-case column names -> canonical column names.
+    col_map: dict[str, str] = {}
+    for cols in tables.values():
+        for c in cols:
+            col_map.setdefault(c.lower(), c)
+
+    def _add(col: str, out: set[str]) -> None:
+        key = col.lower()
+        if key in col_map:
+            out.add(col_map[key])
+
+    linked: set[str] = set()
+
+    # Phrase-based cues (most reliable).
+    for col, phrases in _VALUE_COLUMN_HINTS.items():
+        if any(p in nl for p in phrases):
+            _add(col, linked)
+
+    # Date-like values imply date columns if present.
+    if any(_looks_like_date(v) for v in value_hints):
+        for col in ["orderDate", "paymentDate", "requiredDate", "shippedDate"]:
+            _add(col, linked)
+
+    # Country/state codes (e.g., USA, UK).
+    if any(re.fullmatch(r"[a-z]{2,3}", v) for v in value_hints):
+        for col in ["country", "state"]:
+            _add(col, linked)
+
+    # Location phrases with values.
+    if value_hints and re.search(r"\b(in|from|located|based)\b", nl):
+        for col in ["city", "country", "state", "territory", "region"]:
+            _add(col, linked)
+
+    return sorted(linked)
 
 
 def missing_explicit_fields(nlq: str, sql: str) -> list[str]:

@@ -25,7 +25,6 @@ For a code-truth specification (tool order, gates/overrides, state variables, an
 - `run_sql`: execute safely and return the key observation (success/error + preview rows), consistent with execution-feedback signals **[2, 25]**.
 - `repair_sql`: fix failed SQL using the latest error feedback **[2, 25]**.
 - `finish`: terminate only after a successful execution.
-- `get_table_samples` (optional): provide example rows for ambiguous column usage.
 
 ---
 

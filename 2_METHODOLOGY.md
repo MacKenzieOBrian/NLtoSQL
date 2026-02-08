@@ -74,7 +74,7 @@ Implementation notes:
 
 The agent uses an explicit Thought → Action → Observation loop with tools. It does not change model weights. The loop is bounded and traceable, mirroring ReAct and agent-mediated NL→SQL workflows:
 - Bootstrap with `get_schema` then `link_schema` (schema observation + heuristic linker)
-- LLM chooses actions (`extract_constraints`, `generate_sql`, `validate_sql`, `validate_constraints`, `run_sql`, `repair_sql`, `finish`, optional `get_table_samples`)
+- LLM chooses actions (`extract_constraints`, `generate_sql`, `validate_sql`, `validate_constraints`, `run_sql`, `repair_sql`, `finish`)
 - Python executes tools and returns observations
 - Guardrails run between `generate_sql`/`repair_sql` and `validate_sql`
 - `validate_sql` must pass before `validate_constraints`
@@ -91,6 +91,10 @@ Refs: `REFERENCES.md#ref-wang2018-eg-decoding`, `REFERENCES.md#ref-scholak2021-p
 **Schema item ranking (table + column shortlist)**  
 Before generation, the linker ranks both tables and columns to present a compact schema subset. This operationalizes relation‑aware schema linking and decoupled schema selection to reduce projection/join mistakes without retraining.  
 Refs: `REFERENCES.md#ref-wang2020-ratsql`, `REFERENCES.md#ref-li2023-resdsql`.
+
+**Lightweight value linking (column hints)**  
+NLQ literals are linked to likely columns using lexical cues (e.g., date patterns, location phrases, ID‑style phrases). These value‑column hints bias schema pruning toward correct filter columns without database lookups.  
+Refs: `REFERENCES.md#ref-lin2020-bridge`, `REFERENCES.md#ref-wang2020-ratsql`.
 
 **Evolution from candidate‑ranking**  
 - Candidate‑ranking utilities that improved EX were retained but converted into explicit tools or guardrails.  

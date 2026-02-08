@@ -221,3 +221,8 @@
 - **Change:** Added soft projection hints (entity defaults + explicit fields) and applied column‑level ranking inside `link_schema` so only top‑K columns are surfaced per table, while forcing join keys to remain visible.  
 - **Why it helps:** Most remaining EX errors were projection mismatches. Column ranking narrows the schema space before decoding, which is consistent with relation‑aware schema linking and decoupled schema selection that improve schema accuracy.  
 - **Refs:** `REFERENCES.md#ref-wang2020-ratsql`, `REFERENCES.md#ref-li2023-resdsql`.
+
+### 2026-02-08 — Lightweight Value Linking (Column Hints)
+- **Change:** Added value‑to‑column linking via NLQ context + value patterns (dates, location phrases, ID‑style phrases). The linker now produces **value‑column hints** used to rank columns and guide schema pruning.  
+- **Why it helps:** The remaining EX errors included filter/value mismatches. Value‑column hints bias the model toward the correct WHERE columns without requiring database lookups.  
+- **Refs:** `REFERENCES.md#ref-lin2020-bridge`, `REFERENCES.md#ref-wang2020-ratsql`.
