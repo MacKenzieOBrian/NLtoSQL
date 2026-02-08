@@ -18,7 +18,12 @@ from .schema import list_tables, get_table_columns
 from .llm import generate_sql_from_messages
 from .prompting import SYSTEM_INSTRUCTIONS
 from .query_runner import QueryRunner
-from .agent_utils import build_schema_subset, _extract_value_hints, _extract_required_columns
+from .agent_utils import (
+    build_schema_subset,
+    _extract_value_hints,
+    _extract_required_columns,
+    _projection_hints,
+)
 from .validation import parse_schema_text, validate_sql as _validate_sql, validate_constraints as _validate_constraints
 
 
@@ -104,6 +109,7 @@ def extract_constraints(nlq: str) -> dict:
 
     value_hints = _extract_value_hints(nlq)
     explicit_fields = _extract_required_columns(nlq)
+    projection_hints = _projection_hints(nlq)
     needs_location = bool(
         value_hints and re.search(r"\b(in|from|located|based|office)\b", nl)
     )
@@ -123,6 +129,7 @@ def extract_constraints(nlq: str) -> dict:
         "distinct": distinct,
         "value_hints": value_hints,
         "explicit_fields": explicit_fields,
+        "projection_hints": projection_hints,
         "needs_location": needs_location,
         "location_tables": location_tables,
     }

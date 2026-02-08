@@ -159,7 +159,11 @@ def _parse_schema_summary(schema_summary: str) -> dict[str, list[str]]:
 
 
 def build_schema_subset(
-    schema_summary: str, nlq: str, max_tables: int = 6, return_debug: bool = False
+    schema_summary: str,
+    nlq: str,
+    max_tables: int = 6,
+    max_cols_per_table: int = 8,
+    return_debug: bool = False,
 ) -> str | tuple[str, dict]:
     """
     Return a reduced schema summary + join hints for the NLQ.
@@ -185,6 +189,10 @@ def build_schema_subset(
 
     nl_tokens = _tokenize(nlq)
     value_hints = _extract_value_hints(nlq)
+    explicit_fields = _extract_required_columns(nlq)
+    projection_hints = _projection_hints(nlq)
+    explicit_set = {c.lower() for c in explicit_fields}
+    projection_set = {c.lower() for c in projection_hints}
 
     location_cols = {"city", "country", "state", "territory", "region"}
     location_tables = sorted([t for t, cols in tables.items() if set(c.lower() for c in cols) & location_cols])
@@ -211,6 +219,7 @@ def build_schema_subset(
 
         # Column name overlap (cap to avoid over-weighting).
         col_hits = 0
+        col_lows = set(c.lower() for c in cols)
         for col in cols:
             c_tokens = _split_ident(col)
             if c_tokens & nl_tokens:
@@ -218,6 +227,14 @@ def build_schema_subset(
         if col_hits:
             score += min(3.0, float(col_hits))
             reasons.append(f"col_hits:{col_hits}")
+
+        # Explicit/projection hints: boost tables containing requested columns.
+        if explicit_set & col_lows:
+            score += 2.5
+            reasons.append("explicit_fields")
+        if projection_set & col_lows:
+            score += 1.5
+            reasons.append("projection_hints")
 
         # If NLQ has explicit values and this table contains location columns, boost.
         if value_hints and (set(c.lower() for c in cols) & location_cols):
@@ -257,12 +274,68 @@ def build_schema_subset(
                 "table_scores": {},
                 "table_reasons": {},
                 "value_hints": value_hints,
+                "explicit_fields": explicit_fields,
+                "projection_hints": projection_hints,
                 "location_tables": location_tables,
                 "join_hints": [],
             }
         return schema_summary
 
-    subset_lines = [f"{t}({', '.join(tables[t])})" for t in picked]
+    # Pre-compute join-key columns for selected tables (force include).
+    table_lower_map = {t.lower(): t for t in tables.keys()}
+    picked_lower = {t.lower() for t in picked}
+    join_cols_by_table: dict[str, set[str]] = {t: set() for t in picked}
+    for t1, c1, t2, c2 in _JOIN_HINT_PAIRS:
+        if t1 in picked_lower and t2 in picked_lower:
+            join_cols_by_table[table_lower_map[t1]].add(c1)
+            join_cols_by_table[table_lower_map[t2]].add(c2)
+
+    # Rank columns within each selected table (schema item ranking).
+    # Rationale: relation-aware schema selection (RAT-SQL/RESDSQL) improves accuracy by
+    # narrowing candidate columns before decoding.
+    selected_columns: dict[str, list[str]] = {}
+    column_scores: dict[str, dict[str, float]] = {}
+
+    def _score_column(col: str, idx: int) -> float:
+        score = 0.0
+        col_low = col.lower()
+        if col_low in explicit_set:
+            score += 5.0
+        if col_low in projection_set:
+            score += 3.0
+        c_tokens = _split_ident(col)
+        overlap = c_tokens & nl_tokens
+        if overlap:
+            score += min(2.5, float(len(overlap)))
+        if value_hints and col_low in location_cols:
+            score += 1.0
+        return score
+
+    for t in picked:
+        cols = tables[t]
+        col_index = {c: i for i, c in enumerate(cols)}
+        scores = {c: _score_column(c, col_index[c]) for c in cols}
+        column_scores[t] = scores
+
+        ranked = sorted(cols, key=lambda c: (-scores[c], col_index[c]))
+        if max_cols_per_table is None or max_cols_per_table <= 0:
+            selected = set(cols)
+        else:
+            selected = set(ranked[:max_cols_per_table])
+
+        # Force include explicit fields and join keys for selected tables.
+        forced = set()
+        for c in cols:
+            c_low = c.lower()
+            if c_low in explicit_set:
+                forced.add(c)
+            if c_low in join_cols_by_table.get(t, set()):
+                forced.add(c)
+        selected |= forced
+
+        selected_columns[t] = [c for c in cols if c in selected]
+
+    subset_lines = [f"{t}({', '.join(selected_columns[t])})" for t in picked]
 
     # Filter join hints to selected tables for clarity.
     join_hints = []
@@ -283,8 +356,12 @@ def build_schema_subset(
             "table_scores": table_scores,
             "table_reasons": table_reasons,
             "value_hints": value_hints,
+            "explicit_fields": explicit_fields,
+            "projection_hints": projection_hints,
             "location_tables": location_tables,
             "join_hints": join_hints,
+            "selected_columns": selected_columns,
+            "column_scores": column_scores,
         }
     return subset
 
@@ -302,12 +379,27 @@ _FIELD_SYNONYMS = {
     "product names": "productName",
     "product line": "productLine",
     "order number": "orderNumber",
+    "order date": "orderDate",
+    "order dates": "orderDate",
     "customer name": "customerName",
     "customer number": "customerNumber",
     "credit limit": "creditLimit",
     "phone": "phone",
     "city": "city",
     "country": "country",
+    "state": "state",
+    "postal code": "postalCode",
+    "zip": "postalCode",
+    "payment date": "paymentDate",
+    "payment dates": "paymentDate",
+    "check number": "checkNumber",
+    "check numbers": "checkNumber",
+    "office code": "officeCode",
+    "employee number": "employeeNumber",
+    "first name": "firstName",
+    "last name": "lastName",
+    "status": "status",
+    "comments": "comments",
     "amount": "amount",
 }
 
@@ -344,6 +436,50 @@ def _explicit_field_list(nlq: str) -> list[str]:
         if col not in ordered:
             ordered.append(col)
     return ordered
+
+
+_ENTITY_PROJECTION_HINTS = {
+    "product line": ["productLine"],
+    "product": ["productName", "productCode"],
+    "customer": ["customerName"],
+    "order": ["orderNumber", "orderDate"],
+    "payment": ["checkNumber", "paymentDate", "amount"],
+    "office": ["city", "country"],
+    "employee": ["firstName", "lastName"],
+}
+
+
+def _projection_hints(nlq: str) -> list[str]:
+    """
+    Soft projection hints for schema item ranking.
+    These are not enforced; they only bias column selection in the schema subset.
+    """
+    nl = (nlq or "").lower()
+    hints = _explicit_field_list(nlq)
+
+    # Only add entity-level hints when the NLQ asks to list entities.
+    listing = bool(re.search(r"\b(list|show|which|display|give|find)\b", nl))
+    listing = listing or bool(re.search(r"\b(top|highest|lowest|most|least|first|last)\b", nl))
+    listing = listing or bool(re.search(r"\b(with|who|that)\b", nl))
+    if not listing:
+        return list(dict.fromkeys(hints))
+
+    # Multi-word phrases first (e.g., "product line").
+    for phrase, cols in _ENTITY_PROJECTION_HINTS.items():
+        if " " in phrase and re.search(rf"\b{re.escape(phrase)}s?\b", nl):
+            for c in cols:
+                if c not in hints:
+                    hints.append(c)
+
+    for phrase, cols in _ENTITY_PROJECTION_HINTS.items():
+        if " " in phrase:
+            continue
+        if re.search(rf"\b{re.escape(phrase)}s?\b", nl):
+            for c in cols:
+                if c not in hints:
+                    hints.append(c)
+
+    return list(dict.fromkeys(hints))
 
 
 def missing_explicit_fields(nlq: str, sql: str) -> list[str]:
@@ -690,6 +826,14 @@ def semantic_score(nlq: str, sql: str) -> float:
         missing = [c for c in required_fields if c.lower() not in sql_low]
         if missing:
             score -= 3.0 * len(missing)
+    else:
+        # Soft projection hints when the NLQ implies listing entities.
+        projection_hints = _projection_hints(nlq)
+        if projection_hints:
+            if any(h.lower() in sql_low for h in projection_hints):
+                score += 1.5
+            else:
+                score -= 1.5
 
     for key, aliases in SCHEMA_KEYWORDS.items():
         if any(a in nlq_low for a in aliases) and key in sql_low:
