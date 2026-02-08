@@ -38,8 +38,8 @@ The loop only parses/enforces `Action` (not `Thought`). The notebook parser uses
 
 Core actions:
 - `get_schema`: retrieve full schema (tables/columns/PK/FK)
-- `link_schema`: prune schema context before generation (RESDSQL-style separation of linking vs generation **[17]**; relation-aware schema linking in RAT-SQL **[22]**). Returns **`link_debug`** with selected tables, scores, and value hints to make linking decisions auditable.
-- `extract_constraints`: extract structural requirements (`agg`, `needs_group_by`, `needs_order_by`, `limit`, `distinct`) plus **value hints** and **location cues/tables** for lightweight value linking (BRIDGE **[23]**)
+- `link_schema`: prune schema context before generation and rank columns within selected tables (RESDSQL-style separation of linking vs generation **[17]**; relation-aware schema linking in RAT-SQL **[22]**). Returns **`link_debug`** with selected tables, column scores, and value hints to make linking decisions auditable.
+- `extract_constraints`: extract structural requirements (`agg`, `needs_group_by`, `needs_order_by`, `limit`, `distinct`) plus **value hints**, **projection hints**, and **location cues/tables** for lightweight value linking (BRIDGE **[23]**)
 - `generate_sql`: generate a raw SQL candidate (guardrails run immediately after)
 - `validate_sql`: check "single executable SELECT" + schema references
 - `validate_constraints`: post-hoc structural checks (PICARD-style *constraint idea* **[13]**, implemented as validation + repair); also enforces value-hint presence and location cues (including requiring a location table when needed) **[23]**

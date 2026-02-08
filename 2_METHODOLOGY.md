@@ -88,6 +88,10 @@ Refs: `REFERENCES.md#ref-yao2023-react`, `REFERENCES.md#ref-zhai2025-excot`, `RE
 We progressively tightened acceptance criteria by enforcing explicit field/value constraints, schema‑aware validation (including join‑key checks), and execution‑gated acceptance. This mirrors execution‑guided decoding (rejecting candidates via execution feedback) and constrained decoding principles that restrict outputs to valid/consistent SQL, while relation‑aware linking helps avoid join/table errors.  
 Refs: `REFERENCES.md#ref-wang2018-eg-decoding`, `REFERENCES.md#ref-scholak2021-picard`, `REFERENCES.md#ref-wang2020-ratsql`, `REFERENCES.md#ref-li2023-resdsql`.
 
+**Schema item ranking (table + column shortlist)**  
+Before generation, the linker ranks both tables and columns to present a compact schema subset. This operationalizes relation‑aware schema linking and decoupled schema selection to reduce projection/join mistakes without retraining.  
+Refs: `REFERENCES.md#ref-wang2020-ratsql`, `REFERENCES.md#ref-li2023-resdsql`.
+
 **Evolution from candidate‑ranking**  
 - Candidate‑ranking utilities that improved EX were retained but converted into explicit tools or guardrails.  
 - The ranking decision itself was removed; the loop now relies on ordered actions with observations and forced repair on failure.  

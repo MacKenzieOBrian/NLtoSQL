@@ -215,3 +215,9 @@
 - **Change:** Added semicolon‑stopping criteria in LLM generation for tool calls to reduce run‑on text and enforce single‑statement decoding.  
 - **Change:** Added lightweight reflection memory in the class‑based agent: recent validation errors are appended to observations and repair prompts to discourage repeated mistakes.  
 - **Justification (lit):** Constrained decoding (PICARD) reduces invalid SQL by restricting generation to syntactically valid forms; reflection memory follows Reflexion‑style feedback to improve iterative repairs without retraining. [PICARD: Parsing Incrementally for Constrained Auto-Regressive Decoding](https://aclanthology.org/2021.emnlp-main.779/) [Reflexion: Language Agents with Verbal Reinforcement Learning](https://arxiv.org/abs/2303.11366)
+
+### 2026-02-08 — Schema Item Ranking + Projection Hint Expansion
+- **Change:** Expanded explicit field synonyms (e.g., order date, payment date, check number, office code) to catch more projection cues in NLQs.  
+- **Change:** Added soft projection hints (entity defaults + explicit fields) and applied column‑level ranking inside `link_schema` so only top‑K columns are surfaced per table, while forcing join keys to remain visible.  
+- **Why it helps:** Most remaining EX errors were projection mismatches. Column ranking narrows the schema space before decoding, which is consistent with relation‑aware schema linking and decoupled schema selection that improve schema accuracy.  
+- **Refs:** `REFERENCES.md#ref-wang2020-ratsql`, `REFERENCES.md#ref-li2023-resdsql`.
