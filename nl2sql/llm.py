@@ -92,7 +92,11 @@ def generate_sql_from_messages(
     messages: list[dict[str, str]],
     max_new_tokens: int = 128,
     constrained: bool = True,
-) -> str:
+    do_sample: bool = False,
+    temperature: float = 0.2,
+    top_p: float = 0.9,
+    num_return_sequences: int = 1,
+) -> str | list[str]:
     import torch
     try:
         from transformers import BadWordsLogitsProcessor, LogitsProcessorList
@@ -167,6 +171,9 @@ def generate_sql_from_messages(
         pad_token_id = getattr(tokenizer, "eos_token_id", None)
     eos_token_id = getattr(tokenizer, "eos_token_id", None)
 
+    if num_return_sequences and num_return_sequences > 1 and not do_sample:
+        do_sample = True
+
     logits_processor = None
     if constrained and LogitsProcessorList is not None and BadWordsLogitsProcessor is not None:
         bad_words_ids = _build_bad_words_ids(tokenizer)
@@ -175,17 +182,34 @@ def generate_sql_from_messages(
                 [BadWordsLogitsProcessor(bad_words_ids=bad_words_ids, eos_token_id=eos_token_id)]
             )
 
+    gen_kwargs = {
+        "max_new_tokens": max_new_tokens,
+        "do_sample": do_sample,
+        "pad_token_id": pad_token_id,
+        "eos_token_id": eos_token_id,
+        "stopping_criteria": StoppingCriteriaList([_StopOnSemicolon(tokenizer)]),
+        "logits_processor": logits_processor,
+    }
+    if do_sample:
+        gen_kwargs.update({"temperature": temperature, "top_p": top_p})
+    if num_return_sequences and num_return_sequences > 1:
+        gen_kwargs["num_return_sequences"] = num_return_sequences
+
     with torch.no_grad():
         out = model.generate(
             input_ids,
             attention_mask=attention_mask,
-            max_new_tokens=max_new_tokens,
-            do_sample=False,
-            pad_token_id=pad_token_id,
-            eos_token_id=eos_token_id,
-            stopping_criteria=StoppingCriteriaList([_StopOnSemicolon(tokenizer)]),
-            logits_processor=logits_processor,
+            **gen_kwargs,
         )
+
+    if num_return_sequences and num_return_sequences > 1:
+        results: list[str] = []
+        for seq in out:
+            gen_ids = seq[input_ids.shape[-1] :]
+            gen_text = tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
+            sql = extract_first_select(gen_text)
+            results.append(sql if sql is not None else gen_text)
+        return results
 
     gen_ids = out[0][input_ids.shape[-1] :]
     gen_text = tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
