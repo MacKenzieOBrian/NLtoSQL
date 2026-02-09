@@ -166,6 +166,14 @@ def extract_constraints(nlq: str) -> dict:
             if "customers" not in required_tables:
                 required_tables.append("customers")
 
+    # If the NLQ is about employees + a location/office, require both employees and offices.
+    if re.search(r"\bemployees?\b", nl) and (needs_location or re.search(r"\boffice(s)?\b", nl)):
+        if "employees" not in required_tables:
+            required_tables.append("employees")
+        if "offices" not in required_tables:
+            required_tables.append("offices")
+        required_tables_all = True
+
     needs_self_join = False
     self_join_table = None
     if re.search(r"\bmanagers?\b", nl) and re.search(r"\bemployees?\b", nl):
