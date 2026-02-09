@@ -24,6 +24,7 @@ from .agent_utils import (
     _extract_required_columns,
     _projection_hints,
     _entity_projection_hints,
+    _entity_identifier_fields,
     _value_linked_columns_from_tables,
     _parse_schema_summary,
 )
@@ -114,15 +115,36 @@ def extract_constraints(nlq: str) -> dict:
     explicit_fields = _extract_required_columns(nlq)
     projection_hints = _projection_hints(nlq)
     entity_hints = _entity_projection_hints(nlq)
+    entity_identifiers = _entity_identifier_fields(nlq)
     explicit_projection = bool(
         explicit_fields
         and ("," in nl or " and " in nl or nl.strip().startswith(("show", "list", "give", "display")))
     )
+    if agg and not needs_group_by and not needs_order_by:
+        # Aggregate-only queries (e.g., "How many customers") should not force identifiers.
+        entity_identifiers = []
     schema_text = _require_ctx().schema_text_cache or schema_to_text(get_schema())
     value_columns = _value_linked_columns_from_tables(nlq, _parse_schema_summary(schema_text))
     needs_location = bool(
         value_hints and re.search(r"\b(in|from|located|based|office)\b", nl)
     )
+
+    required_tables: list[str] = []
+    required_tables_all = False
+    # Heuristic: order totals should be sourced from orderdetails (qty * price).
+    if re.search(r"\border number\b", nl) and (agg in {"SUM", "AVG"} or "total" in nl or "amount" in nl):
+        required_tables.append("orderdetails")
+    if re.search(r"\borders?\b", nl) and (("total" in nl and "amount" in nl) or "order total" in nl):
+        if "orderdetails" not in required_tables:
+            required_tables.append("orderdetails")
+
+    # Heuristic: payment aggregates should include payments (and customers if per customer).
+    if re.search(r"\bpayments?\b", nl) and (agg in {"SUM", "AVG"} or "total" in nl or "amount" in nl):
+        if "payments" not in required_tables:
+            required_tables.append("payments")
+    if re.search(r"\bcustomers?\b", nl) and re.search(r"\btotal\\s+payments?\b", nl):
+        required_tables = ["payments", "customers"]
+        required_tables_all = True
 
     schema_text = _require_ctx().schema_text_cache or schema_to_text(get_schema())
     _, table_cols = parse_schema_text(schema_text)
@@ -142,7 +164,10 @@ def extract_constraints(nlq: str) -> dict:
         "explicit_projection": explicit_projection,
         "projection_hints": projection_hints,
         "entity_hints": entity_hints,
+        "entity_identifiers": entity_identifiers,
         "value_columns": value_columns,
+        "required_tables": required_tables,
+        "required_tables_all": required_tables_all,
         "needs_location": needs_location,
         "location_tables": location_tables,
     }

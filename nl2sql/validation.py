@@ -200,6 +200,16 @@ def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: 
                 "missing_fields": entity_hints,
             }
 
+    entity_identifiers = constraints.get("entity_identifiers") or []
+    if entity_identifiers and not has_select_star:
+        missing_ids = [f for f in entity_identifiers if not _select_has_field(select_clause, f)]
+        if missing_ids:
+            return {
+                "valid": False,
+                "reason": "missing_entity_identifier",
+                "missing_fields": missing_ids,
+            }
+
     if constraints.get("needs_location"):
         tables_in_query = _tables_in_query(sql_low)
         location_tables = set(constraints.get("location_tables") or [])
@@ -225,5 +235,25 @@ def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: 
                 "reason": "missing_value_column_table",
                 "missing_value_columns": missing_value_cols,
             }
+
+    required_tables = constraints.get("required_tables") or []
+    if required_tables:
+        tables_in_query = _tables_in_query(sql_low)
+        require_all = bool(constraints.get("required_tables_all"))
+        if require_all:
+            missing = [t for t in required_tables if t not in tables_in_query]
+            if missing:
+                return {
+                    "valid": False,
+                    "reason": "missing_required_table",
+                    "missing_tables": missing,
+                }
+        else:
+            if not any(t in tables_in_query for t in required_tables):
+                return {
+                    "valid": False,
+                    "reason": "missing_required_table",
+                    "missing_tables": required_tables,
+                }
 
     return {"valid": True, "reason": "ok"}
