@@ -23,6 +23,7 @@ from .agent_utils import (
     _extract_value_hints,
     _extract_required_columns,
     _projection_hints,
+    _entity_projection_hints,
     _value_linked_columns_from_tables,
     _parse_schema_summary,
 )
@@ -112,6 +113,11 @@ def extract_constraints(nlq: str) -> dict:
     value_hints = _extract_value_hints(nlq)
     explicit_fields = _extract_required_columns(nlq)
     projection_hints = _projection_hints(nlq)
+    entity_hints = _entity_projection_hints(nlq)
+    explicit_projection = bool(
+        explicit_fields
+        and ("," in nl or " and " in nl or nl.strip().startswith(("show", "list", "give", "display")))
+    )
     schema_text = _require_ctx().schema_text_cache or schema_to_text(get_schema())
     value_columns = _value_linked_columns_from_tables(nlq, _parse_schema_summary(schema_text))
     needs_location = bool(
@@ -133,7 +139,9 @@ def extract_constraints(nlq: str) -> dict:
         "distinct": distinct,
         "value_hints": value_hints,
         "explicit_fields": explicit_fields,
+        "explicit_projection": explicit_projection,
         "projection_hints": projection_hints,
+        "entity_hints": entity_hints,
         "value_columns": value_columns,
         "needs_location": needs_location,
         "location_tables": location_tables,
@@ -142,7 +150,9 @@ def extract_constraints(nlq: str) -> dict:
 
 def validate_constraints(sql: str, constraints: Optional[dict]) -> dict:
     """Validate SQL structure against extracted constraints."""
-    return _validate_constraints(sql, constraints)
+    ctx = _require_ctx()
+    schema_text = ctx.schema_text_cache or schema_to_text(get_schema())
+    return _validate_constraints(sql, constraints, schema_text=schema_text)
 
 
 def get_schema() -> dict:

@@ -32,6 +32,43 @@ def parse_schema_text(schema_text: str) -> tuple[set[str], dict[str, set[str]]]:
     return tables, table_cols
 
 
+_SELECT_CLAUSE_RE = re.compile(r"(?is)\bselect\b(.*?)\bfrom\b")
+
+
+def _extract_select_clause(sql_low: str) -> str:
+    if not sql_low:
+        return ""
+    m = _SELECT_CLAUSE_RE.search(sql_low)
+    if not m:
+        return ""
+    return m.group(1)
+
+
+def _select_has_star(sql_low: str) -> bool:
+    if not sql_low:
+        return False
+    return re.search(r"\bselect\s+([a-zA-Z_][\w$]*\.)?\*\b", sql_low) is not None
+
+
+def _select_has_field(select_clause: str, field: str) -> bool:
+    if not select_clause or not field:
+        return False
+    return re.search(rf"\b{re.escape(field.lower())}\b", select_clause) is not None
+
+
+def _tables_in_query(sql_low: str) -> set[str]:
+    tables: set[str] = set()
+    if not sql_low:
+        return tables
+    for m in re.finditer(r"(?is)\b(from|join)\s+([a-zA-Z_][\w$]*)", sql_low):
+        table = m.group(2)
+        after = sql_low[m.end() : m.end() + 1]
+        if after == "(":
+            continue
+        tables.add(table)
+    return tables
+
+
 def schema_validate(
     *,
     sql: str,
@@ -99,7 +136,7 @@ def validate_sql(sql: str, schema_text: Optional[str] = None, *, enforce_join_hi
     return {"valid": True, "reason": "schema_ok"}
 
 
-def validate_constraints(sql: str, constraints: Optional[dict]) -> dict:
+def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: Optional[str] = None) -> dict:
     """Validate SQL structure against extracted constraints."""
     # Rationale: prevents "runs but wrong shape" (e.g., missing GROUP BY or LIMIT).
     if not constraints:
@@ -110,6 +147,9 @@ def validate_constraints(sql: str, constraints: Optional[dict]) -> dict:
         return {"valid": False, "reason": "empty_sql"}
 
     sql_low = sql.lower()
+    select_clause = _extract_select_clause(sql_low)
+    has_select_star = _select_has_star(sql_low)
+
     agg = constraints.get("agg")
     if constraints.get("distinct") and "select distinct" not in sql_low:
         return {"valid": False, "reason": "missing_distinct"}
@@ -142,14 +182,48 @@ def validate_constraints(sql: str, constraints: Optional[dict]) -> dict:
         missing = [f for f in explicit_fields if f.lower() not in sql_low]
         return {"valid": False, "reason": "missing_required_field", "missing_fields": missing}
 
+    if constraints.get("explicit_projection") and explicit_fields and not has_select_star:
+        missing_sel = [f for f in explicit_fields if not _select_has_field(select_clause, f)]
+        if missing_sel:
+            return {
+                "valid": False,
+                "reason": "missing_required_projection",
+                "missing_fields": missing_sel,
+            }
+
+    entity_hints = constraints.get("entity_hints") or []
+    if entity_hints and not has_select_star:
+        if not any(_select_has_field(select_clause, h) for h in entity_hints):
+            return {
+                "valid": False,
+                "reason": "missing_entity_projection",
+                "missing_fields": entity_hints,
+            }
+
     if constraints.get("needs_location"):
-        tables_in_query: set[str] = set()
-        for m in re.finditer(r"(?is)\b(from|join)\s+([a-zA-Z_][\w$]*)", sql_low):
-            tables_in_query.add(m.group(2))
+        tables_in_query = _tables_in_query(sql_low)
         location_tables = set(constraints.get("location_tables") or [])
         if location_tables and not (tables_in_query & location_tables):
             return {"valid": False, "reason": "missing_location_table"}
         if re.search(r"\b(city|country|state|territory|region)\b", sql_low) is None:
             return {"valid": False, "reason": "missing_location_column"}
+
+    value_columns = constraints.get("value_columns") or []
+    if schema_text and value_columns:
+        _, table_cols = parse_schema_text(schema_text)
+        tables_in_query = _tables_in_query(sql_low)
+        missing_value_cols: list[str] = []
+        for col in value_columns:
+            col_low = str(col).lower()
+            if not col_low:
+                continue
+            if not any(col_low in (table_cols.get(t) or set()) for t in tables_in_query):
+                missing_value_cols.append(col)
+        if missing_value_cols:
+            return {
+                "valid": False,
+                "reason": "missing_value_column_table",
+                "missing_value_columns": missing_value_cols,
+            }
 
     return {"valid": True, "reason": "ok"}
