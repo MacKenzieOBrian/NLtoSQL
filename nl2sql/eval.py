@@ -26,6 +26,7 @@ from sqlalchemy.engine import Engine
 from .db import safe_connection
 from .llm import generate_sql_from_messages
 from .postprocess import guarded_postprocess, normalize_sql
+from .agent_utils import _extract_required_columns
 from .prompting import make_few_shot_messages
 from .query_runner import DEFAULT_FORBIDDEN_TOKENS, QueryRunner
 
@@ -311,7 +312,7 @@ def eval_run(
     save_path: str | Path | None = None,
     max_rows: int = 50,
     max_new_tokens: int = 128,
-    postprocess: Callable[[str, str], str] = guarded_postprocess,
+    postprocess: Callable[..., str] = guarded_postprocess,
     run_metadata: Optional[dict[str, Any]] = None,
     avoid_exemplar_leakage: bool = True,
     max_compare_rows: int = 10000,
@@ -355,7 +356,8 @@ def eval_run(
         )
         # Postprocess is intentionally deterministic: it cleans common formatting/projection issues
         # without changing model weights. See nl2sql.postprocess.guarded_postprocess.
-        pred_sql = postprocess(raw_sql, nlq)
+        explicit_fields = _extract_required_columns(nlq)
+        pred_sql = postprocess(raw_sql, nlq, explicit_fields=explicit_fields)
 
         # VA (executability) from the QueryRunner.
         meta = qr.run(pred_sql, capture_df=False)

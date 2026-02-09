@@ -35,6 +35,7 @@ from .agent_utils import (
     missing_explicit_fields,
     semantic_score,
     vanilla_candidate,
+    _extract_required_columns,
     _extract_value_hints,
 )
 from .validation import parse_schema_text, schema_validate
@@ -241,12 +242,12 @@ Respond with only the final SQL statement.
     # -----------------
     # Candidate evaluation
     # -----------------
-    def postprocess_sql(self, *, sql: str, nlq: str) -> str:
+    def postprocess_sql(self, *, sql: str, nlq: str, explicit_fields: Optional[list[str]] = None) -> str:
         # Deterministic postprocess layer (no weight changes).
         # Rationale: keeps behavior inspectable and consistent across runs.
         if self.cfg.verbose:
             self._debug("[guard] calling guarded_postprocess")
-        cleaned = guarded_postprocess(sql, nlq)
+        cleaned = guarded_postprocess(sql, nlq, explicit_fields=explicit_fields)
         if self.cfg.verbose and cleaned != sql:
             self._debug(f"[post] guarded_postprocess changed sql: {_trim(cleaned)}")
         return cleaned
@@ -273,7 +274,8 @@ Respond with only the final SQL statement.
 
         # Rationale: normalize/guard before any schema or execution checks so
         # errors are attributable to the SQL itself, not formatting noise.
-        sql = self.postprocess_sql(sql=sql, nlq=nlq)
+        explicit_fields = _extract_required_columns(nlq)
+        sql = self.postprocess_sql(sql=sql, nlq=nlq, explicit_fields=explicit_fields)
         self._debug(f"[eval] postprocess sql: {_trim(sql)}")
 
         missing_fields = missing_explicit_fields(nlq, sql)

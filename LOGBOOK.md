@@ -266,3 +266,80 @@
 - **Change:** Added a conservative constrained decoding step that blocks obvious non‑SELECT outputs (DDL/DML/transaction keywords) during generation.  
 - **Why it helps:** This reduces invalid SQL early without over‑blocking, aligning with PICARD’s incremental constraint idea while remaining lightweight and auditable.  
 - **Refs:** `REFERENCES.md#ref-scholak2021-picard`.
+
+### 2026-02-09 — Commit Timeline (Last Week, Error‑Guided + Research‑Grounded)
+| Commit | Change | Error‑Guided Rationale + Research Framing |
+|---|---|---|
+| `2d21f17` | Improve schema/value linking, validation, and notebook/docs | Consolidates fixes targeting EX=0/VA=1; aligns with schema/value linking + constrained decoding practices. |
+| `f8f0fa1` | Fix missing joins for payments‑per‑country and managers | Addresses missing join/self‑join errors; consistent with relation‑aware schema linking (RAT‑SQL). |
+| `54a1afa` | Relax guardrails for listing projections | Prevents identifier drops on listing queries; honors explicit NLQ cues (BRIDGE/RAT‑SQL). |
+| `316018a` | Fix EX failures from projection drops and wrong‑table aggregates | Targets “valid but wrong” EX failures; reinforces schema/aggregation constraints. |
+| `6e7338c` | Trim notebook markdown | Documentation cleanup to improve auditability. |
+| `9e92dcc` | Clean up agentic eval notebook | Documentation cleanup for reproducibility. |
+| `d7ddd65` | Fix EX failures from missing projections/joins; add entity/value constraints | Adds explicit field/value gates; aligns with value‑linking research. |
+| `72760cc` | Add execution reranking for SQL candidates | Shifts selection toward execution‑guided decoding (Wang et al.). |
+| `1c630dc` | Add debug logging and PICARD‑lite constraint | Constrained decoding reduces invalid SQL; improves traceability. |
+| `3e72342` | Add value‑column hints and remove `get_table_samples` | Value‑linking signal without runtime sampling; reduces tool bloat. |
+| `ce0e2ee` | Document schema ranking and projection hints | Documentation alignment with schema‑linking methods. |
+| `29edde5` | Add schema column ranking and projection hints | Narrows schema search space; consistent with schema selection literature. |
+| `9b84a42` | Add phase 3 guards and docs | Adds guardrails for invalid/ambiguous outputs; improves safety. |
+| `3d6ae2a` | Disable TF auto‑load in notebook | Prevents runtime conflicts; stability fix. |
+| `fe72a54` | Centralize validation utilities | Consistent validation to reduce divergence across agents. |
+| `0609d41` | Add explicit field/value gates | Enforces NLQ‑explicit constraints; reduces “runs but wrong.” |
+| `587c002` | Guard fallback with validation | Prevents fallback SQL from bypassing constraints. |
+| `d3d5109` | Clarify tool rationale comments in ReAct loop cell | Documentation alignment for evaluation traceability. |
+| `917fdc7` | Update ReAct diagram for setup‑only tools and auto‑finish | Documentation alignment with actual loop order. |
+| `7d49081` | Enhance schema‑linking debug + value‑link cues | Improves analysis of linking failures; ties to value‑linking literature. |
+| `613b389` | Add value‑linking hints and location checks | Fixes filter‑column mismatches; aligns with BRIDGE value linking. |
+| `d38e800` | Fix eval cell trace serialization | Ensures trace artifacts remain reproducible. |
+| `4dac428` | Add refs for schema/value linking and execution feedback | Documentation support for research framing. |
+| `f8bbee2` | ReAct notebook fixes | Cleanup to improve reproducibility. |
+| `54a75aa` | Re‑add demo feature | Pedagogical support for walkthroughs. |
+| `e4b71b8` | Harden ReAct loop termination + schema‑aware validation | Prevents loop drift; improves correctness. |
+| `ff96dc0` | Tighten ReAct loop flow and schema checks | Enforces step order; reduces invalid states. |
+| `18dcddf` | Improve SQL extraction + attention mask | Reduces malformed outputs; improves decode stability. |
+| `cb27bcf` | Simplify ReAct evaluation notebook | Documentation clarity for evaluation flow. |
+| `b229246` | Remove demo notebook | Documentation cleanup. |
+| `db20439` | Fix TS metric + ReAct trace | Corrects evaluation metric + trace integrity. |
+| `8fba4fa` | Simplify notebook ReAct walkthrough | Improves interpretability for debugging. |
+| `f428a85` | Fix regex escaping in `agent_tools` | Bugfix affecting extraction/validation. |
+| `2ab0644` | Add interactive ReAct walkthrough | Pedagogical tool for step‑wise inspection. |
+| `d8d4ce8` | Re‑ordering markdown | Documentation cleanup. |
+| `d368bed` | Reduce docs; remove refinements log | Documentation cleanup. |
+| `cb16e83` | Comments | Documentation polish. |
+| `c515155` | Remove changelog milestone | Documentation cleanup. |
+| `cdb9433` | Add v1‑react‑loop milestone notes | Documentation for research narrative. |
+| `0ac9bde` | Harden ReAct loop args parsing + update AI prompts | Robustness for tool‑calling format. |
+| `58a5efb` | Update quick‑check cell and AI prompts credit | Documentation + reproducibility. |
+| `353fd84` | Update ReAct notebook, diagrams, add run artifacts | Documentation + artifact capture. |
+| `7cb7c73` | Update ReAct diagrams and method flow visuals | Documentation alignment with system. |
+| `65399ad` | Expand viva Q&A for ReAct decisions/scope | Documentation support. |
+| `83ecdc0` | Align agent design and limitations with tool‑driven loop | Documentation alignment with implementation. |
+| `4839c47` | Document research narrative and method evolution | Documentation support. |
+| `65943d3` | Add ReAct preflight + trace compliance checks | Error prevention before running loop. |
+| `dc27047` | Implement tool‑driven ReAct loop and notebook wiring | Core method shift: tool‑driven ReAct. |
+| `4d5c213` | Tools: add preflight + model smoke checks | Safety and stability improvements. |
+| `98a8537` | Docs: add ReAct diagrams w/ code pointers + refs | Documentation support. |
+| `3442968` | Docs: align methodology/agent/evaluation with literature | Documentation alignment to research. |
+| `165e4ee` | Refactor legacy candidate loop + schema/intent safeguards | Structural improvements for error reduction. |
+| `b02900c` | Implement tool‑driven ReAct loop with explicit validation | Core change: structured tool order + gates. |
+| `159debc` | Add detailed ReAct trace notes and guard logs | Traceability for error analysis. |
+| `c17037d` | Inject join exemplars into ReAct prompts | Improves join selection (schema linking). |
+| `f0203b5` | Enable multi‑step ReAct feedback + docs | Supports iterative repair (execution‑guided). |
+| `2dc6d08` | Improve ReAct feedback, eval logging, scoring hints | Better error attribution and scoring. |
+| `b83515b` | Add debug output to quick sanity check | Faster error diagnosis. |
+| `5bfd1bb` | Update Colab install cell | Environment stability. |
+| `a28632f` | Make AI tools appendix more student voice | Documentation polish. |
+| `5418b86` | Restructure agentic notebook to match module loop | Documentation alignment. |
+| `27c4501` | Rewrite notebook markdown for clarity | Documentation clarity. |
+| `71c4519` | Tighten notebook markdown for accuracy | Documentation accuracy. |
+| `567ffb1` | Update literature/methodology and notebook notes | Documentation alignment with research. |
+| `397b859` | Refactor module ReAct agent + viva docs | Architecture + documentation. |
+| `98ec64f` | Clarify notebook markdown code pointers | Documentation clarity. |
+| `4e286bc` | Explain eval/postprocess decisions; add scoring stub | Documentation + evaluation rationale. |
+| `4ca85c3` | Add overview; align docs and notebook to eval/agent | Documentation alignment. |
+| `0f0f131` | Notebook: add run order + tighten TS comparator | Evaluation correctness. |
+| `290fefe` | Update notebook markdown + decisions notes | Documentation clarity. |
+| `a4c8870` | Docs: clarify TS as suite‑based robustness | Documentation accuracy. |
+| `57bcfb0` | Eval: relax EX comparator; log quick‑check + TS plan | Evaluation stability + traceability. |
+| `e7ac4b5` | Notebook: remove legacy `react_sql` args | Cleanup after API shift. |

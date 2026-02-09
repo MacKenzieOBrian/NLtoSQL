@@ -985,7 +985,8 @@ def vanilla_candidate(
     out = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
     text = tok.decode(out[0], skip_special_tokens=True)
     raw_sql = extract_first_select(text) or text
-    sql = guarded_postprocess(raw_sql, nlq)
+    explicit_fields = _extract_required_columns(nlq)
+    sql = guarded_postprocess(raw_sql, nlq, explicit_fields=explicit_fields)
     return clean_candidate(sql)
 
 
