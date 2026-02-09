@@ -883,7 +883,9 @@ def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
         return None, "empty"
 
     text = _normalize_spaced_keywords(raw)
-    sql = extract_first_select(text) or text
+    # Defensive local import: notebook kernels may hold stale module globals.
+    from nl2sql.llm import extract_first_select as _extract_first_select
+    sql = _extract_first_select(text) or text
     sql = (sql or "").strip()
     lower = sql.lower()
 
