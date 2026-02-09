@@ -31,7 +31,6 @@ from .agent_utils import (
     classify_intent,
     clean_candidate_with_reason,
     count_select_columns,
-    enforce_projection_contract,
     intent_constraints,
     missing_explicit_fields,
     semantic_score,
@@ -59,7 +58,6 @@ class ReactConfig:
 
     # Optional prompt controls.
     use_schema_subset: bool = True
-    use_projection_contract: bool = True
 
     # Scoring.
     column_penalty: float = 0.5
@@ -251,13 +249,6 @@ Respond with only the final SQL statement.
         cleaned = guarded_postprocess(sql, nlq)
         if self.cfg.verbose and cleaned != sql:
             self._debug(f"[post] guarded_postprocess changed sql: {_trim(cleaned)}")
-        if self.cfg.use_projection_contract:
-            if self.cfg.verbose:
-                self._debug("[guard] calling enforce_projection_contract")
-            contracted = enforce_projection_contract(cleaned, nlq)
-            if self.cfg.verbose and contracted != cleaned:
-                self._debug(f"[post] projection_contract applied: {_trim(contracted)}")
-            cleaned = contracted
         return cleaned
 
     def evaluate_candidate(
@@ -542,7 +533,7 @@ Output ONLY the corrected SELECT statement.
         self._debug(
             f"[start] steps={cfg.max_steps} num_cands={cfg.num_cands} "
             f"schema_subset={cfg.use_schema_subset} "
-            f"projection_contract={cfg.use_projection_contract} accept_score={cfg.accept_score} "
+            f"accept_score={cfg.accept_score} "
             f"intent_gate={'hard' if cfg.enforce_intent_constraints else 'soft'} "
             f"intent_penalty={cfg.intent_penalty} max_exec_cands={cfg.max_exec_cands}"
         )

@@ -9,7 +9,7 @@ from typing import Optional
 
 import re
 
-from .agent_utils import clean_candidate_with_reason, validate_join_hints
+from .agent_utils import clean_candidate_with_reason, validate_join_hints, _tables_connected
 
 
 def parse_schema_text(schema_text: str) -> tuple[set[str], dict[str, set[str]]]:
@@ -235,6 +235,14 @@ def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: 
                 "reason": "missing_value_column_table",
                 "missing_value_columns": missing_value_cols,
             }
+        # If value columns span multiple tables, require a connected join path.
+        if len({t for t in tables_in_query}) > 1:
+            if not _tables_connected(schema_text, tables_in_query):
+                return {
+                    "valid": False,
+                    "reason": "missing_join_path",
+                    "tables": sorted(tables_in_query),
+                }
 
     required_tables = constraints.get("required_tables") or []
     if required_tables:

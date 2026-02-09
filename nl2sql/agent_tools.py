@@ -137,6 +137,9 @@ def extract_constraints(nlq: str) -> dict:
     if re.search(r"\borders?\b", nl) and (("total" in nl and "amount" in nl) or "order total" in nl):
         if "orderdetails" not in required_tables:
             required_tables.append("orderdetails")
+    if re.search(r"\b(revenue|sales)\b", nl):
+        required_tables = ["orders", "orderdetails"]
+        required_tables_all = True
 
     # Heuristic: payment aggregates should include payments (and customers if per customer).
     if re.search(r"\bpayments?\b", nl) and (agg in {"SUM", "AVG"} or "total" in nl or "amount" in nl):

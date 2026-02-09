@@ -158,6 +158,53 @@ def _parse_schema_summary(schema_summary: str) -> dict[str, list[str]]:
     return tables
 
 
+def _build_fk_graph(schema_text: str) -> dict[str, set[str]]:
+    graph: dict[str, set[str]] = {}
+    if not schema_text:
+        return graph
+    for line in schema_text.splitlines():
+        if not line.lower().startswith("join hints:"):
+            continue
+        hints = line.split(":", 1)[1]
+        for chunk in hints.split(";"):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            # expected pattern: a.b = c.d
+            if "=" not in chunk:
+                continue
+            left, right = chunk.split("=", 1)
+            left = left.strip()
+            right = right.strip()
+            if "." not in left or "." not in right:
+                continue
+            lt = left.split(".", 1)[0].strip()
+            rt = right.split(".", 1)[0].strip()
+            if not lt or not rt:
+                continue
+            graph.setdefault(lt, set()).add(rt)
+            graph.setdefault(rt, set()).add(lt)
+    return graph
+
+
+def _tables_connected(schema_text: str, tables: set[str]) -> bool:
+    if not tables or len(tables) == 1:
+        return True
+    graph = _build_fk_graph(schema_text)
+    if not graph:
+        return False
+    start = next(iter(tables))
+    seen = {start}
+    stack = [start]
+    while stack:
+        node = stack.pop()
+        for nxt in graph.get(node, set()):
+            if nxt not in seen:
+                seen.add(nxt)
+                stack.append(nxt)
+    return tables.issubset(seen)
+
+
 def build_schema_subset(
     schema_summary: str,
     nlq: str,
@@ -714,42 +761,6 @@ def _split_select_items(select_part: str) -> list[str]:
     if tail:
         items.append(tail)
     return items
-
-
-def enforce_projection_contract(sql: str, nlq: str) -> str:
-    """
-    If NLQ explicitly names fields, drop extra SELECT columns deterministically
-    and preserve NLQ order. This enforces output shape without injecting joins
-    or predicates.
-    """
-    required = _extract_required_columns(nlq)
-    if not required:
-        return sql
-    # Only enforce when the NLQ explicitly enumerates fields (comma or "and").
-    # This avoids dropping entity identifiers in filter-style questions.
-    nl = (nlq or "").lower()
-    if "," not in nl and " and " not in nl:
-        return sql
-
-    m = re.search(r"(?is)^\s*select\s+(.*?)\s+from\s+", sql or "")
-    if not m:
-        return sql
-
-    select_part = m.group(1)
-    items = _split_select_items(select_part)
-    # Map required cols to matching SELECT items
-    kept = []
-    for col in required:
-        for it in items:
-            if col.lower() in it.lower() and it not in kept:
-                kept.append(it)
-                break
-
-    if not kept:
-        return sql
-
-    new_select = ", ".join(kept)
-    return re.sub(r"(?is)^\s*select\s+(.*?)\s+from\s+", f"SELECT {new_select} FROM ", sql, count=1)
 
 
 def classify_intent(nlq: str) -> str:

@@ -236,7 +236,6 @@ def run_react_small(
             do_sample=True,
             enable_reflection=True,
             use_schema_subset=True,
-            use_projection_contract=True,
             reflection_num_cands=4,
         ),
     )

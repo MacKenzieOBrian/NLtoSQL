@@ -229,6 +229,12 @@
 - **Targets:** “Average payment amount per country”, “Employees and their managers”.  
 - **Expected effect:** reduce wrong-table and missing-join errors that survive guardrail fixes.
 
+### 2026-02-09 — Join-Path Enforcement + Revenue/Sales Heuristics
+- **Change:** Added required table enforcement for revenue/sales phrasing (orders + orderdetails).  
+- **Change:** When value columns span multiple tables, require a connected join path based on schema join hints (prevents cross-table aggregation without joins).  
+- **Targets:** “Total amount per order number”, “Top 5 orders by total amount”, any revenue/sales phrasing, and multi-table aggregates like per-country payments.  
+- **Expected effect:** reduce wrong-table aggregates and silent cross-table mistakes that still pass basic validation.
+
 ### 2026-02-07 — Phase 1 Implemented: Hard Gates for Explicit Fields + Value Hints
 - **Change:** Added `explicit_fields` to constraint extraction and enforced it in `validate_constraints` (tool‑driven loop). This hard‑rejects candidates missing explicitly requested columns (e.g., “names, codes, and MSRPs”).  
 - **Change:** Tightened value‑hint extraction by adding numeric literals and excluding common “instruction” words (e.g., Top/Most), then enforced missing value hints as a hard gate.  
