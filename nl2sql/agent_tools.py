@@ -206,25 +206,53 @@ def validate_sql(sql: str, schema_text: Optional[str] = None) -> dict:
     return _validate_sql(sql, schema_text, enforce_join_hints=True)
 
 
-def _call_llm(messages: list[dict[str, str]], *, max_new_tokens: Optional[int] = None) -> str:
+def _call_llm(
+    messages: list[dict[str, str]],
+    *,
+    max_new_tokens: Optional[int] = None,
+    num_return_sequences: int = 1,
+    do_sample: bool = False,
+    temperature: float = 0.2,
+    top_p: float = 0.9,
+) -> str | list[str]:
     ctx = _require_ctx()
     return generate_sql_from_messages(
         model=ctx.model,
         tokenizer=ctx.tok,
         messages=messages,
         max_new_tokens=max_new_tokens or ctx.max_new_tokens,
+        num_return_sequences=num_return_sequences,
+        do_sample=do_sample,
+        temperature=temperature,
+        top_p=top_p,
     )
 
 
-def generate_sql(nlq: str, schema_text: str, constraints: dict) -> str:
-    """LLM call that generates a single SQL candidate."""
+def generate_sql(
+    nlq: str,
+    schema_text: str,
+    constraints: dict,
+    *,
+    num_cands: int = 1,
+    do_sample: bool = False,
+    temperature: float = 0.2,
+    top_p: float = 0.9,
+) -> str | list[str]:
+    """LLM call that generates SQL candidate(s)."""
     constraint_text = json.dumps(constraints or {}, ensure_ascii=False)
     messages = [
         {"role": "system", "content": SYSTEM_INSTRUCTIONS},
         {"role": "user", "content": f"Schema:\n{schema_text}"},
         {"role": "user", "content": f"NLQ: {nlq}\nConstraints: {constraint_text}\nReturn a single SQL SELECT."},
     ]
-    return _call_llm(messages, max_new_tokens=128)
+    return _call_llm(
+        messages,
+        max_new_tokens=128,
+        num_return_sequences=num_cands,
+        do_sample=do_sample,
+        temperature=temperature,
+        top_p=top_p,
+    )
 
 
 def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str) -> str:
