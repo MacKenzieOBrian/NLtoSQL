@@ -714,14 +714,16 @@ def _value_linked_columns_from_tables(nlq: str, tables: dict[str, list[str]]) ->
     # Location phrases with values.
     if value_hints and re.search(r"\b(in|from|located|based)\b", nl):
         # Prefer a single location column based on value shape.
+        # - multi-word -> city (e.g., "san francisco")
         # - codes (US/USA) -> country/state
-        # - multi-word -> city
-        if any(re.fullmatch(r"[a-z]{2,3}", v) for v in value_hints):
+        has_multiword = any(" " in v for v in value_hints)
+        has_code = any(re.fullmatch(r"[a-z]{2,3}", v) for v in value_hints)
+        if has_multiword:
+            _add("city", linked)
+        elif has_code:
             _add("country", linked)
             if any(re.fullmatch(r"[a-z]{2}", v) for v in value_hints):
                 _add("state", linked)
-        elif any(" " in v for v in value_hints):
-            _add("city", linked)
         elif "city" in nl:
             _add("city", linked)
         elif "country" in nl:
