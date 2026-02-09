@@ -218,6 +218,11 @@
 - **Change:** Added `required_tables` heuristics for order totals and payment aggregates. **Targets:** “Total amount per order number”, “Top 5 orders by total amount”, “Average payment amount per country”.
 - **Change:** Enforced `value_columns` join coverage with schema‑aware checks. **Targets:** “Average payment amount per country” (requires `customers` + `payments`).
 
+### 2026-02-09 — Guardrail Relaxation for Entity Listings
+- **Change:** `guarded_postprocess` now preserves ID/identifier columns for listing‑style entity queries and skips minimal projection when NLQs enumerate fields (e.g., “with city and country”).  
+- **Targets:** “List all offices with city and country”, “Orders that were cancelled”, “Customers with credit limits over 100000”, “Products low on stock (less than 100)”.  
+- **Expected effect:** prevent guardrails from stripping identifiers or enumerated fields, improving EX while retaining deterministic cleanup.
+
 ### 2026-02-07 — Phase 1 Implemented: Hard Gates for Explicit Fields + Value Hints
 - **Change:** Added `explicit_fields` to constraint extraction and enforced it in `validate_constraints` (tool‑driven loop). This hard‑rejects candidates missing explicitly requested columns (e.g., “names, codes, and MSRPs”).  
 - **Change:** Tightened value‑hint extraction by adding numeric literals and excluding common “instruction” words (e.g., Top/Most), then enforced missing value hints as a hard gate.  

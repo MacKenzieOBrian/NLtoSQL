@@ -56,6 +56,8 @@ ID_LIKE_COL_RE = re.compile(
     r"\b(order(number)?|customer(number)?|employee(number)?|office(code)?|product(code)?|line(number)?)\b",
     re.IGNORECASE,
 )
+ENTITY_NOUN_RE = re.compile(r"\b(customer|customers|order|orders|product|products|payment|payments|office|offices|employee|employees)\b", re.IGNORECASE)
+LISTING_NLQ_RE = re.compile(r"\b(list|show|which|display|give|find|with|who|that|top|highest|lowest|most|least|first|last)\b", re.IGNORECASE)
 
 
 def first_select_only(text: str) -> str:
@@ -114,6 +116,9 @@ def prune_id_like_columns(sql: str, nlq: str) -> str:
     """
     if ID_IN_NLQ_RE.search(nlq or ""):
         return sql
+    # If the NLQ is listing entities, keep identifiers to preserve EX accuracy.
+    if ENTITY_NOUN_RE.search(nlq or "") and LISTING_NLQ_RE.search(nlq or ""):
+        return sql
     m = SELECT_LIST_RE.search(sql)
     if not m:
         return sql
@@ -131,6 +136,9 @@ def prune_id_like_columns(sql: str, nlq: str) -> str:
 
 def enforce_minimal_projection(sql: str, nlq: str) -> str:
     if not sql or not nlq:
+        return sql
+    # If the NLQ enumerates fields or uses "with", keep the full projection.
+    if "," in nlq or " and " in nlq.lower() or " with " in nlq.lower():
         return sql
     if not LIST_ALL_RE.search(nlq.strip()):
         return sql
