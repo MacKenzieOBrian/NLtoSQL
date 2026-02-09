@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
+from nl2sql.llm import extract_first_select
 
 
 def _normalize_spaced_keywords(text: str) -> str:
