@@ -34,7 +34,6 @@ Guardrails run immediately after `generate_sql` and `repair_sql` in the notebook
 
 - `clean_candidate_with_reason` (single-statement SELECT-only cleaning)
 - `guarded_postprocess` (deterministic cleanup)
-- `enforce_projection_contract` (output-shape alignment when NLQ enumerates fields)
 - table-casing normalization (readability; avoids confusing traces)
 
 Safety is enforced at execution time via `QueryRunner` (SELECT-only + forbidden token blocklist).

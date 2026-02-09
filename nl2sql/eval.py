@@ -26,6 +26,7 @@ from sqlalchemy.engine import Engine
 from .db import safe_connection
 from .llm import generate_sql_from_messages
 from .postprocess import guarded_postprocess, normalize_sql
+from .agent_utils import _extract_required_columns
 from .prompting import make_few_shot_messages
 from .query_runner import DEFAULT_FORBIDDEN_TOKENS, QueryRunner
 
@@ -101,6 +102,7 @@ def execution_accuracy(
     pred_sql: str,
     gold_sql: str,
     max_compare_rows: int = 10000,
+    allow_extra_columns: bool = False,
 ) -> tuple[bool, str | None, str | None]:
     # EX is strict and may penalise semantically equivalent SQL (projection/alias drift).
     # EX is computed by executing BOTH predicted and gold SQL and comparing results.
@@ -118,6 +120,26 @@ def execution_accuracy(
         return False, pred_err, gold_err
     if not pred_ok:
         return False, pred_err, gold_err
+
+    # Optionally align/reorder projected columns by gold column names, allowing extra columns
+    # in the predicted query as long as all gold columns are present.
+    if allow_extra_columns and pred_cols and gold_cols:
+        def _norm_col(c: str) -> str:
+            c = (c or "").strip()
+            c = c.split(".")[-1]
+            c = c.strip("`\"[]")
+            return c.lower()
+
+        pred_map = {}
+        for i, c in enumerate(pred_cols):
+            key = _norm_col(c)
+            if key not in pred_map:
+                pred_map[key] = i
+
+        gold_keys = [_norm_col(c) for c in gold_cols]
+        if all(k in pred_map for k in gold_keys):
+            idxs = [pred_map[k] for k in gold_keys]
+            pred_rows = [tuple(r[i] for i in idxs) for r in pred_rows]
 
     from collections import Counter
 
@@ -311,10 +333,11 @@ def eval_run(
     save_path: str | Path | None = None,
     max_rows: int = 50,
     max_new_tokens: int = 128,
-    postprocess: Callable[[str, str], str] = guarded_postprocess,
+    postprocess: Callable[..., str] = guarded_postprocess,
     run_metadata: Optional[dict[str, Any]] = None,
     avoid_exemplar_leakage: bool = True,
     max_compare_rows: int = 10000,
+    allow_extra_columns_ex: bool = False,
 ) -> list[EvalItem]:
     rng = random.Random(seed)
     items = test_set[:limit] if limit else test_set
@@ -355,7 +378,8 @@ def eval_run(
         )
         # Postprocess is intentionally deterministic: it cleans common formatting/projection issues
         # without changing model weights. See nl2sql.postprocess.guarded_postprocess.
-        pred_sql = postprocess(raw_sql, nlq)
+        explicit_fields = _extract_required_columns(nlq)
+        pred_sql = postprocess(raw_sql, nlq, explicit_fields=explicit_fields)
 
         # VA (executability) from the QueryRunner.
         meta = qr.run(pred_sql, capture_df=False)
@@ -367,6 +391,7 @@ def eval_run(
             pred_sql=pred_sql,
             gold_sql=gold_sql,
             max_compare_rows=max_compare_rows,
+            allow_extra_columns=allow_extra_columns_ex,
         )
 
         out.append(

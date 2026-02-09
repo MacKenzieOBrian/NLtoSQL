@@ -2,23 +2,20 @@
 Utilities to strengthen the ReAct-style NL->SQL agent without rewriting notebooks.
 
 Provides:
-- clean_candidate: strict SELECT-only filter to drop junk "Show SQL..." outputs.
-- vanilla_candidate: deterministic few-shot baseline candidate (for fallback/rerank).
-- semantic_score: lightweight lexical heuristic to rerank executable candidates.
+- clean_candidate_with_reason: strict SELECT-only filter to drop junk "Show SQL..." outputs.
 - projection/intent helpers: enforce minimal projections and basic intent constraints.
 - schema subset helpers: lightweight schema-linking for prompt reduction.
 
 These helpers are intentionally lightweight and dependency-free so they can be
-imported directly in notebooks (`notebooks/03_agentic_eval.ipynb`) or scripts.
+imported directly in notebooks (`notebooks/03_agentic_eval.ipynb`).
 """
 
 from __future__ import annotations
 
 import re
-from typing import Iterable, Optional
+from typing import Optional
 
 from nl2sql.llm import extract_first_select
-from nl2sql.prompting import make_few_shot_messages
 
 
 def _normalize_spaced_keywords(text: str) -> str:
@@ -156,6 +153,53 @@ def _parse_schema_summary(schema_summary: str) -> dict[str, list[str]]:
         cols = cols.rstrip(")")
         tables[name.strip()] = [c.strip() for c in cols.split(",") if c.strip()]
     return tables
+
+
+def _build_fk_graph(schema_text: str) -> dict[str, set[str]]:
+    graph: dict[str, set[str]] = {}
+    if not schema_text:
+        return graph
+    for line in schema_text.splitlines():
+        if not line.lower().startswith("join hints:"):
+            continue
+        hints = line.split(":", 1)[1]
+        for chunk in hints.split(";"):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            # expected pattern: a.b = c.d
+            if "=" not in chunk:
+                continue
+            left, right = chunk.split("=", 1)
+            left = left.strip()
+            right = right.strip()
+            if "." not in left or "." not in right:
+                continue
+            lt = left.split(".", 1)[0].strip()
+            rt = right.split(".", 1)[0].strip()
+            if not lt or not rt:
+                continue
+            graph.setdefault(lt, set()).add(rt)
+            graph.setdefault(rt, set()).add(lt)
+    return graph
+
+
+def _tables_connected(schema_text: str, tables: set[str]) -> bool:
+    if not tables or len(tables) == 1:
+        return True
+    graph = _build_fk_graph(schema_text)
+    if not graph:
+        return False
+    start = next(iter(tables))
+    seen = {start}
+    stack = [start]
+    while stack:
+        node = stack.pop()
+        for nxt in graph.get(node, set()):
+            if nxt not in seen:
+                seen.add(nxt)
+                stack.append(nxt)
+    return tables.issubset(seen)
 
 
 def build_schema_subset(
@@ -649,8 +693,12 @@ def _value_linked_columns_from_tables(nlq: str, tables: dict[str, list[str]]) ->
     linked: set[str] = set()
 
     # Phrase-based cues (most reliable).
+    payment_ctx = bool(re.search(r"\b(payment|payments|paid|check|checks)\b", nl))
     for col, phrases in _VALUE_COLUMN_HINTS.items():
         if any(p in nl for p in phrases):
+            # "amount" is ambiguous; only link to payments when the NLQ mentions payments.
+            if col == "amount" and not payment_ctx:
+                continue
             _add(col, linked)
 
     # Date-like values imply date columns if present.
@@ -665,19 +713,26 @@ def _value_linked_columns_from_tables(nlq: str, tables: dict[str, list[str]]) ->
 
     # Location phrases with values.
     if value_hints and re.search(r"\b(in|from|located|based)\b", nl):
-        for col in ["city", "country", "state", "territory", "region"]:
-            _add(col, linked)
+        # Prefer a single location column based on value shape.
+        # - codes (US/USA) -> country/state
+        # - multi-word -> city
+        if any(re.fullmatch(r"[a-z]{2,3}", v) for v in value_hints):
+            _add("country", linked)
+            if any(re.fullmatch(r"[a-z]{2}", v) for v in value_hints):
+                _add("state", linked)
+        elif any(" " in v for v in value_hints):
+            _add("city", linked)
+        elif "city" in nl:
+            _add("city", linked)
+        elif "country" in nl:
+            _add("country", linked)
+        elif "state" in nl:
+            _add("state", linked)
+        else:
+            # Default to country for single-word location values.
+            _add("country", linked)
 
     return sorted(linked)
-
-
-def missing_explicit_fields(nlq: str, sql: str) -> list[str]:
-    """Return explicitly requested fields that are missing from the SQL."""
-    required = _explicit_field_list(nlq)
-    if not required:
-        return []
-    sql_low = (sql or "").lower()
-    return [c for c in required if c.lower() not in sql_low]
 
 
 def _extract_required_columns(nlq: str) -> list[str]:
@@ -692,64 +747,16 @@ def _extract_required_columns(nlq: str) -> list[str]:
         cols.append("customerName")
     if re.search(r"\b(which|list)\s+products\b", nl) and "productName" not in cols:
         cols.append("productName")
+    # orders/payments default to identifiers for listing-style questions
+    if re.search(r"\b(which|list)\s+orders\b", nl) and "orderNumber" not in cols:
+        cols.append("orderNumber")
+    if re.search(r"\borders?\s+(with|that)\b", nl) and "orderNumber" not in cols:
+        cols.append("orderNumber")
+    if re.search(r"\b(which|list)\s+payments\b", nl) and "checkNumber" not in cols:
+        cols.append("checkNumber")
+    if re.search(r"\bpayments?\s+(with|that)\b", nl) and "checkNumber" not in cols:
+        cols.append("checkNumber")
     return cols
-
-
-def _split_select_items(select_part: str) -> list[str]:
-    # lightweight split: assumes no nested commas outside functions
-    items = []
-    depth = 0
-    current = []
-    for ch in select_part:
-        if ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth = max(0, depth - 1)
-        if ch == "," and depth == 0:
-            items.append("".join(current).strip())
-            current = []
-        else:
-            current.append(ch)
-    tail = "".join(current).strip()
-    if tail:
-        items.append(tail)
-    return items
-
-
-def enforce_projection_contract(sql: str, nlq: str) -> str:
-    """
-    If NLQ explicitly names fields, drop extra SELECT columns deterministically
-    and preserve NLQ order. This enforces output shape without injecting joins
-    or predicates.
-    """
-    required = _extract_required_columns(nlq)
-    if not required:
-        return sql
-    # Only enforce when the NLQ explicitly enumerates fields (comma or "and").
-    # This avoids dropping entity identifiers in filter-style questions.
-    nl = (nlq or "").lower()
-    if "," not in nl and " and " not in nl:
-        return sql
-
-    m = re.search(r"(?is)^\s*select\s+(.*?)\s+from\s+", sql or "")
-    if not m:
-        return sql
-
-    select_part = m.group(1)
-    items = _split_select_items(select_part)
-    # Map required cols to matching SELECT items
-    kept = []
-    for col in required:
-        for it in items:
-            if col.lower() in it.lower() and it not in kept:
-                kept.append(it)
-                break
-
-    if not kept:
-        return sql
-
-    new_select = ", ".join(kept)
-    return re.sub(r"(?is)^\s*select\s+(.*?)\s+from\s+", f"SELECT {new_select} FROM ", sql, count=1)
 
 
 def classify_intent(nlq: str) -> str:
@@ -947,120 +954,6 @@ def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
         return None, "instruction_echo"
 
     return sql.rstrip(";") + ";", "ok"
-
-
-def clean_candidate(raw: str) -> Optional[str]:
-    sql, _ = clean_candidate_with_reason(raw)
-    return sql
-
-
-def vanilla_candidate(
-    nlq: str,
-    schema_summary,
-    tok,
-    model,
-    exemplars: Optional[Iterable[dict]] = None,
-    max_new_tokens: int = 256,
-):
-    """
-    Produce a deterministic few-shot candidate using the baseline prompt.
-    Useful as a fallback when the ReAct loop finds no valid SQL.
-    """
-    from nl2sql.postprocess import guarded_postprocess
-
-    msgs = make_few_shot_messages(schema=schema_summary, exemplars=exemplars or [], nlq=nlq)
-    prompt = tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
-    inputs = tok(prompt, return_tensors="pt").to(model.device)
-    out = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
-    text = tok.decode(out[0], skip_special_tokens=True)
-    raw_sql = extract_first_select(text) or text
-    sql = guarded_postprocess(raw_sql, nlq)
-    return clean_candidate(sql)
-
-
-# Simple schema keyword map for lexical reranking
-SCHEMA_KEYWORDS = {
-    "country": ["country"],
-    "customer": ["customer", "client", "buyer"],
-    "order": ["order", "purchase"],
-    "product": ["product", "item"],
-    "office": ["office", "city", "location"],
-    "employee": ["employee", "sales rep", "salesperson"],
-    "total": ["total", "sum", "amount", "revenue"],
-    "average": ["average", "avg", "mean"],
-    "count": ["how many", "number of", "count"],
-    "date": ["date", "year", "month"],
-}
-
-
-def count_select_columns(sql: str) -> int:
-    lower = sql.lower()
-    if "select" not in lower:
-        return 99
-    if not re.search(r"\bfrom\b", lower):
-        return 99
-    select_part = re.split(r"\bfrom\b", lower, 1)[0]
-    select_part = select_part.split("select", 1)[1]
-    return select_part.count(",") + 1
-
-
-def semantic_score(nlq: str, sql: str) -> float:
-    """
-    Lightweight lexical score to prefer candidates whose columns/aggregates
-    align with the NLQ intent. Not a true semantic parser, but better than
-    "fewest columns".
-    """
-    nlq_low = nlq.lower()
-    sql_low = sql.lower()
-    score = 0.0
-
-    # Penalize missing explicitly requested fields (if NLQ enumerates them).
-    required_fields = _explicit_field_list(nlq)
-    if required_fields:
-        missing = [c for c in required_fields if c.lower() not in sql_low]
-        if missing:
-            score -= 3.0 * len(missing)
-    else:
-        # Soft projection hints when the NLQ implies listing entities.
-        projection_hints = _projection_hints(nlq)
-        if projection_hints:
-            if any(h.lower() in sql_low for h in projection_hints):
-                score += 1.5
-            else:
-                score -= 1.5
-
-    for key, aliases in SCHEMA_KEYWORDS.items():
-        if any(a in nlq_low for a in aliases) and key in sql_low:
-            score += 2.0
-
-    # Regex reference: https://docs.python.org/3/library/re.html
-    # Rationale: lightweight lexical overlap helped pick better candidates than
-    # shortest/first SQL in Jan candidate-ranking tests.
-    nl_tokens = set(re.findall(r"[a-zA-Z]+", nlq_low))
-    sql_tokens = set(re.findall(r"[a-zA-Z]+", sql_low))
-    overlap = len(nl_tokens & sql_tokens)
-    score += 0.1 * overlap
-
-    # Reward presence of explicit NLQ values (e.g., "USA", "San Francisco").
-    # This helps prioritize candidates that include the correct filter literals.
-    value_hints = _extract_value_hints(nlq)
-    if value_hints:
-        if any(v in sql_low for v in value_hints):
-            score += 2.0
-        else:
-            score -= 2.0
-
-    if any(w in nlq_low for w in ["total", "sum", "revenue", "amount"]):
-        if re.search(r"\b(sum|count|avg|max|min)\s*\(", sql_low, re.IGNORECASE):
-            score += 3.0
-        else:
-            score -= 5.0
-
-    if "each" in nlq_low or "per " in nlq_low:
-        if re.search(r"\b(sum|count|avg|max|min)\s*\(", sql_low, re.IGNORECASE):
-            score -= 2.0
-
-    return score
 
 
 _VALUE_STOPWORDS = {

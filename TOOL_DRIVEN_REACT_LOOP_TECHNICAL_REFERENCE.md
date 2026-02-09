@@ -66,9 +66,7 @@ Guardrails are applied immediately after `generate_sql` and `repair_sql` in the 
    Drops prompt echo / markdown / junk; keeps a single executable `SELECT`.
 2. `guarded_postprocess` (`nl2sql/postprocess.py`)  
    Deterministic cleanup (e.g., strip spurious ORDER/LIMIT when NLQ does not request ranking).
-3. `enforce_projection_contract` (`nl2sql/agent_utils.py`)  
-   Output-shape control when the NLQ explicitly enumerates fields.
-4. `_canonicalize_table_casing` (notebook helper)  
+3. `_canonicalize_table_casing` (notebook helper)  
    Normalizes table casing for trace readability (schema checks are case-insensitive).
 
 **Conservative constrained decoding (PICARD‑lite)**  
