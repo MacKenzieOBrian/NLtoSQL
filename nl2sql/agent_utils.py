@@ -425,7 +425,7 @@ def _explicit_field_list(nlq: str) -> list[str]:
     """
     nl = (nlq or "").lower()
     # Require an enumeration cue to avoid treating filter fields as projections.
-    if not ("," in nl or " and " in nl or " with " in nl or nl.startswith(("show", "list", "give", "display"))):
+    if not ("," in nl or " and " in nl or nl.startswith(("show", "list", "give", "display"))):
         return []
 
     hits = []
@@ -455,6 +455,14 @@ _ENTITY_PROJECTION_HINTS = {
     "payment": ["checkNumber", "paymentDate", "amount"],
     "office": ["city", "country"],
     "employee": ["firstName", "lastName"],
+}
+
+
+_ENTITY_IDENTIFIER_FIELDS = {
+    "customer": ["customerName"],
+    "order": ["orderNumber"],
+    "product": ["productCode"],
+    "payment": ["checkNumber"],
 }
 
 
@@ -490,6 +498,77 @@ def _projection_hints(nlq: str) -> list[str]:
 
     return list(dict.fromkeys(hints))
 
+
+def _entity_identifier_fields(nlq: str) -> list[str]:
+    """
+    Entity identifiers to keep listings anchored (e.g., orderNumber, productCode).
+    Conservative: only fire on listing-style queries to avoid over-blocking.
+    """
+    nl = (nlq or "").lower().strip()
+    if not nl:
+        return []
+
+    listing = bool(re.search(r"\b(list|show|which|display|give|find)\b", nl))
+    listing = listing or bool(re.search(r"\b(top|highest|lowest|most|least|first|last)\b", nl))
+    listing = listing or bool(re.search(r"\b(with|who|that)\b", nl))
+    if not listing:
+        for phrase in _ENTITY_IDENTIFIER_FIELDS:
+            if re.match(rf"^{re.escape(phrase)}s?\b", nl):
+                listing = True
+                break
+    if not listing:
+        return []
+
+    hints: list[str] = []
+    for phrase, cols in _ENTITY_IDENTIFIER_FIELDS.items():
+        if re.search(rf"\b{re.escape(phrase)}s?\b", nl):
+            for c in cols:
+                if c not in hints:
+                    hints.append(c)
+
+    return list(dict.fromkeys(hints))
+
+
+def _entity_projection_hints(nlq: str) -> list[str]:
+    """
+    Entity-level projection hints (no explicit field list).
+    Used to ensure at least one entity identifier is returned for listing-style NLQs.
+    """
+    nl = (nlq or "").lower().strip()
+    if not nl:
+        return []
+
+    listing = bool(re.search(r"\b(list|show|which|display|give|find)\b", nl))
+    listing = listing or bool(re.search(r"\b(top|highest|lowest|most|least|first|last)\b", nl))
+    listing = listing or bool(re.search(r"\b(with|who|that)\b", nl))
+    if not listing:
+        # If the NLQ starts with an entity term (e.g., "payments made by ..."),
+        # treat it as listing even without explicit listing verbs.
+        for phrase in _ENTITY_PROJECTION_HINTS:
+            if re.match(rf"^{re.escape(phrase)}s?\b", nl):
+                listing = True
+                break
+
+    if not listing:
+        return []
+
+    hints: list[str] = []
+    # Multi-word phrases first (e.g., "product line").
+    for phrase, cols in _ENTITY_PROJECTION_HINTS.items():
+        if " " in phrase and re.search(rf"\b{re.escape(phrase)}s?\b", nl):
+            for c in cols:
+                if c not in hints:
+                    hints.append(c)
+
+    for phrase, cols in _ENTITY_PROJECTION_HINTS.items():
+        if " " in phrase:
+            continue
+        if re.search(rf"\b{re.escape(phrase)}s?\b", nl):
+            for c in cols:
+                if c not in hints:
+                    hints.append(c)
+
+    return list(dict.fromkeys(hints))
 
 _VALUE_COLUMN_HINTS = {
     "orderNumber": ["order number", "order id", "order #"],
@@ -645,6 +724,11 @@ def enforce_projection_contract(sql: str, nlq: str) -> str:
     """
     required = _extract_required_columns(nlq)
     if not required:
+        return sql
+    # Only enforce when the NLQ explicitly enumerates fields (comma or "and").
+    # This avoids dropping entity identifiers in filter-style questions.
+    nl = (nlq or "").lower()
+    if "," not in nl and " and " not in nl:
         return sql
 
     m = re.search(r"(?is)^\s*select\s+(.*?)\s+from\s+", sql or "")
