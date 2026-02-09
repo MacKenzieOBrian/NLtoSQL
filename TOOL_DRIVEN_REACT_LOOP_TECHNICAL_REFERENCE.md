@@ -71,6 +71,10 @@ Guardrails are applied immediately after `generate_sql` and `repair_sql` in the 
 4. `_canonicalize_table_casing` (notebook helper)  
    Normalizes table casing for trace readability (schema checks are case-insensitive).
 
+**Conservative constrained decoding (PICARD‑lite)**  
+The LLM generation step blocks obvious non‑SELECT outputs (DDL/DML/transaction keywords) via a conservative bad‑words list. This is an early, low‑risk constraint that reduces invalid SQL without over‑blocking.  
+Ref: `REFERENCES.md#ref-scholak2021-picard`.
+
 ## State + Logging (Audit Trail)
 
 The notebook loop maintains:

@@ -12,7 +12,7 @@ loads Llama‑3‑8B in 4-bit NF4 with BitsAndBytes, deterministic decoding (do_
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Iterable
 
 from transformers import StoppingCriteria, StoppingCriteriaList
 
@@ -91,8 +91,14 @@ def generate_sql_from_messages(
     tokenizer: Any,
     messages: list[dict[str, str]],
     max_new_tokens: int = 128,
+    constrained: bool = True,
 ) -> str:
     import torch
+    try:
+        from transformers import BadWordsLogitsProcessor, LogitsProcessorList
+    except Exception:  # pragma: no cover - fallback if transformers API shifts
+        BadWordsLogitsProcessor = None  # type: ignore
+        LogitsProcessorList = None  # type: ignore
 
     class _StopOnSemicolon(StoppingCriteria):
         """Stop generation at the first ';' to reduce run-on explanations."""
@@ -105,6 +111,46 @@ def generate_sql_from_messages(
             if self._semi_id is None:
                 return False
             return input_ids[0, -1].item() == self._semi_id
+
+    def _bad_word_variants(words: Iterable[str]) -> list[str]:
+        variants: list[str] = []
+        for w in words:
+            variants.extend([w, w.upper(), w.lower(), w.capitalize()])
+            variants.extend([f" {w}", f" {w.upper()}", f" {w.lower()}", f" {w.capitalize()}"])
+        # De-dupe while preserving order.
+        seen = set()
+        out = []
+        for v in variants:
+            if v not in seen:
+                seen.add(v)
+                out.append(v)
+        return out
+
+    def _build_bad_words_ids(tok: Any) -> list[list[int]]:
+        # Conservative DDL/DML/transaction keywords to prevent non-SELECT output.
+        # This is a light PICARD-style constraint that should not over-block SELECTs.
+        bad_words = [
+            "insert",
+            "update",
+            "delete",
+            "drop",
+            "alter",
+            "create",
+            "truncate",
+            "replace",
+            "merge",
+            "grant",
+            "revoke",
+            "commit",
+            "rollback",
+            "begin",
+        ]
+        bad_ids: list[list[int]] = []
+        for w in _bad_word_variants(bad_words):
+            ids = tok.encode(w, add_special_tokens=False)
+            if ids:
+                bad_ids.append(ids)
+        return bad_ids
 
     input_ids = tokenizer.apply_chat_template(
         messages,
@@ -121,6 +167,14 @@ def generate_sql_from_messages(
         pad_token_id = getattr(tokenizer, "eos_token_id", None)
     eos_token_id = getattr(tokenizer, "eos_token_id", None)
 
+    logits_processor = None
+    if constrained and LogitsProcessorList is not None and BadWordsLogitsProcessor is not None:
+        bad_words_ids = _build_bad_words_ids(tokenizer)
+        if bad_words_ids:
+            logits_processor = LogitsProcessorList(
+                [BadWordsLogitsProcessor(bad_words_ids=bad_words_ids, eos_token_id=eos_token_id)]
+            )
+
     with torch.no_grad():
         out = model.generate(
             input_ids,
@@ -130,6 +184,7 @@ def generate_sql_from_messages(
             pad_token_id=pad_token_id,
             eos_token_id=eos_token_id,
             stopping_criteria=StoppingCriteriaList([_StopOnSemicolon(tokenizer)]),
+            logits_processor=logits_processor,
         )
 
     gen_ids = out[0][input_ids.shape[-1] :]

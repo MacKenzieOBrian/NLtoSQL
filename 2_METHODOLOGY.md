@@ -96,6 +96,10 @@ Refs: `REFERENCES.md#ref-wang2020-ratsql`, `REFERENCES.md#ref-li2023-resdsql`.
 NLQ literals are linked to likely columns using lexical cues (e.g., date patterns, location phrases, ID‑style phrases). These value‑column hints bias schema pruning toward correct filter columns without database lookups.  
 Refs: `REFERENCES.md#ref-lin2020-bridge`, `REFERENCES.md#ref-wang2020-ratsql`.
 
+**Conservative constrained decoding (PICARD‑lite)**  
+Generation applies a minimal constrained decoding step that blocks obvious non‑SELECT outputs (DDL/DML/transaction keywords). This enforces early validity without over‑restricting the model.  
+Refs: `REFERENCES.md#ref-scholak2021-picard`.
+
 **Evolution from candidate‑ranking**  
 - Candidate‑ranking utilities that improved EX were retained but converted into explicit tools or guardrails.  
 - The ranking decision itself was removed; the loop now relies on ordered actions with observations and forced repair on failure.  

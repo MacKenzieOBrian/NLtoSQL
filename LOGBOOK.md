@@ -226,3 +226,8 @@
 - **Change:** Added value‑to‑column linking via NLQ context + value patterns (dates, location phrases, ID‑style phrases). The linker now produces **value‑column hints** used to rank columns and guide schema pruning.  
 - **Why it helps:** The remaining EX errors included filter/value mismatches. Value‑column hints bias the model toward the correct WHERE columns without requiring database lookups.  
 - **Refs:** `REFERENCES.md#ref-lin2020-bridge`, `REFERENCES.md#ref-wang2020-ratsql`.
+
+### 2026-02-08 — Conservative Constrained Decoding (PICARD‑Lite)
+- **Change:** Added a conservative constrained decoding step that blocks obvious non‑SELECT outputs (DDL/DML/transaction keywords) during generation.  
+- **Why it helps:** This reduces invalid SQL early without over‑blocking, aligning with PICARD’s incremental constraint idea while remaining lightweight and auditable.  
+- **Refs:** `REFERENCES.md#ref-scholak2021-picard`.
