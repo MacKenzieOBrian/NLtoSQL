@@ -223,6 +223,12 @@
 - **Targets:** “List all offices with city and country”, “Orders that were cancelled”, “Customers with credit limits over 100000”, “Products low on stock (less than 100)”.  
 - **Expected effect:** prevent guardrails from stripping identifiers or enumerated fields, improving EX while retaining deterministic cleanup.
 
+### 2026-02-09 — Required Tables + Self-Join Constraints (Error-Driven)
+- **Change:** Added `required_tables_all` for payment aggregates “per country” (payments + customers) to prevent missing joins.  
+- **Change:** Added `needs_self_join` for manager queries (employees ↔ employees).  
+- **Targets:** “Average payment amount per country”, “Employees and their managers”.  
+- **Expected effect:** reduce wrong-table and missing-join errors that survive guardrail fixes.
+
 ### 2026-02-07 — Phase 1 Implemented: Hard Gates for Explicit Fields + Value Hints
 - **Change:** Added `explicit_fields` to constraint extraction and enforced it in `validate_constraints` (tool‑driven loop). This hard‑rejects candidates missing explicitly requested columns (e.g., “names, codes, and MSRPs”).  
 - **Change:** Tightened value‑hint extraction by adding numeric literals and excluding common “instruction” words (e.g., Top/Most), then enforced missing value hints as a hard gate.  

@@ -145,6 +145,15 @@ def extract_constraints(nlq: str) -> dict:
     if re.search(r"\bcustomers?\b", nl) and re.search(r"\btotal\\s+payments?\b", nl):
         required_tables = ["payments", "customers"]
         required_tables_all = True
+    if re.search(r"\bpayments?\b", nl) and re.search(r"\b(per|by)\s+country\b", nl):
+        required_tables = ["payments", "customers"]
+        required_tables_all = True
+
+    needs_self_join = False
+    self_join_table = None
+    if re.search(r"\bmanagers?\b", nl) and re.search(r"\bemployees?\b", nl):
+        needs_self_join = True
+        self_join_table = "employees"
 
     schema_text = _require_ctx().schema_text_cache or schema_to_text(get_schema())
     _, table_cols = parse_schema_text(schema_text)
@@ -168,6 +177,8 @@ def extract_constraints(nlq: str) -> dict:
         "value_columns": value_columns,
         "required_tables": required_tables,
         "required_tables_all": required_tables_all,
+        "needs_self_join": needs_self_join,
+        "self_join_table": self_join_table,
         "needs_location": needs_location,
         "location_tables": location_tables,
     }
