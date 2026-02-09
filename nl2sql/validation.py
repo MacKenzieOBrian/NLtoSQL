@@ -214,34 +214,48 @@ def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: 
         tables_in_query = _tables_in_query(sql_low)
         location_tables = set(constraints.get("location_tables") or [])
         if location_tables and not (tables_in_query & location_tables):
-            return {"valid": False, "reason": "missing_location_table"}
+            return {
+                "valid": False,
+                "reason": "missing_location_table",
+                "location_tables": sorted(location_tables),
+            }
         if re.search(r"\b(city|country|state|territory|region)\b", sql_low) is None:
             return {"valid": False, "reason": "missing_location_column"}
 
     value_columns = constraints.get("value_columns") or []
+    if constraints.get("needs_location") and value_columns:
+        location_cols = {"city", "country", "state", "territory", "region"}
+        if all(str(c).lower() in location_cols for c in value_columns):
+            value_columns = []
     if schema_text and value_columns:
         _, table_cols = parse_schema_text(schema_text)
         tables_in_query = _tables_in_query(sql_low)
-        missing_value_cols: list[str] = []
+        present_value_cols: list[str] = []
+        value_col_tables: dict[str, list[str]] = {}
         for col in value_columns:
             col_low = str(col).lower()
             if not col_low:
                 continue
-            if not any(col_low in (table_cols.get(t) or set()) for t in tables_in_query):
-                missing_value_cols.append(col)
-        if missing_value_cols:
+            tables_with_col = [t for t in tables_in_query if col_low in (table_cols.get(t) or set())]
+            if tables_with_col:
+                present_value_cols.append(col)
+                value_col_tables[col] = tables_with_col
+        if not present_value_cols:
             return {
                 "valid": False,
                 "reason": "missing_value_column_table",
-                "missing_value_columns": missing_value_cols,
+                "missing_value_columns": value_columns,
             }
-        # If value columns span multiple tables, require a connected join path.
-        if len({t for t in tables_in_query}) > 1:
-            if not _tables_connected(schema_text, tables_in_query):
+        # If present value columns span multiple tables, require a connected join path.
+        tables_for_values = set()
+        for tables in value_col_tables.values():
+            tables_for_values.update(tables)
+        if len(tables_for_values) > 1:
+            if not _tables_connected(schema_text, tables_for_values):
                 return {
                     "valid": False,
                     "reason": "missing_join_path",
-                    "tables": sorted(tables_in_query),
+                    "tables": sorted(tables_for_values),
                 }
 
     required_tables = constraints.get("required_tables") or []

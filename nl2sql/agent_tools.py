@@ -123,6 +123,11 @@ def extract_constraints(nlq: str) -> dict:
     if agg and not needs_group_by and not needs_order_by:
         # Aggregate-only queries (e.g., "How many customers") should not force identifiers.
         entity_identifiers = []
+    # If the NLQ doesn't ask for identifiers (id/number/code), don't require them.
+    id_requested = bool(re.search(r"\b(id|ids|number|numbers|code|codes|#)\b", nl))
+    explicit_id = any(re.search(r"(number|code|id)$", (f or "").lower()) for f in explicit_fields)
+    if not id_requested and not explicit_id:
+        entity_identifiers = []
     schema_text = _require_ctx().schema_text_cache or schema_to_text(get_schema())
     value_columns = _value_linked_columns_from_tables(nlq, _parse_schema_summary(schema_text))
     needs_location = bool(
@@ -151,6 +156,15 @@ def extract_constraints(nlq: str) -> dict:
     if re.search(r"\bpayments?\b", nl) and re.search(r"\b(per|by)\s+country\b", nl):
         required_tables = ["payments", "customers"]
         required_tables_all = True
+
+    # Location queries usually require a dedicated location table.
+    if needs_location:
+        if re.search(r"\boffice(s)?\b", nl) or re.search(r"\bemployees?\b", nl):
+            if "offices" not in required_tables:
+                required_tables.append("offices")
+        if re.search(r"\bcustomers?\b", nl):
+            if "customers" not in required_tables:
+                required_tables.append("customers")
 
     needs_self_join = False
     self_join_table = None
