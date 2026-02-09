@@ -109,16 +109,54 @@ def _rebuild_select(sql: str, new_select_items: Iterable[str]) -> str:
     return re.sub(SELECT_LIST_RE, lambda _: f"SELECT {', '.join(new_select_items)} FROM ", sql, count=1)
 
 
-def prune_id_like_columns(sql: str, nlq: str) -> str:
+def enforce_explicit_projection(sql: str, explicit_fields: Iterable[str] | None) -> str:
+    """
+    If the NLQ explicitly enumerates fields, trim the SELECT list to those fields only.
+    This keeps strict EX aligned with gold projection shape.
+    """
+    if not explicit_fields:
+        return sql
+    m = SELECT_LIST_RE.search(sql or "")
+    if not m:
+        return sql
+    select_part = m.group(1).strip()
+    if "*" in select_part:
+        return sql
+    cols = _split_select_list(select_part)
+    if len(cols) < 2:
+        return sql
+    ordered: list[str] = []
+    used: set[int] = set()
+    for field in explicit_fields:
+        found = None
+        for idx, col in enumerate(cols):
+            if idx in used:
+                continue
+            if _select_item_matches_field(col, field):
+                found = idx
+                ordered.append(col)
+                used.add(idx)
+                break
+        if found is None:
+            # If we can't confidently match all explicit fields, skip trimming.
+            return sql
+    if ordered == cols:
+        return sql
+    return _rebuild_select(sql, ordered)
+
+
+def prune_id_like_columns(sql: str, nlq: str, explicit_fields: Iterable[str] | None = None) -> str:
     """
     Drop ID/code/number columns when the NLQ does not ask for them explicitly.
     Helps EM on datasets where gold projections exclude IDs.
     """
     if ID_IN_NLQ_RE.search(nlq or ""):
         return sql
-    # If the NLQ is listing entities, keep identifiers to preserve EX accuracy.
-    if ENTITY_NOUN_RE.search(nlq or "") and LISTING_NLQ_RE.search(nlq or ""):
-        return sql
+    # If explicit fields include an ID-like column, keep identifiers.
+    if explicit_fields:
+        for field in explicit_fields:
+            if ID_LIKE_COL_RE.search(field):
+                return sql
     m = SELECT_LIST_RE.search(sql)
     if not m:
         return sql
@@ -210,7 +248,10 @@ def guarded_postprocess(sql: str, nlq: str, *, explicit_fields: Iterable[str] | 
     # then apply projection heuristics. This keeps the layer deterministic and auditable.
     cleaned = first_select_only(sql)
     cleaned = _strip_order_by_limit(cleaned, nlq)
-    cleaned = prune_id_like_columns(cleaned, nlq)
-    cleaned = enforce_minimal_projection(cleaned, nlq)
+    if explicit_fields:
+        cleaned = enforce_explicit_projection(cleaned, explicit_fields)
+    else:
+        cleaned = prune_id_like_columns(cleaned, nlq, explicit_fields=explicit_fields)
+        cleaned = enforce_minimal_projection(cleaned, nlq)
     cleaned = reorder_projection(cleaned, explicit_fields)
     return cleaned

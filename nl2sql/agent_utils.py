@@ -739,6 +739,15 @@ def _extract_required_columns(nlq: str) -> list[str]:
         cols.append("customerName")
     if re.search(r"\b(which|list)\s+products\b", nl) and "productName" not in cols:
         cols.append("productName")
+    # orders/payments default to identifiers for listing-style questions
+    if re.search(r"\b(which|list)\s+orders\b", nl) and "orderNumber" not in cols:
+        cols.append("orderNumber")
+    if re.search(r"\borders?\s+(with|that)\b", nl) and "orderNumber" not in cols:
+        cols.append("orderNumber")
+    if re.search(r"\b(which|list)\s+payments\b", nl) and "checkNumber" not in cols:
+        cols.append("checkNumber")
+    if re.search(r"\bpayments?\s+(with|that)\b", nl) and "checkNumber" not in cols:
+        cols.append("checkNumber")
     return cols
 
 
