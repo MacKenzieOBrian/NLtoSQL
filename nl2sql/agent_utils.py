@@ -765,9 +765,15 @@ def classify_intent(nlq: str) -> str:
     nl = (nlq or "").lower()
     if re.search(r"\b(top|highest|lowest|first|last|most|least)\b", nl):
         return "topk"
-    if re.search(r"\b(per|by|each)\b", nl):
+    has_agg_cue = bool(
+        re.search(
+            r"\b(how many|number of|count|sum|average|avg|total|how much|minimum|min|maximum|max)\b",
+            nl,
+        )
+    )
+    if has_agg_cue and re.search(r"\b(per|by|each|for each)\b", nl):
         return "grouped_aggregate"
-    if re.search(r"\b(how many|number of|count|sum|average|avg|total|how much)\b", nl):
+    if has_agg_cue:
         return "aggregate"
     return "lookup"
 
@@ -789,7 +795,7 @@ def intent_constraints(nlq: str, sql: str) -> tuple[bool, str]:
             return False, "aggregate_requires_fn"
         if has_group:
             # grouped aggregates handled in next intent
-            return False, "aggregate_without_grouping"
+            return False, "aggregate_disallows_group_by"
     if intent == "grouped_aggregate":
         if not has_agg:
             return False, "grouped_requires_aggregate"
