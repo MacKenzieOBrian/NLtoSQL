@@ -33,6 +33,7 @@ def parse_schema_text(schema_text: str) -> tuple[set[str], dict[str, set[str]]]:
 
 
 _SELECT_CLAUSE_RE = re.compile(r"(?is)\bselect\b(.*?)\bfrom\b")
+_AGG_EXPR_RE = re.compile(r"(?is)\b(count|sum|avg|min|max)\s*\(")
 
 
 def _extract_select_clause(sql_low: str) -> str:
@@ -54,6 +55,36 @@ def _select_has_field(select_clause: str, field: str) -> bool:
     if not select_clause or not field:
         return False
     return re.search(rf"\b{re.escape(field.lower())}\b", select_clause) is not None
+
+
+def _split_select_expressions(select_clause: str) -> list[str]:
+    if not select_clause:
+        return []
+    parts: list[str] = []
+    curr: list[str] = []
+    depth = 0
+    for ch in select_clause:
+        if ch == "(":
+            depth += 1
+        elif ch == ")" and depth > 0:
+            depth -= 1
+        if ch == "," and depth == 0:
+            piece = "".join(curr).strip()
+            if piece:
+                parts.append(piece)
+            curr = []
+            continue
+        curr.append(ch)
+    tail = "".join(curr).strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _is_agg_expression(expr: str) -> bool:
+    if not expr:
+        return False
+    return _AGG_EXPR_RE.search(expr) is not None
 
 
 def _tables_in_query(sql_low: str) -> set[str]:
@@ -164,6 +195,11 @@ def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: 
 
     if constraints.get("needs_group_by") and "group by" not in sql_low:
         return {"valid": False, "reason": "missing_group_by"}
+    if constraints.get("needs_group_by") and not has_select_star:
+        exprs = _split_select_expressions(select_clause)
+        non_agg_exprs = [e for e in exprs if not _is_agg_expression(e)]
+        if not non_agg_exprs:
+            return {"valid": False, "reason": "missing_group_dimension_projection"}
 
     if constraints.get("needs_order_by") and "order by" not in sql_low:
         return {"valid": False, "reason": "missing_order_by"}
