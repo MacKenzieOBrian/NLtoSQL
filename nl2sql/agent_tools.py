@@ -116,6 +116,7 @@ def extract_constraints(nlq: str) -> dict:
     projection_hints = _projection_hints(nlq)
     entity_hints = _entity_projection_hints(nlq)
     entity_identifiers = _entity_identifier_fields(nlq)
+    required_output_fields = list(dict.fromkeys(explicit_fields))
     explicit_projection = bool(
         explicit_fields
         and ("," in nl or " and " in nl or nl.strip().startswith(("show", "list", "give", "display")))
@@ -195,6 +196,7 @@ def extract_constraints(nlq: str) -> dict:
         "distinct": distinct,
         "value_hints": value_hints,
         "explicit_fields": explicit_fields,
+        "required_output_fields": required_output_fields,
         "explicit_projection": explicit_projection,
         "projection_hints": projection_hints,
         "entity_hints": entity_hints,
