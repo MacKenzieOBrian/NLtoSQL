@@ -349,3 +349,43 @@
 - **Why:** Recent failures showed lookup-style queries were being over-classified as grouped aggregates, causing avoidable constraint rejections and repair churn.
 - **Alignment with standard practice:** Treat grouping as a structural requirement only when aggregation intent is explicit, keeping intent checks conservative and reducing over-blocking.
 - **Also fixed:** Updated aggregate/group mismatch reason text to improve trace diagnostics (`aggregate_disallows_group_by`).
+
+### 2026-02-10 — EX Stabilisation: Constraint Split + Failure-Node Debugging
+- **Change:** Split oversized `agent_utils.py` into focused modules: `constraint_hints.py`, `agent_schema_linking.py`, `intent_rules.py`, and `sql_guardrails.py`, with `agent_utils.py` kept as a compatibility facade for notebook imports.
+- **Change:** Added `required_output_fields` enforcement in validation while keeping `entity_hints` as soft ranking cues; this reduces over-blocking from heuristic entity hints.
+- **Change:** Added template constraints for frequent EX failures:
+- `employees + offices` required for employee-count-by-office/location questions.
+- `orderNumber` required in projection for “total amount per order number” style grouped totals.
+- **Change:** Expanded value-hint extraction with lowercase location phrase fallback (e.g., “in san francisco”) to improve location linking robustness when capitalization is missing.
+- **Notebook:** Quick sanity-check debug now surfaces **failure nodes** (rejected gate reasons + brief interpretation) alongside SQL timeline and rerank snapshots.
+- **Why:** Failures were mostly in structural/constraint alignment rather than parse validity; this follows constrained-decoding and execution-guided practice by tightening candidate acceptance gates on semantic structure, not just executable syntax.
+
+### 2026-02-10 — EX Improvement Pass: Simpler Constraints + Deterministic Repairs
+- **Change:** Reduced strictness by treating `entity_identifiers` as a soft hint only (no hard validation reject). This lowers false negatives from over-constraining projection.
+- **Change:** Strengthened `required_output_fields` extraction for recurring query patterns (grouping dimensions and high-frequency benchmark forms like top customers by payments, avg payment by country, avg MSRP by product line, cancelled/shipping/stock listings).
+- **Change:** Added deterministic repair templates for repeated join/projection failures, especially employee-count-by-office-location (`employees JOIN offices` on `officeCode` with city filter).
+- **Change:** Hardened SQL cleanup to truncate mixed `SQL + error text + corrected SQL` responses before validation/execution.
+- **Notebook impact:** The existing sanity-check decision log now shows `rule_tags` and stronger `required_output_fields`, making rule firing easier to explain in viva/dissertation.
+- **Justification (literature/docs):**
+- Schema/linking + structured decoding motivation: RAT-SQL (ACL 2020) https://aclanthology.org/2020.acl-main.677/
+- Constrained decoding for executable SQL: PICARD (EMNLP 2021) https://arxiv.org/abs/2109.05093
+- Execution-guided correction/ranking: Execution-Guided Decoding (2018) https://arxiv.org/abs/1807.03100
+- Official benchmark/eval context: Spider https://github.com/taoyds/spider and Test Suite Accuracy https://github.com/taoyds/test-suite-sql-eval
+
+### 2026-02-10 — Simplification Refactor: Single Projection Contract + Rule Table
+- **Change:** Simplified `validate_constraints` by removing redundant hard checks for `explicit_fields` and `explicit_projection`; now projection validation is centered on `required_output_fields` as the single strict contract.
+- **Change:** Refactored `extract_constraints` template logic in `agent_tools.py` into a compact declarative `_CONSTRAINT_RULES` table plus small matcher helpers, replacing a long chain of ad-hoc conditional blocks.
+- **Change:** Kept loop behavior stable (same tool order) while reducing “branchiness” in the constraint layer, making the method easier to explain at dissertation/viva level.
+- **Why:** Most EX misses were semantic shape errors (missing group dimension, missing join table, wrong projection), so consolidating the projection contract and making rule firing explicit improves maintainability and diagnosis without adding model complexity.
+- **Justification (literature/docs):**
+- Structured schema-aware constraints remain aligned with RAT-SQL style schema linking: https://aclanthology.org/2020.acl-main.677/
+- Conservative constrained acceptance mirrors PICARD’s “reject invalid early” principle: https://arxiv.org/abs/2109.05093
+- Execution-guided correction remains in place for residual errors: https://arxiv.org/abs/1807.03100
+
+### 2026-02-10 — Architecture Pass: Policy/Orchestration Separation
+- **Change:** Split deterministic policy logic out of `agent_tools.py` into `constraint_policy.py` (constraint rules + structural extraction) and `repair_policy.py` (template-based SQL repairs).
+- **Change:** Kept `agent_tools.py` as orchestration-only wrapper for tool calls (`extract_constraints` now delegates to `build_constraints`, `repair_sql` now delegates to `deterministic_repair` before LLM fallback).
+- **Why:** This isolates “what rules are enforced” from “how tools are executed”, which reduces cognitive load in dissertation walkthroughs and makes failure-node tuning less error-prone.
+- **Justification (literature/docs):**
+- Modular schema/constraint handling remains aligned with schema-aware NL2SQL design patterns (RAT-SQL): https://aclanthology.org/2020.acl-main.677/
+- Separation of deterministic constraints and generation/repair is consistent with constrained-decoding and execution-guided practices (PICARD, execution-guided decoding): https://arxiv.org/abs/2109.05093, https://arxiv.org/abs/1807.03100

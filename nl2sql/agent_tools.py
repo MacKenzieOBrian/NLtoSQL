@@ -10,7 +10,6 @@ from typing import Any, Optional
 
 import json
 
-import re
 from sqlalchemy import text
 
 from .db import safe_connection
@@ -18,17 +17,10 @@ from .schema import list_tables, get_table_columns
 from .llm import generate_sql_from_messages
 from .prompting import SYSTEM_INSTRUCTIONS
 from .query_runner import QueryRunner
-from .agent_utils import (
-    build_schema_subset,
-    _extract_value_hints,
-    _extract_required_columns,
-    _projection_hints,
-    _entity_projection_hints,
-    _entity_identifier_fields,
-    _value_linked_columns_from_tables,
-    _parse_schema_summary,
-)
-from .validation import parse_schema_text, validate_sql as _validate_sql, validate_constraints as _validate_constraints
+from .agent_schema_linking import build_schema_subset
+from .constraint_policy import build_constraints
+from .repair_policy import deterministic_repair
+from .validation import validate_sql as _validate_sql, validate_constraints as _validate_constraints
 
 
 @dataclass
@@ -82,143 +74,8 @@ def link_schema(nlq: str, schema_text: Optional[str] = None, max_tables: int = 6
 
 def extract_constraints(nlq: str) -> dict:
     """Lightweight, deterministic constraint extraction from NLQ."""
-    # Regex reference: https://docs.python.org/3/library/re.html
-    # Rationale: structural cues (COUNT, ORDER BY, LIMIT) were a common source of EX failures.
-    nl = (nlq or "").lower()
-
-    agg = None
-    if re.search(r"\bcount\b|how many|number of|total number of|count of", nl):
-        agg = "COUNT"
-    elif re.search(r"\baverage\b|\bavg\b|mean", nl):
-        agg = "AVG"
-    elif re.search(r"\btotal\b|\bsum\b|how much", nl):
-        agg = "SUM"
-    elif re.search(r"\bmaximum\b|\bmax\b|highest|most", nl):
-        agg = "MAX"
-    elif re.search(r"\bminimum\b|\bmin\b|lowest|least", nl):
-        agg = "MIN"
-
-    needs_group_by = bool(agg and re.search(r"\bper\b|\bby\b|for each|each", nl))
-    needs_order_by = bool(re.search(r"\btop\b|\bhighest\b|\blowest\b|\bmost\b|\bleast\b|sorted|ranked|order by", nl))
-
-    limit = None
-    m = re.search(r"\b(top|first|last)\s+(\d+)\b", nl)
-    if m:
-        try:
-            limit = int(m.group(2))
-        except ValueError:
-            limit = None
-
-    distinct = bool(re.search(r"\b(unique|distinct|different)\b", nl))
-
-    value_hints = _extract_value_hints(nlq)
-    explicit_fields = _extract_required_columns(nlq)
-    projection_hints = _projection_hints(nlq)
-    entity_hints = _entity_projection_hints(nlq)
-    entity_identifiers = _entity_identifier_fields(nlq)
-    required_output_fields = list(dict.fromkeys(explicit_fields))
-    explicit_projection = bool(
-        explicit_fields
-        and ("," in nl or " and " in nl or nl.strip().startswith(("show", "list", "give", "display")))
-    )
-    if agg and not needs_group_by and not needs_order_by:
-        # Aggregate-only queries (e.g., "How many customers") should not force identifiers.
-        entity_identifiers = []
-    # If the NLQ doesn't ask for identifiers (id/number/code), don't require them.
-    id_requested = bool(re.search(r"\b(id|ids|number|numbers|code|codes|#)\b", nl))
-    explicit_id = any(re.search(r"(number|code|id)$", (f or "").lower()) for f in explicit_fields)
-    if not id_requested and not explicit_id:
-        entity_identifiers = []
     schema_text = _require_ctx().schema_text_cache or schema_to_text(get_schema())
-    value_columns = _value_linked_columns_from_tables(nlq, _parse_schema_summary(schema_text))
-    needs_location = bool(
-        value_hints and re.search(r"\b(in|from|located|based|office)\b", nl)
-    )
-
-    required_tables: list[str] = []
-    required_tables_all = False
-    # Heuristic: order totals should be sourced from orderdetails (qty * price).
-    if re.search(r"\border number\b", nl) and (agg in {"SUM", "AVG"} or "total" in nl or "amount" in nl):
-        required_tables.append("orderdetails")
-        if "orderNumber" not in required_output_fields:
-            required_output_fields.append("orderNumber")
-    if re.search(r"\borders?\b", nl) and (("total" in nl and "amount" in nl) or "order total" in nl):
-        if "orderdetails" not in required_tables:
-            required_tables.append("orderdetails")
-        if re.search(r"\b(per|by)\s+order\s+number\b", nl) and "orderNumber" not in required_output_fields:
-            required_output_fields.append("orderNumber")
-    if re.search(r"\b(revenue|sales)\b", nl):
-        required_tables = ["orders", "orderdetails"]
-        required_tables_all = True
-
-    # Heuristic: payment aggregates should include payments (and customers if per customer).
-    if re.search(r"\bpayments?\b", nl) and (agg in {"SUM", "AVG"} or "total" in nl or "amount" in nl):
-        if "payments" not in required_tables:
-            required_tables.append("payments")
-    if re.search(r"\bcustomers?\b", nl) and re.search(r"\btotal\\s+payments?\b", nl):
-        required_tables = ["payments", "customers"]
-        required_tables_all = True
-    if re.search(r"\bpayments?\b", nl) and re.search(r"\b(per|by)\s+country\b", nl):
-        required_tables = ["payments", "customers"]
-        required_tables_all = True
-
-    # Location queries usually require a dedicated location table.
-    if needs_location:
-        if re.search(r"\boffice(s)?\b", nl) or re.search(r"\bemployees?\b", nl):
-            if "offices" not in required_tables:
-                required_tables.append("offices")
-        if re.search(r"\bcustomers?\b", nl):
-            if "customers" not in required_tables:
-                required_tables.append("customers")
-
-    # If the NLQ is about employees + a location/office, require both employees and offices.
-    if re.search(r"\bemployees?\b", nl) and (needs_location or re.search(r"\boffice(s)?\b", nl)):
-        if "employees" not in required_tables:
-            required_tables.append("employees")
-        if "offices" not in required_tables:
-            required_tables.append("offices")
-        required_tables_all = True
-    # Template rule: employee count constrained by office/location should always resolve via employees+offices.
-    if agg == "COUNT" and re.search(r"\bemployees?\b", nl) and (
-        re.search(r"\boffice(s)?\b", nl) or any(v in nl for v in value_hints)
-    ):
-        required_tables = list(dict.fromkeys(required_tables + ["employees", "offices"]))
-        required_tables_all = True
-
-    needs_self_join = False
-    self_join_table = None
-    if re.search(r"\bmanagers?\b", nl) and re.search(r"\bemployees?\b", nl):
-        needs_self_join = True
-        self_join_table = "employees"
-
-    schema_text = _require_ctx().schema_text_cache or schema_to_text(get_schema())
-    _, table_cols = parse_schema_text(schema_text)
-    location_cols = {"city", "country", "state", "territory", "region"}
-    location_tables = sorted(
-        [t for t, cols in table_cols.items() if cols & location_cols]
-    )
-
-    return {
-        "agg": agg,
-        "needs_group_by": needs_group_by,
-        "needs_order_by": needs_order_by,
-        "limit": limit,
-        "distinct": distinct,
-        "value_hints": value_hints,
-        "explicit_fields": explicit_fields,
-        "required_output_fields": required_output_fields,
-        "explicit_projection": explicit_projection,
-        "projection_hints": projection_hints,
-        "entity_hints": entity_hints,
-        "entity_identifiers": entity_identifiers,
-        "value_columns": value_columns,
-        "required_tables": required_tables,
-        "required_tables_all": required_tables_all,
-        "needs_self_join": needs_self_join,
-        "self_join_table": self_join_table,
-        "needs_location": needs_location,
-        "location_tables": location_tables,
-    }
+    return build_constraints(nlq, schema_text)
 
 
 def validate_constraints(sql: str, constraints: Optional[dict]) -> dict:
@@ -340,6 +197,10 @@ def generate_sql(
 
 def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str) -> str:
     """LLM call that revises SQL using execution feedback."""
+    deterministic_sql = deterministic_repair(nlq, bad_sql, error)
+    if deterministic_sql:
+        return deterministic_sql
+
     messages = [
         {"role": "system", "content": SYSTEM_INSTRUCTIONS},
         {"role": "user", "content": f"Schema:\n{schema_text}"},
