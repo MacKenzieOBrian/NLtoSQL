@@ -61,7 +61,7 @@ Implementation source:
 | --- | --- | --- |
 | EX/TS prioritized over EM for semantic interpretation | Spider + test-suite semantics (`ref-yu2018-spider`, `ref-zhong2020-ts`) | `nl2sql/eval.py`, `4_EVALUATION.md` |
 | Prompting and fine-tuning compared under shared conditions | Fair ICL vs FT framing (`ref-mosbach2023-icl`) | `notebooks/02_baseline_prompting_eval.ipynb`, `notebooks/05_qlora_train_eval.ipynb` |
-| QLoRA used to test adaptation under compute limits | PEFT evidence (`ref-ding2023-peft`, `ref-goswami2024-peft`) | `results/adapters/qlora_classicmodels/`, `notebooks/05_qlora_train_eval.ipynb` |
+| QLoRA used to test adaptation under compute limits | LoRA/QLoRA + PEFT evidence (`ref-hu2021-lora`, `ref-dettmers2023-qlora`, `ref-ding2023-peft`, `ref-goswami2024-peft`) | `results/adapters/qlora_classicmodels/`, `notebooks/05_qlora_train_eval.ipynb` |
 | ReAct kept bounded and tool-explicit | ReAct + execution-guided work (`ref-yao2023-react`, `ref-wang2018-eg-decoding`, `ref-zhai2025-excot`) | `nl2sql/react_pipeline.py`, `notebooks/03_agentic_eval.ipynb` |
 | Schema/value linking treated as explicit bottleneck | RAT-SQL, RESDSQL, BRIDGE (`ref-wang2020-ratsql`, `ref-li2023-resdsql`, `ref-lin2020-bridge`) | `nl2sql/agent_schema_linking.py`, `nl2sql/constraint_policy.py` |
 
@@ -82,10 +82,18 @@ For every primary comparison:
 - report exact McNemar p-values for binary paired outcomes,
 - distinguish statistical significance from practical effect size.
 
+Statistical basis:
+- Wilson interval: `REFERENCES.md#ref-wilson1927`
+- McNemar paired binary test: `REFERENCES.md#ref-mcnemar1947`
+- NLP significance-testing practice guidance: `REFERENCES.md#ref-dror2018-significance`
+
 Implemented in:
 - `nl2sql/research_stats.py`
 - `scripts/generate_research_comparison.py`
 - `results/analysis/paired_deltas.csv`
+
+Execution sequence and exact notebook settings are operationalized in:
+- `10_EXPERIMENT_EXECUTION_PLAN.md`
 
 ## Error Analysis Protocol
 

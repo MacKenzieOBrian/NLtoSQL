@@ -70,6 +70,11 @@ For paired run comparisons on identical examples:
 - report improved/degraded/tied counts,
 - report exact McNemar p-value.
 
+Statistical grounding:
+- Wilson score interval for binomial rates: `REFERENCES.md#ref-wilson1927`
+- McNemar test for paired nominal outcomes: `REFERENCES.md#ref-mcnemar1947`
+- Recommended testing discipline in NLP experiments: `REFERENCES.md#ref-dror2018-significance`
+
 Code:
 - `nl2sql/research_stats.py`
 - `scripts/generate_research_comparison.py`
@@ -120,6 +125,9 @@ Use taxonomy shifts to explain why metrics changed.
 - archived JSON output per run
 - shared evaluator across methods
 - versioned script/notebook path in run metadata
+
+For the concrete run order (E1-E5) and notebook parameter presets, use:
+- `10_EXPERIMENT_EXECUTION_PLAN.md`
 
 ## Minimal Claim Template
 
