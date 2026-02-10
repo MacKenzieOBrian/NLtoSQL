@@ -814,6 +814,8 @@ _ECHO_CUTOFF_RE = re.compile(
     r"show\s+output|"
     r"outputformatting|"
     r"output\s+formatting|"
+    r"return\s+a\s+corrected\s+single\s+sql\s+select|"
+    r"error\s*:|"
     r"y/n"
     r")\b"
 )
@@ -1003,13 +1005,19 @@ def _extract_value_hints(nlq: str) -> list[str]:
     hints.update(re.findall(r"\b[A-Z]{2,}\b", text))
 
     # Multi-word proper nouns (e.g., San Francisco).
-    hints.update(re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b", text))
+    multiword = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b", text)
+    hints.update(multiword)
+    multiword_tokens = {tok for phrase in multiword for tok in phrase.split()}
 
     # Numeric literals (e.g., 100000, 12.5).
     hints.update(re.findall(r"\b\d+(?:\.\d+)?\b", text))
 
     # Single capitalized words (filter common question words).
     for w in re.findall(r"\b[A-Z][a-z]+\b", text):
+        # If part of a captured multi-word value (e.g., "San Francisco"),
+        # avoid adding the token alone ("San"), which can look like a country code.
+        if w in multiword_tokens:
+            continue
         if w not in _VALUE_STOPWORDS:
             hints.add(w)
 
