@@ -140,9 +140,13 @@ def extract_constraints(nlq: str) -> dict:
     # Heuristic: order totals should be sourced from orderdetails (qty * price).
     if re.search(r"\border number\b", nl) and (agg in {"SUM", "AVG"} or "total" in nl or "amount" in nl):
         required_tables.append("orderdetails")
+        if "orderNumber" not in required_output_fields:
+            required_output_fields.append("orderNumber")
     if re.search(r"\borders?\b", nl) and (("total" in nl and "amount" in nl) or "order total" in nl):
         if "orderdetails" not in required_tables:
             required_tables.append("orderdetails")
+        if re.search(r"\b(per|by)\s+order\s+number\b", nl) and "orderNumber" not in required_output_fields:
+            required_output_fields.append("orderNumber")
     if re.search(r"\b(revenue|sales)\b", nl):
         required_tables = ["orders", "orderdetails"]
         required_tables_all = True
@@ -173,6 +177,12 @@ def extract_constraints(nlq: str) -> dict:
             required_tables.append("employees")
         if "offices" not in required_tables:
             required_tables.append("offices")
+        required_tables_all = True
+    # Template rule: employee count constrained by office/location should always resolve via employees+offices.
+    if agg == "COUNT" and re.search(r"\bemployees?\b", nl) and (
+        re.search(r"\boffice(s)?\b", nl) or any(v in nl for v in value_hints)
+    ):
+        required_tables = list(dict.fromkeys(required_tables + ["employees", "offices"]))
         required_tables_all = True
 
     needs_self_join = False
