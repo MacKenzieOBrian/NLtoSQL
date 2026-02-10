@@ -9,6 +9,20 @@ This project evaluates semantics first, syntax second.
 3. VA (executability)
 4. EM (diagnostic string agreement)
 
+## Replication Alignment (Ojuri et al., 2025)
+
+This evaluation framework is designed to support replication-style comparison against the methodology in `REFERENCES.md#ref-ojuri2025-agents` using an open-source, local stack.
+
+Replication checks:
+- use fixed `n=200` held-out test items for primary comparisons,
+- report VA/EX/TS for each condition and keep EM as diagnostic,
+- compare directional findings:
+  - few-shot vs non-few-shot under fixed weights,
+  - fine-tuned vs non-fine-tuned under matched prompt settings.
+
+Interpretation rule:
+- replication success is judged by whether comparative trends and error patterns are reproduced, not by exact score matching with proprietary-model runs.
+
 ## Literature Basis for Metric Hierarchy
 
 - Spider established complex cross-domain evaluation pressure where SQL string form alone is insufficient: `REFERENCES.md#ref-yu2018-spider`.

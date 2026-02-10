@@ -2,6 +2,17 @@
 
 The methodology is designed to isolate causal effects, not maximize a single headline score.
 
+## Research Angle and Replication Scope
+
+This dissertation follows the methodology pattern in Ojuri et al. (2025) (`REFERENCES.md#ref-ojuri2025-agents`) but re-implements it with an open-source toolchain and a locally runnable LLM workflow.
+
+Replication target:
+- match the experimental structure (few-shot vs fine-tuning comparisons on the same ClassicModels-style task),
+- match the evaluation style (VA/EX/TS/EM on the same held-out items),
+- test whether the same directional conclusions hold under constrained, reproducible open-source conditions.
+
+This is a replication-oriented comparison study, not a claim of exact model parity with proprietary systems (for example GPT-4 class models in the source paper).
+
 ## Research Questions
 
 - RQ1: How much does few-shot prompting (`k=0` vs `k=3`) improve VA/EX/TS/EM under fixed model weights?
@@ -61,6 +72,7 @@ Implementation source:
 - Randomness sources logged when used (e.g., exemplar sampling seed)
 - Run metadata saved with each JSON artifact
 - Dataset fingerprinting and config snapshots stored in ReAct reports
+- QLoRA training-argument rationale and run-log template documented in `8_QLORA_CONFIGURATION.md`
 
 ## Repeated-Run and Defensibility Protocol
 

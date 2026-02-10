@@ -10,6 +10,14 @@ This section defines what cannot be concluded from the current evidence.
 
 Consequence: claims are restricted to this benchmark setting.
 
+## Replication Boundaries (Against Ojuri et al., 2025)
+
+- This study replicates methodology patterns and comparative structure, not exact proprietary model stacks.
+- Source-paper SOTA benchmarks (for example GPT-4 / Llama-3.3-70B settings) are not directly equivalent to local open-source 8B runs.
+- Minor implementation differences (prompt templates, guardrails, postprocess policy, TS approximation) can shift absolute percentages.
+
+Consequence: replication claims should be framed as directional trend agreement/disagreement under an open-source local setup.
+
 ## Evaluation Limits
 
 - EX is evaluated on a single base DB state.

@@ -11,6 +11,10 @@ Key references:
 - Test-suite semantic evaluation: `REFERENCES.md#ref-zhong2020-ts`
 - Recent LLM Text-to-SQL surveys: `REFERENCES.md#ref-zhu2024-survey`, `REFERENCES.md#ref-hong2025-survey`
 
+## Replication Anchor
+
+The dissertation is methodologically anchored to Ojuri et al. (2025) (`REFERENCES.md#ref-ojuri2025-agents`) but scoped to an open-source local LLM workflow. The literature role of the anchor paper is to define the comparison structure (few-shot vs fine-tuning + agent support), while this project evaluates whether those comparative trends persist when proprietary infrastructure is removed.
+
 ## Prompting vs Fine-Tuning
 
 Few-shot prompting is a strong low-cost baseline and must be reported before any adaptation. However, literature repeatedly shows that prompting gains can plateau on compositional joins and aggregation semantics.

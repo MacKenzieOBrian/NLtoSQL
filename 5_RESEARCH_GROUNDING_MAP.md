@@ -6,6 +6,7 @@ This file maps dissertation claims to literature anchors, code artifacts, and ex
 
 | Claim | Literature anchor | Code / artifact | Required evidence |
 | --- | --- | --- | --- |
+| Open-source replication can reproduce the *direction* of enterprise NL->SQL findings under constrained compute | `REFERENCES.md#ref-ojuri2025-agents` | `2_METHODOLOGY.md`, `4_EVALUATION.md`, `results/analysis/summary.md` | replication table with metric deltas vs source paper and explicit trend match/mismatch notes |
 | Few-shot improves structure under fixed weights | `REFERENCES.md#ref-brown2020-gpt3`, `REFERENCES.md#ref-mosbach2023-icl` | `notebooks/02_baseline_prompting_eval.ipynb`, `results/baseline/*.json` | k=0 vs k=3 deltas, CI, paired significance |
 | QLoRA improves semantic mapping under constraints | `REFERENCES.md#ref-ding2023-peft`, `REFERENCES.md#ref-goswami2024-peft` | `notebooks/05_qlora_train_eval.ipynb`, `results/qlora/*.json` | base vs qlora deltas at matched k, CI, paired significance |
 | Execution guidance improves validity and observability | `REFERENCES.md#ref-yao2023-react`, `REFERENCES.md#ref-wang2018-eg-decoding`, `REFERENCES.md#ref-zhai2025-excot` | `nl2sql/react_pipeline.py`, `notebooks/03_agentic_eval.ipynb` | `react_core` vs `react_no_repair` comparison, trace evidence |
