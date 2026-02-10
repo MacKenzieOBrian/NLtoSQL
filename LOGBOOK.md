@@ -381,3 +381,11 @@
 - Structured schema-aware constraints remain aligned with RAT-SQL style schema linking: https://aclanthology.org/2020.acl-main.677/
 - Conservative constrained acceptance mirrors PICARD’s “reject invalid early” principle: https://arxiv.org/abs/2109.05093
 - Execution-guided correction remains in place for residual errors: https://arxiv.org/abs/1807.03100
+
+### 2026-02-10 — Architecture Pass: Policy/Orchestration Separation
+- **Change:** Split deterministic policy logic out of `agent_tools.py` into `constraint_policy.py` (constraint rules + structural extraction) and `repair_policy.py` (template-based SQL repairs).
+- **Change:** Kept `agent_tools.py` as orchestration-only wrapper for tool calls (`extract_constraints` now delegates to `build_constraints`, `repair_sql` now delegates to `deterministic_repair` before LLM fallback).
+- **Why:** This isolates “what rules are enforced” from “how tools are executed”, which reduces cognitive load in dissertation walkthroughs and makes failure-node tuning less error-prone.
+- **Justification (literature/docs):**
+- Modular schema/constraint handling remains aligned with schema-aware NL2SQL design patterns (RAT-SQL): https://aclanthology.org/2020.acl-main.677/
+- Separation of deterministic constraints and generation/repair is consistent with constrained-decoding and execution-guided practices (PICARD, execution-guided decoding): https://arxiv.org/abs/2109.05093, https://arxiv.org/abs/1807.03100
