@@ -18,15 +18,14 @@ from .schema import list_tables, get_table_columns
 from .llm import generate_sql_from_messages
 from .prompting import SYSTEM_INSTRUCTIONS
 from .query_runner import QueryRunner
-from .agent_utils import (
-    build_schema_subset,
-    _extract_value_hints,
-    _extract_required_columns,
-    _projection_hints,
-    _entity_projection_hints,
+from .agent_schema_linking import _parse_schema_summary, build_schema_subset
+from .constraint_hints import (
     _entity_identifier_fields,
+    _entity_projection_hints,
+    _extract_required_columns,
+    _extract_value_hints,
+    _projection_hints,
     _value_linked_columns_from_tables,
-    _parse_schema_summary,
 )
 from .validation import parse_schema_text, validate_sql as _validate_sql, validate_constraints as _validate_constraints
 
@@ -179,8 +178,11 @@ def extract_constraints(nlq: str) -> dict:
             required_tables.append("offices")
         required_tables_all = True
     # Template rule: employee count constrained by office/location should always resolve via employees+offices.
+    location_value_signal = bool(
+        value_hints and re.search(r"\b(in|from|located|based)\b", nl)
+    )
     if agg == "COUNT" and re.search(r"\bemployees?\b", nl) and (
-        re.search(r"\boffice(s)?\b", nl) or any(v in nl for v in value_hints)
+        re.search(r"\boffice(s)?\b", nl) or needs_location or location_value_signal
     ):
         required_tables = list(dict.fromkeys(required_tables + ["employees", "offices"]))
         required_tables_all = True

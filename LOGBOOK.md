@@ -349,3 +349,13 @@
 - **Why:** Recent failures showed lookup-style queries were being over-classified as grouped aggregates, causing avoidable constraint rejections and repair churn.
 - **Alignment with standard practice:** Treat grouping as a structural requirement only when aggregation intent is explicit, keeping intent checks conservative and reducing over-blocking.
 - **Also fixed:** Updated aggregate/group mismatch reason text to improve trace diagnostics (`aggregate_disallows_group_by`).
+
+### 2026-02-10 — EX Stabilisation: Constraint Split + Failure-Node Debugging
+- **Change:** Split oversized `agent_utils.py` into focused modules: `constraint_hints.py`, `agent_schema_linking.py`, `intent_rules.py`, and `sql_guardrails.py`, with `agent_utils.py` kept as a compatibility facade for notebook imports.
+- **Change:** Added `required_output_fields` enforcement in validation while keeping `entity_hints` as soft ranking cues; this reduces over-blocking from heuristic entity hints.
+- **Change:** Added template constraints for frequent EX failures:
+- `employees + offices` required for employee-count-by-office/location questions.
+- `orderNumber` required in projection for “total amount per order number” style grouped totals.
+- **Change:** Expanded value-hint extraction with lowercase location phrase fallback (e.g., “in san francisco”) to improve location linking robustness when capitalization is missing.
+- **Notebook:** Quick sanity-check debug now surfaces **failure nodes** (rejected gate reasons + brief interpretation) alongside SQL timeline and rerank snapshots.
+- **Why:** Failures were mostly in structural/constraint alignment rather than parse validity; this follows constrained-decoding and execution-guided practice by tightening candidate acceptance gates on semantic structure, not just executable syntax.

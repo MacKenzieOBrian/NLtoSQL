@@ -9,7 +9,8 @@ from typing import Optional
 
 import re
 
-from .agent_utils import clean_candidate_with_reason, validate_join_hints, _tables_connected
+from .agent_schema_linking import _tables_connected, validate_join_hints
+from .sql_guardrails import clean_candidate_with_reason
 
 
 def parse_schema_text(schema_text: str) -> tuple[set[str], dict[str, set[str]]]:
