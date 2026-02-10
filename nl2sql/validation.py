@@ -227,13 +227,14 @@ def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: 
                 "missing_fields": missing_sel,
             }
 
-    entity_hints = constraints.get("entity_hints") or []
-    if entity_hints and not has_select_star:
-        if not any(_select_has_field(select_clause, h) for h in entity_hints):
+    required_output_fields = constraints.get("required_output_fields") or []
+    if required_output_fields and not has_select_star:
+        missing_required = [f for f in required_output_fields if not _select_has_field(select_clause, f)]
+        if missing_required:
             return {
                 "valid": False,
-                "reason": "missing_entity_projection",
-                "missing_fields": entity_hints,
+                "reason": "missing_required_output_field",
+                "missing_fields": missing_required,
             }
 
     entity_identifiers = constraints.get("entity_identifiers") or []
