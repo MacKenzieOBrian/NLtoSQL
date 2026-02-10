@@ -82,7 +82,14 @@ def _apply_guardrails(raw_sql: str, nlq: str, constraints: Optional[dict]) -> tu
     if not cleaned:
         return "", reason
     explicit_fields = (constraints or {}).get("explicit_fields")
-    sql = guarded_postprocess(cleaned, nlq, explicit_fields=explicit_fields)
+    explicit_projection = (constraints or {}).get("explicit_projection")
+    required_fields = (constraints or {}).get("required_output_fields")
+    sql = guarded_postprocess(
+        cleaned,
+        nlq,
+        explicit_fields=explicit_fields if explicit_projection else None,
+        required_fields=required_fields,
+    )
     return sql, "ok"
 
 

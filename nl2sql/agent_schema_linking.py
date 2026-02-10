@@ -38,6 +38,23 @@ _JOIN_HINTS = [
     "customers.salesRepEmployeeNumber = employees.employeeNumber",
 ]
 
+
+def get_join_hints(tables: set[str] | None = None) -> list[str]:
+    """Return join hints, optionally filtered to tables present in the schema."""
+    if not tables:
+        return list(_JOIN_HINTS)
+    filtered: list[str] = []
+    for hint in _JOIN_HINTS:
+        parts = re.findall(r"([a-zA-Z_][\\w$]*)\\.", hint)
+        if len(parts) >= 2 and parts[0] in tables and parts[1] in tables:
+            filtered.append(hint)
+    return filtered or list(_JOIN_HINTS)
+
+
+def format_join_hints(tables: set[str] | None = None) -> str:
+    hints = get_join_hints(tables)
+    return "Join hints: " + "; ".join(hints)
+
 _SQL_ALIAS_KEYWORDS = {
     "select",
     "from",
@@ -362,4 +379,3 @@ def build_schema_subset(
             "column_scores": column_scores,
         }
     return subset
-
