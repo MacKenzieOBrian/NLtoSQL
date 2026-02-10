@@ -765,9 +765,15 @@ def classify_intent(nlq: str) -> str:
     nl = (nlq or "").lower()
     if re.search(r"\b(top|highest|lowest|first|last|most|least)\b", nl):
         return "topk"
-    if re.search(r"\b(per|by|each)\b", nl):
+    has_agg_cue = bool(
+        re.search(
+            r"\b(how many|number of|count|sum|average|avg|total|how much|minimum|min|maximum|max)\b",
+            nl,
+        )
+    )
+    if has_agg_cue and re.search(r"\b(per|by|each|for each)\b", nl):
         return "grouped_aggregate"
-    if re.search(r"\b(how many|number of|count|sum|average|avg|total|how much)\b", nl):
+    if has_agg_cue:
         return "aggregate"
     return "lookup"
 
@@ -789,7 +795,7 @@ def intent_constraints(nlq: str, sql: str) -> tuple[bool, str]:
             return False, "aggregate_requires_fn"
         if has_group:
             # grouped aggregates handled in next intent
-            return False, "aggregate_without_grouping"
+            return False, "aggregate_disallows_group_by"
     if intent == "grouped_aggregate":
         if not has_agg:
             return False, "grouped_requires_aggregate"
@@ -814,6 +820,8 @@ _ECHO_CUTOFF_RE = re.compile(
     r"show\s+output|"
     r"outputformatting|"
     r"output\s+formatting|"
+    r"return\s+a\s+corrected\s+single\s+sql\s+select|"
+    r"error\s*:|"
     r"y/n"
     r")\b"
 )
@@ -1003,13 +1011,19 @@ def _extract_value_hints(nlq: str) -> list[str]:
     hints.update(re.findall(r"\b[A-Z]{2,}\b", text))
 
     # Multi-word proper nouns (e.g., San Francisco).
-    hints.update(re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b", text))
+    multiword = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b", text)
+    hints.update(multiword)
+    multiword_tokens = {tok for phrase in multiword for tok in phrase.split()}
 
     # Numeric literals (e.g., 100000, 12.5).
     hints.update(re.findall(r"\b\d+(?:\.\d+)?\b", text))
 
     # Single capitalized words (filter common question words).
     for w in re.findall(r"\b[A-Z][a-z]+\b", text):
+        # If part of a captured multi-word value (e.g., "San Francisco"),
+        # avoid adding the token alone ("San"), which can look like a country code.
+        if w in multiword_tokens:
+            continue
         if w not in _VALUE_STOPWORDS:
             hints.add(w)
 

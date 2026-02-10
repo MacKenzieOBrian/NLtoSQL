@@ -343,3 +343,9 @@
 | `a4c8870` | Docs: clarify TS as suite‑based robustness | Documentation accuracy. |
 | `57bcfb0` | Eval: relax EX comparator; log quick‑check + TS plan | Evaluation stability + traceability. |
 | `e7ac4b5` | Notebook: remove legacy `react_sql` args | Cleanup after API shift. |
+
+### 2026-02-10 — Intent Classification Tightening (False Trigger Reduction)
+- **Change:** Made `classify_intent` less trigger-happy by requiring aggregate cues before classifying a query as `grouped_aggregate` when it contains tokens like `by/per/each`.
+- **Why:** Recent failures showed lookup-style queries were being over-classified as grouped aggregates, causing avoidable constraint rejections and repair churn.
+- **Alignment with standard practice:** Treat grouping as a structural requirement only when aggregation intent is explicit, keeping intent checks conservative and reducing over-blocking.
+- **Also fixed:** Updated aggregate/group mismatch reason text to improve trace diagnostics (`aggregate_disallows_group_by`).
