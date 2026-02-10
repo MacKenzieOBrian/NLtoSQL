@@ -126,6 +126,35 @@ def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
         sql = sql[: m.start()].strip()
         lower = sql.lower()
 
+    # Extra defensive truncation for mixed "SQL + error/explanation + SQL" outputs.
+    for marker in [
+        "\nerror:",
+        " error:",
+        "\ntraceback",
+        " traceback",
+        " return a corrected single sql select",
+        " return corrected single sql select",
+        " return a corrected sql select",
+    ]:
+        idx = lower.find(marker)
+        if idx != -1:
+            sql = sql[:idx].strip()
+            lower = sql.lower()
+
+    m2 = re.search(r"(?is)\berror\b.*\bselect\b", sql)
+    if m2:
+        sql = sql[: m2.start()].strip()
+        lower = sql.lower()
+
+    # Keep first SELECT when a second one appears after correction text.
+    select_hits = list(re.finditer(r"(?is)\bselect\b", sql))
+    if len(select_hits) > 1:
+        second_idx = select_hits[1].start()
+        lookback = sql[max(0, second_idx - 96) : second_idx].lower()
+        if any(tag in lookback for tag in ("error", "corrected", "return", "fix")):
+            sql = sql[:second_idx].strip()
+            lower = sql.lower()
+
     if ";" in sql:
         sql = sql.split(";", 1)[0].strip()
         lower = sql.lower()
@@ -167,4 +196,3 @@ def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
         return None, "instruction_echo"
 
     return sql.rstrip(";") + ";", "ok"
-

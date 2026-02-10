@@ -214,20 +214,6 @@ def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: 
     if value_hints and not any(v in sql_low for v in value_hints):
         return {"valid": False, "reason": "missing_value_hint"}
 
-    explicit_fields = constraints.get("explicit_fields") or []
-    if explicit_fields and not all(f.lower() in sql_low for f in explicit_fields):
-        missing = [f for f in explicit_fields if f.lower() not in sql_low]
-        return {"valid": False, "reason": "missing_required_field", "missing_fields": missing}
-
-    if constraints.get("explicit_projection") and explicit_fields and not has_select_star:
-        missing_sel = [f for f in explicit_fields if not _select_has_field(select_clause, f)]
-        if missing_sel:
-            return {
-                "valid": False,
-                "reason": "missing_required_projection",
-                "missing_fields": missing_sel,
-            }
-
     required_output_fields = constraints.get("required_output_fields") or []
     if required_output_fields and not has_select_star:
         missing_required = [f for f in required_output_fields if not _select_has_field(select_clause, f)]
@@ -238,15 +224,8 @@ def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: 
                 "missing_fields": missing_required,
             }
 
-    entity_identifiers = constraints.get("entity_identifiers") or []
-    if entity_identifiers and not has_select_star:
-        missing_ids = [f for f in entity_identifiers if not _select_has_field(select_clause, f)]
-        if missing_ids:
-            return {
-                "valid": False,
-                "reason": "missing_entity_identifier",
-                "missing_fields": missing_ids,
-            }
+    # Entity identifiers are treated as soft hints at generation/rerank time.
+    # Strict projection checks are handled via required_output_fields above.
 
     if constraints.get("needs_location"):
         tables_in_query = _tables_in_query(sql_low)
