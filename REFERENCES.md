@@ -1,5 +1,8 @@
 # References (Named, Linked)
 
+Primary-source papers (benchmark papers, methods papers, and official proceedings)
+are prioritized for technical claims in this dissertation.
+
 1. <a id="ref-li2023-bigbench"></a> J. Li et al., "Can LLM Already Serve as a Database Interface? A BIg Bench for Large-Scale Database Grounded Text-to-SQLs," arXiv:2305.03111, May 30, 2023. DOI: 10.48550/arXiv.2305.03111.
 2. <a id="ref-zhai2025-excot"></a> B. Zhai, C. Xu, Y. He, and Z. Yao, "ExCoT: Optimizing Reasoning for Text-to-SQL with Execution Feedback," arXiv:2503.19988, Mar. 27, 2025. DOI: 10.48550/arXiv.2503.19988.
 3. <a id="ref-mosbach2023-icl"></a> M. Mosbach, T. Pimentel, S. Ravfogel, D. Klakow, and Y. Elazar, "Few-shot Fine-tuning vs. In-context Learning: A Fair Comparison and Evaluation," arXiv:2305.16938, May 30, 2023. DOI: 10.48550/arXiv.2305.16938.

@@ -1,67 +1,64 @@
-# Agent Design (Tool-Driven ReAct Loop)
+# Agent Design (Execution Infrastructure)
 
-This file is a short design overview. The authoritative evaluation loop is defined in `notebooks/03_agentic_eval.ipynb` (`react_sql`) and uses explicit tools in `nl2sql/agent_tools.py` under the system prompt contract in `nl2sql/prompts.py`.
+This document describes the tool-driven ReAct component as infrastructure for robust evaluation, not as the main research contribution.
 
-For a code-truth specification (tool order, gates/overrides, state variables, and logging), see `TOOL_DRIVEN_REACT_LOOP_TECHNICAL_REFERENCE.md`.
+## Role in Dissertation
 
----
+- Primary contribution: prompting and fine-tuning comparisons.
+- Agent contribution: make execution failures explicit, enforce safe tool order, and improve validity stability.
 
-## What the Agent Does
+## Core Design Rules
 
-- **Input:** natural-language question (NLQ) + ClassicModels schema context.
-- **Output:** exactly one executable MySQL `SELECT` statement.
-- **Method:** bounded **Thought → Action → Observation** loop where the model emits tool calls and Python executes them **[16]**.
+- Setup once per question: schema retrieval and optional schema linking.
+- Generate one SQL candidate.
+- Apply deterministic cleanup.
+- Validate before execution.
+- Repair only on validation/execution failure.
+- Stop at first successful execution.
 
----
+## Tool Surface
 
-## Tool Actions (What Exists and Why)
+- `get_schema`
+- `link_schema`
+- `extract_constraints`
+- `generate_sql`
+- `validate_sql`
+- `validate_constraints`
+- `run_sql`
+- `repair_sql`
+- `finish`
 
-- `get_schema`: ground the model in real tables/columns.
-- `link_schema`: reduce schema scope before generation to reduce wrong joins **[17, 22]**. Returns `link_debug` (selected tables + scores + value hints) for traceable schema linking.
-- `extract_constraints`: infer structural needs (aggregation, grouping, ordering, limit, distinct) and **value hints** (plus location cues/tables) for lightweight value linking **[13, 23]**.
-- `generate_sql`: propose a SQL candidate using the focused schema + constraints.
-- `validate_sql`: catch formatting/schema-reference issues before execution.
-- `validate_constraints`: enforce NLQ-implied structure before execution (PICARD-style constraint idea) **[13]**.
-- `run_sql`: execute safely and return the key observation (success/error + preview rows), consistent with execution-feedback signals **[2, 25]**.
-- `repair_sql`: fix failed SQL using the latest error feedback **[2, 25]**.
-- `finish`: terminate only after a successful execution.
+Implementation source: `nl2sql/agent_tools.py`.
 
----
+## Enforcement Layer
 
-## Control Layer (Deterministic Guardrails)
+The pipeline blocks unsafe or out-of-order transitions:
+- no execution before validation
+- no finish before successful execution
+- no write/delete SQL at runtime
 
-Guardrails run immediately after `generate_sql` and `repair_sql` in the notebook:
+Implementation source:
+- `nl2sql/react_pipeline.py`
+- `nl2sql/query_runner.py`
 
-- `clean_candidate_with_reason` (single-statement SELECT-only cleaning)
-- `guarded_postprocess` (deterministic cleanup)
-- table-casing normalization (readability; avoids confusing traces)
+## Minimal by Default, Ablations Optional
 
-Safety is enforced at execution time via `QueryRunner` (SELECT-only + forbidden token blocklist).
+Default configuration is now a minimal core loop (`react_core`).
+Optional ablations (intent gating, extra repairs) are kept for explicit, named experiments only.
 
----
+## Logging and Audit
 
-## Loop Guarantees (Enforced in the Notebook)
+Each run stores:
+- tool trace
+- per-item outcomes
+- config snapshot
+- run metadata and dataset signature
 
-- `run_sql` is blocked unless `validate_sql` and `validate_constraints` have both passed.
-- `finish` is blocked unless the most recent `run_sql` succeeded.
-- Validation/execution/intent failures force `repair_sql` on the next step.
-- Guardrail rejection forces one re-generate (bounded retry).
-- Missing constraints force `extract_constraints` (unless repairing).
+This keeps failure attribution inspectable and supports examiner-facing reproducibility.
 
-This makes failures attributable to a specific step (validation vs constraints vs execution) rather than being hidden by post-hoc ranking.
+## Where It Lives
 
----
-
-## Where to Demo / Verify
-
-- Notebook loop: `notebooks/03_agentic_eval.ipynb` (cell “Tool-driven ReAct loop (explicit Thought/Action/Observation)”)
-- Tools: `nl2sql/agent_tools.py`
+- Core loop: `nl2sql/react_pipeline.py`
+- Tool implementation: `nl2sql/agent_tools.py`
 - Prompt contract: `nl2sql/prompts.py`
-- Safety gate: `nl2sql/query_runner.py`
-- Metrics: `nl2sql/eval.py`
-
----
-
-## Legacy / Experimental Code
-
-`nl2sql/agent.py` (`ReactSqlAgent`) is retained for ablations and comparison; it is not the reference evaluation loop.
+- Notebook orchestration: `notebooks/03_agentic_eval.ipynb`

@@ -1,127 +1,68 @@
-# Examiner Q&A (Condensed)
+# Examiner Q&A
 
-This is a short viva cheat sheet written to match the **current implementation** in this repo.
+This sheet is aligned with the current repository implementation.
 
-Primary places to point:
-- `notebooks/03_agentic_eval.ipynb` (evaluation loop + tool-driven ReAct loop)
-- `LOGBOOK.md` (dated research journey)
-- `2_METHODOLOGY.md`, `4_EVALUATION.md`, `6_LIMITATIONS.md` (write-up)
-- `nl2sql/agent_tools.py`, `nl2sql/query_runner.py`, `nl2sql/eval.py` (code truth)
+## Q1. What is your primary contribution?
 
----
+A controlled, reproducible comparison of NL->SQL improvements under constrained compute:
+- prompting effect (`k=0` vs `k=3`)
+- QLoRA fine-tuning effect (base vs adapted model)
+- error-category analysis explaining metric movement
 
-## Q: What is the core contribution?
+ReAct is included as execution infrastructure to stabilize validity and expose failure causes.
 
-A: A reproducible OSS NL->SQL evaluation pipeline on ClassicModels, plus an evidence-driven agentic loop that makes “what the model did” auditable: explicit tool actions, deterministic guardrails, execution feedback, and trace/decision logs.
+## Q2. Why is ReAct not your main claim?
 
----
+Because the dissertation question is "what improves NL->SQL under constraints," not "how complex can the agent become." ReAct is used to enforce tool order, validation, and repair for robust evaluation.
 
-## Q: Why prioritize EX/TS over exact-match (EM)?
+## Q3. What metrics matter most and why?
 
-A: EM is sensitive to formatting and semantically equivalent rewrites. EX checks whether the result rows match the gold query on the base DB. TS adds robustness by checking behavior across perturbed replicas (a lightweight approximation of Zhong et al.’s test-suite idea).
+- EX and TS are primary semantic metrics.
+- VA measures executability.
+- EM is diagnostic only.
 
 Code pointers:
-- `nl2sql/eval.py` (`execution_accuracy`, `test_suite_accuracy_for_item`)
+- `nl2sql/eval.py`
 - `4_EVALUATION.md`
 
----
+## Q4. How do you defend differences statistically?
 
-## Q: What does “tool-driven ReAct” mean in this project?
-
-A: The model outputs `Action: tool_name[json]`. Python executes that tool and records an `Observation:`. Critical steps (validation, execution, finish) are gated, and failures force a repair step.
-
-Code pointers:
-- `notebooks/03_agentic_eval.ipynb` (`react_sql`)
-- `nl2sql/prompts.py` (`REACT_SYSTEM_PROMPT`)
-
----
-
-## Q: What tools exist, and why?
-
-A: Tools break the task into explicit, checkable steps:
-- schema grounding: `get_schema`, `link_schema`
-- generation: `generate_sql`
-- checks: `validate_sql`, `validate_constraints`, `intent_constraints`
-- environment interaction: `run_sql`
-- recovery: `repair_sql`
-- termination: `finish`
+- 95% Wilson intervals for per-run rates.
+- Paired deltas on identical examples.
+- Exact McNemar p-values for binary paired outcomes.
 
 Code pointers:
-- `nl2sql/agent_tools.py`
-- `nl2sql/agent_utils.py` (`intent_constraints`)
+- `nl2sql/research_stats.py`
+- `scripts/generate_research_comparison.py`
 
----
+## Q5. How do you ensure fair comparisons?
 
-## Q: How do you stop the model from executing destructive SQL?
+- same test set
+- same evaluator
+- same SQL safety policy
+- same output artifact format
+- explicit run metadata
 
-A: Execution is mediated by `QueryRunner` with a SELECT-only safety policy and a forbidden-token blocklist (no UPDATE/DELETE/DROP/etc.). Even if the model emits unsafe SQL, execution is blocked.
+## Q6. What does the ReAct core loop do?
 
-Code pointers:
-- `nl2sql/query_runner.py` (`QueryRunner.run`)
+`get_schema -> link_schema -> extract_constraints -> generate_sql -> validate_sql -> validate_constraints -> run_sql`, with `repair_sql` only on validation/execution failure and stop on first success.
 
----
+Code pointer:
+- `nl2sql/react_pipeline.py`
 
-## Q: Why include schema linking?
+## Q7. What remains hard even after improvements?
 
-A: Full schemas are large and increase wrong-table / wrong-join errors. `link_schema` prunes the schema text to a relevant subset before generation (heuristic, logged), aligning with the RESDSQL idea of separating linking from generation.
+Semantic alignment errors: join-path mistakes, aggregation scope errors, and value-linking misses. Execution guidance improves validity but does not eliminate these categories.
 
-Code pointers:
-- `nl2sql/agent_tools.py` (`link_schema`)
-- `nl2sql/agent_utils.py` (`build_schema_subset`)
+## Q8. What are your strongest evidence artifacts?
 
----
+- run JSONs in `results/`
+- paired/comparison tables in `results/analysis/`
+- failure taxonomy in `results/analysis/failure_taxonomy.csv`
+- dated rationale in `LOGBOOK.md`
 
-## Q: What is “constraint extraction” and what does it buy you?
+## Q9. What do you explicitly not claim?
 
-A: It is a deterministic pass over the NLQ to infer structural requirements (aggregation, GROUP BY, ORDER BY, LIMIT, DISTINCT). This reduces a common failure mode: SQL that runs but has the wrong structure.
-
-Code pointers:
-- `nl2sql/agent_tools.py` (`extract_constraints`, `validate_constraints`)
-
----
-
-## Q: What happens when validation or execution fails?
-
-A: The loop records the failure reason and forces a repair step. Repair uses the latest error feedback to revise SQL, then guardrails re-apply before re-validation.
-
-Code pointers:
-- `notebooks/03_agentic_eval.ipynb` (`pending_repair_error` + action override)
-- `nl2sql/agent_tools.py` (`repair_sql`)
-
----
-
-## Q: What is logged and why does it matter?
-
-A: The loop logs a full `trace` (raw model output + action + observation per step) and a compact `decision_log` (what happened and why). This makes it possible to attribute failures to generation vs guardrails vs validation vs execution.
-
-Code pointers:
-- `notebooks/03_agentic_eval.ipynb` (trace + decision_log)
-
----
-
-## Q: How does QLoRA relate to the agent loop?
-
-A: QLoRA changes model weights to improve domain mapping (semantics). The agent loop does not change weights; it improves reliability via explicit tool checks and execution feedback. In practice they address different error sources.
-
-Write-up pointers:
-- `2_METHODOLOGY.md` (sequencing: prompting -> QLoRA -> agentic loop)
-- `LOGBOOK.md`
-
----
-
-## Q: What are the main limitations?
-
-A: Heuristic schema linking and constraint extraction can miss subtle intent. EX is a single-DB oracle; TS is a suite-based replica approach rather than full distilled test-suite construction. The agent loop improves auditability but does not guarantee semantic correctness.
-
-Write-up pointers:
-- `6_LIMITATIONS.md`
-
----
-
-## Q: How do you ensure reproducibility?
-
-A: Deterministic decoding is used by default, evaluation is scripted/notebooked, dependencies are pinned, and outputs are saved in structured formats.
-
-Repo pointers:
-- `requirements.txt`
-- `notebooks/03_agentic_eval.ipynb` (deterministic settings + result saving)
+- not a universal state-of-the-art Text-to-SQL agent
+- not proven cross-domain generalization
+- not full replacement for learned schema/linking models

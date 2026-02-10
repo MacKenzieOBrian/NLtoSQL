@@ -58,7 +58,7 @@ def core_react_config(name: str = "react_core") -> ReactAblationConfig:
         use_repair_policy=True,
         use_intent_gate=False,
         stop_on_first_success=True,
-        max_repairs=2,
+        max_repairs=1,
         link_max_tables=6,
     )
 
@@ -67,29 +67,29 @@ def default_ablation_plan() -> list[ReactAblationConfig]:
     """
     Recommended ablation path:
     1) core minimal loop (primary reporting default)
-    2) optional intent gate
-    3) optional extra repairs
+    2) no-repair variant (shows effect of execution-guided repair)
+    3) extra-repair variant (tests complexity vs gain)
     """
     return [
         core_react_config(),
         ReactAblationConfig(
-            name="react_plus_intent_gate",
+            name="react_no_repair",
             use_schema_link=True,
             use_constraint_policy=True,
-            use_repair_policy=True,
-            use_intent_gate=True,
-            stop_on_first_success=False,
-            max_repairs=2,
+            use_repair_policy=False,
+            use_intent_gate=False,
+            stop_on_first_success=True,
+            max_repairs=0,
             link_max_tables=6,
         ),
         ReactAblationConfig(
-            name="react_plus_intent_gate_extra_repairs",
+            name="react_extra_repair",
             use_schema_link=True,
             use_constraint_policy=True,
             use_repair_policy=True,
-            use_intent_gate=True,
-            stop_on_first_success=False,
-            max_repairs=3,
+            use_intent_gate=False,
+            stop_on_first_success=True,
+            max_repairs=2,
             link_max_tables=6,
         ),
     ]

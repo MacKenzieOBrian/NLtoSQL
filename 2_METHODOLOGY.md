@@ -1,138 +1,121 @@
 # Methodology
 
-This section explains how the experiments are designed and executed. The aim is controlled comparison across methods, not the absolute best possible score.
+The methodology is designed to isolate causal effects, not maximize a single headline score.
 
----
+## Research Questions
 
-## Research Design
+- RQ1: How much does few-shot prompting (`k=0` vs `k=3`) improve VA/EX/TS/EM under fixed model weights?
+- RQ2: How much does QLoRA improve VA/EX/TS/EM over the same prompting settings?
+- RQ3: How much does execution-guided ReAct improve validity and robustness, and which semantic errors remain?
 
-The methodology is error-driven and incremental (cf. ReAct and execution-feedback work):
-1. Establish a deterministic prompting baseline.
-2. Add PEFT (QLoRA) to test whether training improves SQL generation.
-3. Add an agentic phase: first a candidate‑ranking utility study (Jan 2026) to identify EX‑relevant controls, then a bounded tool‑driven ReAct loop (Feb 2026) that formalizes those controls as explicit tools.
+## Experimental Principle
 
-This sequencing makes improvements attributable to specific changes and follows a literature-backed progression from prompting → PEFT → agentic execution feedback.  
-Refs: `REFERENCES.md#ref-brown2020-gpt3`, `REFERENCES.md#ref-ding2023-peft`, `REFERENCES.md#ref-goswami2024-peft`, `REFERENCES.md#ref-yao2023-react`, `REFERENCES.md#ref-zhai2025-excot`, `REFERENCES.md#ref-ojuri2025-agents`.
+Use one change at a time.
 
-**Research journey summary (from `LOGBOOK.md` dates)**  
-- 2025-09-29: scoped the problem and identified a reproducibility gap.  
-- 2025-10-06: shifted evaluation emphasis from EM to EX/TS for semantic validity.  
-- 2026-01-31: candidate‑ranking utility study to see which guards improved EX and which were noise.  
-- 2026-02-01: planned the explicit tool sequence (schema → generate → validate → run → reflect).  
-- 2026-02-04 to 2026-02-05: rebuilt the loop as tool‑driven ReAct with validation, schema linking, constraint checks, and decision logging.  
+- Fixed test set: `data/classicmodels_test_200.json`
+- Shared evaluation harness: `nl2sql/eval.py`
+- Shared safety gate: `nl2sql/query_runner.py`
+- Matched prompt schema context across methods
+- Run-level JSON outputs archived for each condition
 
-**Interpretive narrative (what changed and why)**  
-- Baselines improved VA but not EX, which signaled that syntax fixes alone do not solve semantic alignment.  
-- QLoRA improved EX but still depended on strong schema grounding, so I added explicit guardrails.  
-- The candidate‑ranking loop was used to test which utilities actually lifted EX; it improved validity but masked root causes by filtering errors away.  
-- I then pivoted to a tool‑driven Thought→Action→Observation loop so errors became explicit observations and tool order could be enforced.  
-- Carried forward: cleaning/normalization, schema‑aware validation, constraint checks, semantic scoring signals, and reflection logic.  
-- Dropped or de‑emphasized: candidate‑ranking as the control structure, the tabular prompt variant, and hard intent rejection (softened to a penalty).  
+## Systems Compared
 
-**Explicit non‑decisions (scope control)**  
-- No learned schema linker (kept heuristic for interpretability).  
-- No unbounded reflection (bounded steps for auditability and cost).  
-- No full distilled test‑suite construction (TS remains suite‑based due to time/compute constraints).
+Primary research systems:
+- Base model, `k=0`
+- Base model, `k=3`
+- QLoRA model, `k=0`
+- QLoRA model, `k=3`
 
----
+Execution infrastructure system:
+- ReAct core loop (tool-driven), reported as robustness/validity support rather than primary contribution.
 
-## Dataset and Split
+## ReAct Core Loop (Infrastructure)
 
-The ClassicModels database is used as the fixed schema. A small, clean split is used for feasibility:
-- Training: `data/train/classicmodels_train_200.jsonl`
-- Test: `data/classicmodels_test_200.json`
+Default loop used for comparison:
+1. Setup once: `get_schema` -> `link_schema` (optional in ablation)
+2. Per question: `extract_constraints` -> `generate_sql`
+3. Deterministic cleanup: candidate cleaning + guarded postprocess
+4. Validation gate: `validate_sql` -> `validate_constraints`
+5. Execute: `run_sql`
+6. Repair only if validation/execution fails
+7. Stop immediately on first successful execution
 
-A fixed schema makes results interpretable and keeps comparisons fair across methods.
+Implementation source:
+- `nl2sql/react_pipeline.py`
+- `nl2sql/agent_tools.py`
 
----
+## Literature-Grounded Design Decisions
 
-## Baseline Prompting (ICL)
+| Design decision | Literature basis | Implementation |
+| --- | --- | --- |
+| EX/TS prioritized over EM for semantic interpretation | Spider + test-suite semantics (`ref-yu2018-spider`, `ref-zhong2020-ts`) | `nl2sql/eval.py`, `4_EVALUATION.md` |
+| Prompting and fine-tuning compared under shared conditions | Fair ICL vs FT framing (`ref-mosbach2023-icl`) | `notebooks/02_baseline_prompting_eval.ipynb`, `notebooks/05_qlora_train_eval.ipynb` |
+| QLoRA used to test adaptation under compute limits | PEFT evidence (`ref-ding2023-peft`, `ref-goswami2024-peft`) | `results/adapters/qlora_classicmodels/`, `notebooks/05_qlora_train_eval.ipynb` |
+| ReAct kept bounded and tool-explicit | ReAct + execution-guided work (`ref-yao2023-react`, `ref-wang2018-eg-decoding`, `ref-zhai2025-excot`) | `nl2sql/react_pipeline.py`, `notebooks/03_agentic_eval.ipynb` |
+| Schema/value linking treated as explicit bottleneck | RAT-SQL, RESDSQL, BRIDGE (`ref-wang2020-ratsql`, `ref-li2023-resdsql`, `ref-lin2020-bridge`) | `nl2sql/agent_schema_linking.py`, `nl2sql/constraint_policy.py` |
 
-Baseline evaluation uses a fixed system prompt and deterministic decoding. This creates a stable reference point for later changes and matches ICL baselines in the literature.  
-Refs: `REFERENCES.md#ref-brown2020-gpt3`, `REFERENCES.md#ref-mosbach2023-icl`.
+## Reproducibility Protocol
 
-Implementation notes:
-- Prompt format: `nl2sql/prompting.py`
-- Deterministic generation: `nl2sql/llm.py`
-- Postprocess: `nl2sql/postprocess.py`
-- Evaluation: `nl2sql/eval.py:eval_run`
+- Dependencies pinned: `requirements.txt`
+- Deterministic decode defaults in generation path
+- Randomness sources logged when used (e.g., exemplar sampling seed)
+- Run metadata saved with each JSON artifact
+- Dataset fingerprinting and config snapshots stored in ReAct reports
 
----
+## Repeated-Run and Defensibility Protocol
 
-## QLoRA Fine-Tuning
+For every primary comparison:
+- report point estimate and 95% Wilson interval for VA/EX/TS/EM,
+- use paired comparisons on the same examples,
+- report exact McNemar p-values for binary paired outcomes,
+- distinguish statistical significance from practical effect size.
 
-QLoRA adapters are trained to test whether task-specific data improves SQL generation. The base model is kept fixed and adapters are evaluated with the same harness as the baseline, aligning with PEFT/QLoRA practice.  
-Refs: `REFERENCES.md#ref-ding2023-peft`, `REFERENCES.md#ref-goswami2024-peft`.
+Implemented in:
+- `nl2sql/research_stats.py`
+- `scripts/generate_research_comparison.py`
+- `results/analysis/paired_deltas.csv`
 
-Implementation notes:
-- Training + eval notebook: `notebooks/05_qlora_train_eval.ipynb`
-- Evaluation harness: `nl2sql/eval.py:eval_run`
+## Error Analysis Protocol
 
----
+Each failed item is assigned to one dominant category:
+- `invalid_sql`
+- `join_path`
+- `aggregation`
+- `value_linking`
+- `projection`
+- `ordering_limit`
+- `other_semantic`
 
-## Agentic ReAct Loop (Tool‑Driven Execution Feedback)
-
-The agent uses an explicit Thought → Action → Observation loop with tools. It does not change model weights. The loop is bounded and traceable, mirroring ReAct and agent-mediated NL→SQL workflows:
-- Bootstrap with `get_schema` then `link_schema` (schema observation + heuristic linker)
-- LLM chooses actions (`extract_constraints`, `generate_sql`, `validate_sql`, `validate_constraints`, `run_sql`, `repair_sql`, `finish`)
-- Python executes tools and returns observations
-- Guardrails run between `generate_sql`/`repair_sql` and `validate_sql`
-- `validate_sql` must pass before `validate_constraints`
-- `validate_constraints` must pass before `run_sql`
-- `run_sql` must succeed before `finish`
-- Deterministic fallback if the loop fails to finish
-Validation or execution failures force a `repair_sql` step. Constraint validation gates execution (e.g., missing COUNT/ORDER/LIMIT), and per‑query trace summaries log action sequences and compliance for auditability.
-Refs: `REFERENCES.md#ref-yao2023-react`, `REFERENCES.md#ref-zhai2025-excot`, `REFERENCES.md#ref-ojuri2025-agents`.
-
-**Tightening for accuracy (constraint‑driven gating)**  
-We progressively tightened acceptance criteria by enforcing explicit field/value constraints, schema‑aware validation (including join‑key checks), and execution‑gated acceptance. This mirrors execution‑guided decoding (rejecting candidates via execution feedback) and constrained decoding principles that restrict outputs to valid/consistent SQL, while relation‑aware linking helps avoid join/table errors.  
-Refs: `REFERENCES.md#ref-wang2018-eg-decoding`, `REFERENCES.md#ref-scholak2021-picard`, `REFERENCES.md#ref-wang2020-ratsql`, `REFERENCES.md#ref-li2023-resdsql`.
-
-**Schema item ranking (table + column shortlist)**  
-Before generation, the linker ranks both tables and columns to present a compact schema subset. This operationalizes relation‑aware schema linking and decoupled schema selection to reduce projection/join mistakes without retraining.  
-Refs: `REFERENCES.md#ref-wang2020-ratsql`, `REFERENCES.md#ref-li2023-resdsql`.
-
-**Lightweight value linking (column hints)**  
-NLQ literals are linked to likely columns using lexical cues (e.g., date patterns, location phrases, ID‑style phrases). These value‑column hints bias schema pruning toward correct filter columns without database lookups.  
-Refs: `REFERENCES.md#ref-lin2020-bridge`, `REFERENCES.md#ref-wang2020-ratsql`.
-
-**Conservative constrained decoding (PICARD‑lite)**  
-Generation applies a minimal constrained decoding step that blocks obvious non‑SELECT outputs (DDL/DML/transaction keywords). This enforces early validity without over‑restricting the model.  
-Refs: `REFERENCES.md#ref-scholak2021-picard`.
-
-**Evolution from candidate‑ranking**  
-- Candidate‑ranking utilities that improved EX were retained but converted into explicit tools or guardrails.  
-- The ranking decision itself was removed; the loop now relies on ordered actions with observations and forced repair on failure.  
-- This conversion made the pipeline auditable and aligned with ReAct’s explicit action/observation semantics.  
-
-Implementation notes:
-- Tool interface: `nl2sql/agent_tools.py`
-- System prompt: `nl2sql/prompts.py`
-- Notebook loop: `notebooks/03_agentic_eval.ipynb` (tool-driven `react_sql`)
-- Execution gate: `nl2sql/query_runner.py:QueryRunner.run`
-- Technical reference: `TOOL_DRIVEN_REACT_LOOP_TECHNICAL_REFERENCE.md`
-
----
+Purpose: connect metric movement to error-type movement, not only to final percentages.
 
 ## Evaluation Metrics
 
-Four metrics are reported (execution-based evaluation prioritized over exact string match):
-- VA: executability (SQL runs successfully)
-- EM: exact match (diagnostic only)
-- EX: execution accuracy on base DB (result equivalence)
-- TS: test-suite accuracy across perturbed DB replicas
-Refs: `REFERENCES.md#ref-zhong2020-ts`, `REFERENCES.md#ref-yu2018-spider`.
+- VA: executable SQL rate
+- EX: execution result equivalence on base DB
+- TS: execution equivalence across perturbed suite DBs
+- EM: normalized exact SQL string match (diagnostic)
 
-Implementation notes:
-- VA: `nl2sql/query_runner.py`
-- EM: `nl2sql/postprocess.py:normalize_sql`
-- EX: `nl2sql/eval.py:execution_accuracy`
-- TS: `nl2sql/eval.py:test_suite_accuracy_for_item`
+Rationale:
+- primary metrics: EX and TS (semantic behavior),
+- secondary metric: VA (validity),
+- diagnostic metric: EM (surface-form agreement).
 
----
+## Threats to Validity and Controls
 
-## Reproducibility and Safety
+Internal validity controls:
+- same test items across methods,
+- same evaluator and DB execution policy,
+- same postprocess class across base/QLoRA runs.
 
-- Dependencies are pinned in `requirements.txt`.
-- Query execution is SELECT-only; destructive tokens are blocked.
-- Result sets are capped during EX/TS to avoid runaway comparisons.
+Remaining threats:
+- single schema/domain (ClassicModels),
+- heuristic linker/constraints instead of learned semantic parser,
+- TS approximation via replicas rather than distilled suite generation.
+
+## What This Method Does Not Claim
+
+- It does not claim a state-of-the-art universal Text-to-SQL agent.
+- It does not claim ReAct solves semantic alignment.
+- It does not claim transfer to arbitrary enterprise schemas without new evidence.
+
+The methodological claim is narrower: under fixed constraints, controlled prompting + QLoRA comparisons produce interpretable gains, while execution-guided infrastructure improves validity and traceability.

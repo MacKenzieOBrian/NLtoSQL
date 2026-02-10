@@ -1,91 +1,112 @@
-# Evaluation Engineering Log (Reformatted)
+# Evaluation Framework
 
-Each metric is presented in a four-part explanation format.
+This project evaluates semantics first, syntax second.
 
----
+## Metric Priority
 
-### Valid SQL (VA)
+1. EX (execution equivalence on base DB)
+2. TS (suite-based semantic robustness)
+3. VA (executability)
+4. EM (diagnostic string agreement)
 
-**Plain-language**  
-VA checks whether the predicted SQL runs at all. It separates syntax/schema errors from semantic errors.
+## Literature Basis for Metric Hierarchy
 
-**Technical description**  
-`QueryRunner.run` executes the SQL under a read-only guard and returns a success flag. VA is recorded directly from this flag.
+- Spider established complex cross-domain evaluation pressure where SQL string form alone is insufficient: `REFERENCES.md#ref-yu2018-spider`.
+- Distilled test-suite evaluation motivates behavior-focused semantic checks: `REFERENCES.md#ref-zhong2020-ts`.
+- Execution-guided and agentic NL->SQL work supports explicit runtime feedback loops for reliability: `REFERENCES.md#ref-wang2018-eg-decoding`, `REFERENCES.md#ref-yao2023-react`, `REFERENCES.md#ref-zhai2025-excot`.
 
-**Code locations**  
-`nl2sql/query_runner.py` (`QueryRunner.run`)  
-`notebooks/03_agentic_eval.ipynb` (evaluation loop in cell `# 9) Full ReAct-style evaluation (VA/EX/EM/TS)`)
+Interpretation consequence:
+- EM is retained for diagnostics,
+- EX/TS drive semantic claims,
+- VA is a validity floor, not a semantic endpoint.
 
-**Justification**  
-Execution-based evaluation uses VA as a baseline validity check; the trade-off is that VA can be high even when semantics are wrong.  
-Refs: `REFERENCES.md#ref-zhong2020-ts`.
+## Metric Definitions
 
----
+### VA
+Whether predicted SQL executes under the `QueryRunner` safety policy.
 
-### Execution Accuracy (EX)
+Code:
+- `nl2sql/query_runner.py`
 
-**Plain-language**  
-EX checks whether predicted SQL returns the same rows as the gold SQL on the base DB.
+### EX
+Whether predicted and gold SQL return equivalent result multisets on the base DB.
 
-**Technical description**  
-`execution_accuracy` runs both SQL queries and compares row multisets using a Counter. Column names are not required to match.
+Code:
+- `nl2sql/eval.py:execution_accuracy`
 
-**Code locations**  
-`nl2sql/eval.py` (`execution_accuracy`, `execute_fetch`)  
-`notebooks/03_agentic_eval.ipynb` (evaluation loop)
+### TS
+Whether predicted and gold SQL agree across perturbed DB replicas.
 
-**Justification**  
-Execution-based equivalence is preferred over EM, but EX depends on DB state and can be fooled by accidental matches.  
-Refs: `REFERENCES.md#ref-zhong2020-ts`.
+Code:
+- `nl2sql/eval.py:test_suite_accuracy_for_item`
 
----
+### EM
+Normalized string equality between predicted and gold SQL.
 
-### Exact Match (EM)
+Code:
+- `nl2sql/postprocess.py:normalize_sql`
 
-**Plain-language**  
-EM is a strict string match. It is retained only to diagnose formatting or postprocessing regressions.
+## Statistical Reporting (Defensible Differences)
 
-**Technical description**  
-Predicted and gold SQL are normalized (strip semicolon, lowercased) and compared directly.
+For each metric and run:
+- report rate and 95% Wilson interval.
 
-**Code locations**  
-`nl2sql/postprocess.py` (`normalize_sql`)  
-`notebooks/03_agentic_eval.ipynb` (evaluation loop)
+For paired run comparisons on identical examples:
+- report delta in percentage points,
+- report improved/degraded/tied counts,
+- report exact McNemar p-value.
 
-**Justification**  
-EM was common in early benchmarks but is not a semantic metric, so EM is treated as diagnostic only.  
-Refs: `REFERENCES.md#ref-yu2018-spider`.
+Code:
+- `nl2sql/research_stats.py`
+- `scripts/generate_research_comparison.py`
 
----
+## Required Result Artifacts
 
-### Test-Suite Accuracy (TS)
+- `results/analysis/overall_metrics_long.csv`
+- `results/analysis/overall_metrics_wide.csv`
+- `results/analysis/paired_deltas.csv`
+- `results/analysis/failure_taxonomy.csv`
+- `results/analysis/per_item_metrics.csv`
 
-**Plain-language**  
-TS checks whether predicted SQL behaves like gold across multiple perturbed DB replicas, reducing lucky execution.
+These files are intended to drive all dissertation tables and plots.
 
-**Technical description**  
-`test_suite_accuracy_for_item` executes both queries on each TS DB and compares results, using ordered comparison only when ORDER BY is present in gold SQL.
+## Claim-Evidence Rulebook
 
-**Code locations**  
-`nl2sql/eval.py` (`test_suite_accuracy_for_item`, `_run_select_ts`, `_results_match_ts`)  
-`notebooks/03_agentic_eval.ipynb` (TS engine factory and evaluation loop)
+Use this checklist when writing results sections.
 
-**Justification**  
-Zhong et al. define distilled test suites; this project implements a lightweight suite-based approximation. The trade-off is reliance on perturbation quality rather than full distillation.  
-Refs: `REFERENCES.md#ref-zhong2020-ts`.
+1. Any claim of "improvement" must include effect size and uncertainty.
+2. Any cross-method claim should use paired evidence on shared examples.
+3. Any mechanism claim should include error-type evidence (not only aggregate metrics).
+4. Any ReAct claim must state whether it is an infrastructure claim (validity/traceability) or a semantic claim.
 
----
+## Interpretation Rules
 
-### Result Logging (JSON serialization)
+- Do not claim semantic improvement from VA alone.
+- Treat EM as supporting evidence, not primary evidence.
+- Prefer paired deltas over unpaired percentage comparison.
+- Always include uncertainty and sample size in claims.
 
-**Plain-language**  
-Evaluation results are saved to JSON so they can be inspected and plotted later.
+## Error Taxonomy Requirement
 
-**Technical description**  
-The notebook save block uses `json.dumps(..., default=str)` to handle Decimal values returned by SQLAlchemy in TS debug samples.
+Every EX/VA failure is bucketed into one dominant class:
+- invalid SQL
+- join path
+- aggregation
+- value linking
+- projection
+- ordering/limit
+- other semantic
 
-**Code locations**  
-`notebooks/03_agentic_eval.ipynb` (evaluation save block)
+Use taxonomy shifts to explain why metrics changed.
 
-**Justification**  
-This avoids failing the run at the final save step while preserving debug information. The trade-off is that some numeric debug fields are stored as strings.
+## Reproducibility Checklist
+
+- fixed dataset and split
+- fixed run config with logged seed
+- archived JSON output per run
+- shared evaluator across methods
+- versioned script/notebook path in run metadata
+
+## Minimal Claim Template
+
+Under the same 200-item test set and evaluator, Method B improved EX by +X pp over Method A (paired McNemar p=Y), while remaining failures were dominated by [error classes].
