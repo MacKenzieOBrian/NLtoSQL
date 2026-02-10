@@ -1,0 +1,6 @@
+run_id,label,status,resolved_path,path_candidates,method_family,model_variant,prompting,k,run_type,n_items
+baseline_k0,Base | k=0,loaded,results/results_zero_shot_200.json,results/baseline/results_zero_shot_200.json | results/results_zero_shot_200.json,baseline,base,k=0,0.0,direct,200.0
+baseline_k3,Base | k=3,loaded,results/results_few_shot_k3_200.json,results/baseline/results_few_shot_k3_200.json | results/results_few_shot_k3_200.json,baseline,base,k=3,3.0,direct,200.0
+qlora_k0,QLoRA | k=0,missing,,results/qlora/results_zero_shot_200.json,qlora,qlora,k=0,0.0,direct,
+qlora_k3,QLoRA | k=3,missing,,results/qlora/results_few_shot_k3_200.json,qlora,qlora,k=3,3.0,direct,
+react_exec,ReAct infra,loaded,results/agent/results_react_200 (9).json,results/agent/results_react_200 (9).json | results/agent/results_react_200.json,agent_infra,unspecified,n/a,,agent,20.0
