@@ -1,72 +1,57 @@
-# Limitations Engineering Log (Reformatted)
+# Limitations
 
-Each limitation is presented in a four-part explanation format.
+This section defines what cannot be concluded from the current evidence.
 
----
+## External Validity
 
-### Decision 6.1 - Keep TS suite-based rather than fully distilled
+- Single schema/domain (ClassicModels).
+- Results may not transfer to unseen enterprise schemas without additional data.
+- SQL dialect assumptions are MySQL-oriented.
 
-**Plain-language**  
-A full distilled test-suite implementation was out of scope, so TS uses perturbed replicas instead.
+Consequence: claims are restricted to this benchmark setting.
 
-**Technical description**  
-`test_suite_accuracy_for_item` evaluates gold and predicted SQL across multiple TS DBs and requires consistent matches.
+## Replication Boundaries (Against Ojuri et al., 2025)
 
-**Code locations**  
-`nl2sql/eval.py` (`test_suite_accuracy_for_item`)  
-`notebooks/03_agentic_eval.ipynb` (TS engine factory + evaluation loop)
+- This study replicates methodology patterns and comparative structure, not exact proprietary model stacks.
+- Source-paper SOTA benchmarks (for example GPT-4 / Llama-3.3-70B settings) are not directly equivalent to local open-source 8B runs.
+- Minor implementation differences (prompt templates, guardrails, postprocess policy, TS approximation) can shift absolute percentages.
 
-**Justification**  
-Zhong et al. (2020) motivate test-suite evaluation, but distillation is complex. The trade-off is that suite-based TS depends on perturbation quality.
+Consequence: replication claims should be framed as directional trend agreement/disagreement under an open-source local setup.
 
----
+## Evaluation Limits
 
-### Decision 6.2 - Use heuristic schema linking rather than a learned linker
+- EX is evaluated on a single base DB state.
+- TS uses perturbed replicas, not fully distilled test suites.
+- EM underestimates semantic equivalence by construction.
 
-**Plain-language**  
-A learned schema linker was out of scope. The tool‑driven loop uses a lightweight heuristic linker, which can still miss relevant tables or over‑prune in edge cases.
+Consequence: semantic confidence is improved, not absolute.
 
-**Technical description**  
-`link_schema` applies `build_schema_subset` to prune the schema and add join hints before SQL generation. This remains heuristic (keyword‑based) rather than learned.
+## Modeling Limits
 
-**Code locations**  
-`nl2sql/agent_tools.py` (`get_schema`, `schema_to_text`, `link_schema`)  
-`nl2sql/agent_utils.py` (`build_schema_subset`)
+- Heuristic schema linking (not learned linker).
+- Heuristic constraint extraction (not semantic parser).
+- ReAct repair is bounded and may stop before full semantic correction.
 
-**Justification**  
-Schema linking is a known bottleneck (Li et al., 2023; Zhu et al., 2024). The trade-off is heuristic coverage and weaker generalization.
+Consequence: the system remains vulnerable to complex join/aggregation/value-grounding errors.
 
----
+## Methodological Limits
 
-### Decision 6.3 - Limit reflection to a single bounded step
+- Compute budget limits breadth of hyperparameter sweeps.
+- Some comparisons currently have small-n slices (e.g., interim agent runs).
+- Statistical significance on small paired sets should be treated cautiously.
 
-**Plain-language**  
-Unbounded reflection risks drift and opaque behavior. The tool‑driven loop uses a bounded step budget and only repairs on explicit execution errors.
+Consequence: emphasize effect sizes and confidence intervals, not only p-values.
 
-**Technical description**  
-`react_sql` iterates up to `REACT_MAX_STEPS`. When `run_sql` fails, the loop forces a `repair_sql` action and re‑runs guardrails before the next execution attempt.
+## Infrastructure vs Research Boundary
 
-**Code locations**  
-`notebooks/03_agentic_eval.ipynb` (`react_sql`)  
-`nl2sql/agent_tools.py` (`run_sql`, `repair_sql`)  
-`nl2sql/agent_utils.py` (`intent_constraints`)  
-Legacy: `nl2sql/agent.py` (`ReactSqlAgent.reflect_sql`)
+- ReAct loop is designed for robustness and observability.
+- It is not claimed as the primary source of semantic gains.
 
-**Justification**  
-ReAct and ExCoT motivate feedback, but do not require unlimited revisions (Yao et al., 2023; Zhai et al., 2025). The trade-off is that some errors may need multiple reflections and will be missed.
+Consequence: dissertation claims must center on controlled prompting/fine-tune comparisons.
 
----
+## Planned Mitigations (Future Work)
 
-### Decision 6.4 - Heuristic constraint extraction (no learned parser)
-
-**Plain-language**  
-Constraints (COUNT/ORDER/LIMIT/DISTINCT) are extracted with simple rules, not a learned semantic parser.
-
-**Technical description**  
-`extract_constraints` uses regex cues (e.g., “how many”, “top 5”, “distinct”) and `validate_constraints` enforces those structural requirements. This is lightweight and auditable but can mis-handle paraphrases or nuanced requests.
-
-**Code locations**  
-`nl2sql/agent_tools.py` (`extract_constraints`, `validate_constraints`)
-
-**Justification**  
-This keeps the loop explainable and avoids introducing another learned model. The trade-off is brittleness on unusual phrasing.
+- Add additional schemas for external-validity checks.
+- Replace heuristic linker with a learned or hybrid linker ablation.
+- Expand repeated-run protocol and report pooled uncertainty.
+- Introduce richer semantic error labels for join-chain and aggregation-scope subtypes.

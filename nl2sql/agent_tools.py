@@ -17,7 +17,7 @@ from .schema import list_tables, get_table_columns
 from .llm import generate_sql_from_messages
 from .prompting import SYSTEM_INSTRUCTIONS
 from .query_runner import QueryRunner
-from .agent_schema_linking import build_schema_subset
+from .agent_schema_linking import build_schema_subset, format_join_hints
 from .constraint_policy import build_constraints
 from .repair_policy import deterministic_repair
 from .validation import validate_sql as _validate_sql, validate_constraints as _validate_constraints
@@ -52,9 +52,13 @@ def _require_ctx() -> AgentContext:
 def schema_to_text(schema: dict) -> str:
     """Render a structured schema to prompt-friendly text."""
     lines: list[str] = []
+    tables: set[str] = set()
     for table in schema.get("tables", []):
+        tables.add(table["name"])
         cols = [c["name"] for c in table.get("columns", [])]
         lines.append(f"{table['name']}({', '.join(cols)})")
+    if lines:
+        lines.append(format_join_hints(tables))
     return "\n".join(lines)
 
 

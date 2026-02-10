@@ -284,8 +284,20 @@ def _extract_value_hints(nlq: str) -> list[str]:
         p = phrase.strip()
         if p and p not in {"the", "a", "an"}:
             hints.add(p)
-
-    return [h.lower() for h in hints if h.strip()]
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for h in hints:
+        v = str(h or "").strip().lower()
+        if not v:
+            continue
+        # Normalize leading articles in multiword values, e.g. "the san francisco".
+        v = re.sub(r"^(?:the|a|an)\s+", "", v)
+        v = re.sub(r"\s+", " ", v).strip()
+        if not v or v in seen:
+            continue
+        seen.add(v)
+        normalized.append(v)
+    return normalized
 
 
 def _value_linked_columns_from_tables(nlq: str, tables: dict[str, list[str]]) -> list[str]:
@@ -379,7 +391,9 @@ def _extract_required_columns(nlq: str) -> list[str]:
     if re.search(r"\b(per|by)\s+product\s+line\b", nl):
         _add("productLine")
     if re.search(r"\b(per|by)\s+customer\b", nl):
-        _add("customerName")
+        # Treat "by customer <id>" or quoted name as a filter, not a grouping dimension.
+        if not re.search(r"\b(per|by)\s+customer\s+\d+\b", nl) and not re.search(r"\b(per|by)\s+customer\s+['\\\"]", nl):
+            _add("customerName")
 
     # High-precision mappings for frequent EX failures.
     if re.search(r"\bpayments?\s+made\s+by\s+customer\b", nl):

@@ -117,6 +117,18 @@ def build_constraints(nlq: str, schema_text: str) -> dict:
         explicit_fields
         and ("," in nl or " and " in nl or nl.strip().startswith(("show", "list", "give", "display")))
     )
+    # High-precision non-aggregate templates where projection should be enforced.
+    if not explicit_projection and agg is None:
+        if re.search(r"\bpayments?\s+made\s+by\s+customer\b", nl):
+            explicit_projection = True
+        elif re.search(r"\borders?\b", nl) and re.search(r"\bcancelled\b", nl):
+            explicit_projection = True
+        elif re.search(r"\bshipped\s+date\b", nl) and re.search(r"\brequired\s+date\b", nl) and re.search(r"\bbefore\b", nl):
+            explicit_projection = True
+        elif re.search(r"\blow\s+on\s+stock\b", nl) or (
+            re.search(r"\bless\s+than\b", nl) and re.search(r"\bstock|inventory|quantity\b", nl)
+        ):
+            explicit_projection = True
     value_columns = _value_linked_columns_from_tables(nlq, _parse_schema_summary(schema_text))
     needs_location = bool(value_hints and re.search(r"\b(in|from|located|based|office)\b", nl))
 

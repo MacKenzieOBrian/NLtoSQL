@@ -389,3 +389,25 @@
 - **Justification (literature/docs):**
 - Modular schema/constraint handling remains aligned with schema-aware NL2SQL design patterns (RAT-SQL): https://aclanthology.org/2020.acl-main.677/
 - Separation of deterministic constraints and generation/repair is consistent with constrained-decoding and execution-guided practices (PICARD, execution-guided decoding): https://arxiv.org/abs/2109.05093, https://arxiv.org/abs/1807.03100
+
+### 2026-02-10 — Research-First Refactor (Defensibility + Scope Control)
+- **Trigger:** Needed dissertation-ready evidence that can be rerun, plotted, and defended without over-optimizing agent complexity.
+- **Code changes:**
+  - Added `nl2sql/research_stats.py` for Wilson intervals and exact McNemar paired significance tests.
+  - Refactored `nl2sql/react_pipeline.py` to default to a minimal `react_core` loop and added reproducibility metadata (`timestamp`, `seed`, `config_snapshot`, `dataset_signature`, optional `run_metadata`).
+  - Updated `scripts/generate_research_comparison.py` to output paired significance (`mcnemar_p`) alongside deltas.
+- **Documentation changes:** Reframed methodology/evaluation docs so prompting + QLoRA remain primary claims and ReAct is explicitly execution infrastructure.
+- **Outcome:** Comparison outputs now support claims with uncertainty and paired significance, not only raw percentage differences.
+- **Next:** Run full QLoRA `k=0/k=3` evaluations and regenerate `results/analysis/*` for final dissertation plots.
+
+### 2026-02-10 — QLoRA Hyperparameter Rationale Logged
+- **Change:** Added `8_QLORA_CONFIGURATION.md` with setting-by-setting rationale for `TrainingArguments` and LoRA defaults used in `notebooks/05_qlora_train_eval.ipynb`.
+- **Why:** Examiner-facing reproducibility requires explicit justification of hyperparameters under compute constraints, not only code snippets.
+- **Added:** A reusable per-run markdown template capturing resolved precision mode (`bf16`/`fp16`), environment versions, commit hash, data file, adapter path, and evaluation outputs.
+- **Method impact:** No change to training/evaluation code paths; documentation-only change for defensibility.
+
+### 2026-02-10 — Replication Angle Integrated Across Docs and Notebooks
+- **Change:** Added explicit dissertation framing that this project replicates the *methodological comparison structure* of Ojuri et al. (2025) using an open-source local stack, rather than claiming exact proprietary-model parity.
+- **Docs updated:** `1_LITERATURE.md`, `2_METHODOLOGY.md`, `4_EVALUATION.md`, `5_RESEARCH_GROUNDING_MAP.md`, `6_LIMITATIONS.md`.
+- **Notebook methodology intros updated:** `notebooks/02_baseline_prompting_eval.ipynb`, `notebooks/03_agentic_eval.ipynb`, `notebooks/05_qlora_train_eval.ipynb`, `notebooks/06_research_comparison.ipynb`.
+- **Why:** Keep examiner-facing narrative consistent from literature -> method -> evaluation -> run notebooks, and keep ReAct explicitly scoped as execution infrastructure.

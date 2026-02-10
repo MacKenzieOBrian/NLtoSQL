@@ -22,3 +22,24 @@ If you have older baseline JSONs from before EX was redefined as execution accur
 Why there are multiple JSONs per method:
 - `results_*zero_shot*` (`k=0`) isolates the method’s performance without exemplars.
 - `results_*few_shot*` (`k=3`) shows whether adding exemplars helps on top of that method (baseline or QLoRA).
+
+## Run Organization (important)
+
+- Use `results/RUN_INDEX.md` as the single source of truth for:
+  - active files used by scripts,
+  - archived duplicates,
+  - per-run metric snapshots.
+
+Active script inputs should remain:
+- `results/baseline/results_zero_shot_200.json`
+- `results/baseline/results_few_shot_k3_200.json`
+- `results/qlora/results_zero_shot_200.json`
+- `results/qlora/results_few_shot_k3_200.json`
+
+All historical/extra copies should live under:
+- `results/archive/` (raw legacy duplicates)
+- `results/runs/<YYYY-MM-DD>_<method>_<tag>/` (frozen run bundles)
+
+For the end-to-end experimental execution sequence (k-sweep, seed repeats, ablations),
+follow:
+- `10_EXPERIMENT_EXECUTION_PLAN.md`

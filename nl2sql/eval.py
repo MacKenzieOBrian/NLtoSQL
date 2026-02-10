@@ -26,7 +26,7 @@ from sqlalchemy.engine import Engine
 from .db import safe_connection
 from .llm import generate_sql_from_messages
 from .postprocess import guarded_postprocess, normalize_sql
-from .agent_utils import _extract_required_columns
+from .constraint_policy import build_constraints
 from .prompting import make_few_shot_messages
 from .query_runner import DEFAULT_FORBIDDEN_TOKENS, QueryRunner
 
@@ -378,8 +378,16 @@ def eval_run(
         )
         # Postprocess is intentionally deterministic: it cleans common formatting/projection issues
         # without changing model weights. See nl2sql.postprocess.guarded_postprocess.
-        explicit_fields = _extract_required_columns(nlq)
-        pred_sql = postprocess(raw_sql, nlq, explicit_fields=explicit_fields)
+        constraints = build_constraints(nlq, schema_summary)
+        explicit_fields = constraints.get("explicit_fields")
+        explicit_projection = constraints.get("explicit_projection")
+        required_fields = constraints.get("required_output_fields")
+        pred_sql = postprocess(
+            raw_sql,
+            nlq,
+            explicit_fields=explicit_fields if explicit_projection else None,
+            required_fields=required_fields,
+        )
 
         # VA (executability) from the QueryRunner.
         meta = qr.run(pred_sql, capture_df=False)

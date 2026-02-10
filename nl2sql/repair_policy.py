@@ -12,6 +12,17 @@ import re
 from .constraint_hints import _extract_value_hints
 
 
+def _normalize_location_phrase(text: str) -> str:
+    """Normalize location phrase candidates for deterministic templates."""
+    v = (text or "").strip().lower()
+    if not v:
+        return ""
+    # Remove leading articles common in NLQs, e.g. "the san francisco".
+    v = re.sub(r"^(?:the|a|an)\s+", "", v)
+    v = re.sub(r"\s+", " ", v).strip()
+    return v
+
+
 def deterministic_repair(nlq: str, bad_sql: str, error: str) -> str | None:
     """Return a deterministic repaired SQL for known patterns, else None."""
     del bad_sql  # reserved for future pattern conditions
@@ -22,10 +33,20 @@ def deterministic_repair(nlq: str, bad_sql: str, error: str) -> str | None:
     if re.search(r"\bemployees?\b", nl) and re.search(r"\boffice(s)?\b", nl) and re.search(
         r"\bcount\b|how many|number of", nl
     ):
-        if any(k in err for k in ("missing_location_table", "missing_required_table", "missing_join_path", "ambiguous")):
+        if any(
+            k in err
+            for k in (
+                "missing_location_table",
+                "missing_location_column",
+                "missing_required_table",
+                "missing_join_path",
+                "missing_value_hint",
+                "ambiguous",
+            )
+        ):
             city = None
             for hint in _extract_value_hints(nlq):
-                h = str(hint or "").strip().lower()
+                h = _normalize_location_phrase(str(hint or ""))
                 if " " in h and re.search(r"[a-z]", h) and not re.search(r"\d", h):
                     city = " ".join(tok.capitalize() for tok in h.split())
                     break
@@ -62,5 +83,13 @@ def deterministic_repair(nlq: str, bad_sql: str, error: str) -> str | None:
     # Average MSRP by product line.
     if re.search(r"\baverage\b", nl) and re.search(r"\bmsrp\b", nl) and re.search(r"\b(per|by)\s+product\s+line\b", nl):
         return "SELECT productLine, AVG(MSRP) AS avg_msrp FROM products GROUP BY productLine;"
+
+    # Employees and their managers (self-join).
+    if re.search(r"\bemployees?\b", nl) and re.search(r"\bmanagers?\b", nl):
+        return (
+            "SELECT e.firstName AS employee_first, e.lastName AS employee_last, "
+            "m.firstName AS manager_first, m.lastName AS manager_last "
+            "FROM employees e LEFT JOIN employees m ON e.reportsTo = m.employeeNumber;"
+        )
 
     return None

@@ -145,7 +145,12 @@ def enforce_explicit_projection(sql: str, explicit_fields: Iterable[str] | None)
     return _rebuild_select(sql, ordered)
 
 
-def prune_id_like_columns(sql: str, nlq: str, explicit_fields: Iterable[str] | None = None) -> str:
+def prune_id_like_columns(
+    sql: str,
+    nlq: str,
+    explicit_fields: Iterable[str] | None = None,
+    required_fields: Iterable[str] | None = None,
+) -> str:
     """
     Drop ID/code/number columns when the NLQ does not ask for them explicitly.
     Helps EM on datasets where gold projections exclude IDs.
@@ -156,6 +161,11 @@ def prune_id_like_columns(sql: str, nlq: str, explicit_fields: Iterable[str] | N
     if explicit_fields:
         for field in explicit_fields:
             if ID_LIKE_COL_RE.search(field):
+                return sql
+    # If required fields include an ID-like column, keep identifiers.
+    if required_fields:
+        for field in required_fields:
+            if ID_LIKE_COL_RE.search(str(field)):
                 return sql
     m = SELECT_LIST_RE.search(sql)
     if not m:
@@ -172,8 +182,15 @@ def prune_id_like_columns(sql: str, nlq: str, explicit_fields: Iterable[str] | N
     return _rebuild_select(sql, kept)
 
 
-def enforce_minimal_projection(sql: str, nlq: str) -> str:
+def enforce_minimal_projection(
+    sql: str,
+    nlq: str,
+    required_fields: Iterable[str] | None = None,
+) -> str:
     if not sql or not nlq:
+        return sql
+    # If the NLQ (or constraints) require specific output fields, avoid collapsing the projection.
+    if required_fields:
         return sql
     # If the NLQ enumerates fields or uses "with", keep the full projection.
     if "," in nlq or " and " in nlq.lower() or " with " in nlq.lower():
@@ -235,7 +252,13 @@ def reorder_projection(sql: str, explicit_fields: Iterable[str] | None) -> str:
     return _rebuild_select(sql, ordered)
 
 
-def guarded_postprocess(sql: str, nlq: str, *, explicit_fields: Iterable[str] | None = None) -> str:
+def guarded_postprocess(
+    sql: str,
+    nlq: str,
+    *,
+    explicit_fields: Iterable[str] | None = None,
+    required_fields: Iterable[str] | None = None,
+) -> str:
     """
     Combined guardrail used in eval:
     - keep first SELECT
@@ -251,7 +274,12 @@ def guarded_postprocess(sql: str, nlq: str, *, explicit_fields: Iterable[str] | 
     if explicit_fields:
         cleaned = enforce_explicit_projection(cleaned, explicit_fields)
     else:
-        cleaned = prune_id_like_columns(cleaned, nlq, explicit_fields=explicit_fields)
-        cleaned = enforce_minimal_projection(cleaned, nlq)
+        cleaned = prune_id_like_columns(
+            cleaned,
+            nlq,
+            explicit_fields=explicit_fields,
+            required_fields=required_fields,
+        )
+        cleaned = enforce_minimal_projection(cleaned, nlq, required_fields=required_fields)
     cleaned = reorder_projection(cleaned, explicit_fields)
     return cleaned

@@ -1,0 +1,15 @@
+run_id,run_label,method_family,model_variant,prompting,failure_type,count,share_of_failures,share_of_all
+baseline_k0,Base | k=0,baseline,base,k=0,join_path,107,0.5783783783783784,0.535
+baseline_k0,Base | k=0,baseline,base,k=0,invalid_sql,38,0.20540540540540542,0.19
+baseline_k0,Base | k=0,baseline,base,k=0,projection,30,0.16216216216216217,0.15
+baseline_k0,Base | k=0,baseline,base,k=0,value_linking,10,0.05405405405405406,0.05
+baseline_k3,Base | k=3,baseline,base,k=3,projection,62,0.49206349206349204,0.31
+baseline_k3,Base | k=3,baseline,base,k=3,invalid_sql,29,0.23015873015873015,0.145
+baseline_k3,Base | k=3,baseline,base,k=3,value_linking,12,0.09523809523809523,0.06
+baseline_k3,Base | k=3,baseline,base,k=3,join_path,10,0.07936507936507936,0.05
+baseline_k3,Base | k=3,baseline,base,k=3,other_semantic,7,0.05555555555555555,0.035
+baseline_k3,Base | k=3,baseline,base,k=3,aggregation,6,0.047619047619047616,0.03
+react_exec,ReAct infra,agent_infra,unspecified,n/a,projection,5,0.5555555555555556,0.25
+react_exec,ReAct infra,agent_infra,unspecified,n/a,join_path,2,0.2222222222222222,0.1
+react_exec,ReAct infra,agent_infra,unspecified,n/a,invalid_sql,1,0.1111111111111111,0.05
+react_exec,ReAct infra,agent_infra,unspecified,n/a,other_semantic,1,0.1111111111111111,0.05
