@@ -2,16 +2,18 @@
 Canonical, module-level ReAct-style NL->SQL pipeline.
 
 This module freezes the tool order in code so notebooks only call module APIs.
-It also provides cumulative ablations:
-1) baseline
-2) +schema link
-3) +constraint policy
-4) +repair policy
+It also provides a minimal core loop for primary research experiments plus
+optional ablations.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import hashlib
+import json
+import random
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 from .agent_tools import (
@@ -38,36 +40,57 @@ class ReactAblationConfig:
     use_schema_link: bool
     use_constraint_policy: bool
     use_repair_policy: bool
+    use_intent_gate: bool = False
+    stop_on_first_success: bool = True
     max_repairs: int = 2
     link_max_tables: int = 6
 
 
+def core_react_config(name: str = "react_core") -> ReactAblationConfig:
+    """
+    Minimal, dissertation-first ReAct setup:
+    setup once -> generate -> validate -> execute -> repair only on failure.
+    """
+    return ReactAblationConfig(
+        name=name,
+        use_schema_link=True,
+        use_constraint_policy=True,
+        use_repair_policy=True,
+        use_intent_gate=False,
+        stop_on_first_success=True,
+        max_repairs=2,
+        link_max_tables=6,
+    )
+
+
 def default_ablation_plan() -> list[ReactAblationConfig]:
-    """Cumulative ablation path used in dissertation experiments."""
+    """
+    Recommended ablation path:
+    1) core minimal loop (primary reporting default)
+    2) optional intent gate
+    3) optional extra repairs
+    """
     return [
+        core_react_config(),
         ReactAblationConfig(
-            name="baseline",
-            use_schema_link=False,
-            use_constraint_policy=False,
-            use_repair_policy=False,
-        ),
-        ReactAblationConfig(
-            name="plus_schema_link",
-            use_schema_link=True,
-            use_constraint_policy=False,
-            use_repair_policy=False,
-        ),
-        ReactAblationConfig(
-            name="plus_constraint_policy",
-            use_schema_link=True,
-            use_constraint_policy=True,
-            use_repair_policy=False,
-        ),
-        ReactAblationConfig(
-            name="plus_repair_policy",
+            name="react_plus_intent_gate",
             use_schema_link=True,
             use_constraint_policy=True,
             use_repair_policy=True,
+            use_intent_gate=True,
+            stop_on_first_success=False,
+            max_repairs=2,
+            link_max_tables=6,
+        ),
+        ReactAblationConfig(
+            name="react_plus_intent_gate_extra_repairs",
+            use_schema_link=True,
+            use_constraint_policy=True,
+            use_repair_policy=True,
+            use_intent_gate=True,
+            stop_on_first_success=False,
+            max_repairs=3,
+            link_max_tables=6,
         ),
     ]
 
@@ -100,6 +123,19 @@ def _coerce_candidate(raw: str | list[str]) -> str:
                 return c.strip()
         return ""
     return (raw or "").strip()
+
+
+def _now_utc_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _dataset_signature(rows: list[dict[str, Any]]) -> str:
+    """
+    Stable dataset hash for reproducibility/audit.
+    """
+    canonical = [{"nlq": r.get("nlq"), "sql": r.get("sql")} for r in rows]
+    blob = json.dumps(canonical, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(blob).hexdigest()
 
 
 def run_react_pipeline(
@@ -202,29 +238,35 @@ def run_react_pipeline(
         run = run_sql(sql)
         trace.append({"stage": "run_sql", "sql": sql, "result": run})
         if run.get("success"):
-            ok, why = intent_constraints(nlq, sql)
-            trace.append({"stage": "intent_check", "ok": ok, "reason": why})
-            if ok:
+            if config.stop_on_first_success and not config.use_intent_gate:
+                trace.append({"stage": "stop", "reason": "first_success"})
                 return sql, trace
-            if not config.use_repair_policy or repair_count >= config.max_repairs:
-                return sql, trace
-            repaired = repair_sql(nlq, sql, f"intent_mismatch:{why}", schema_text_full)
-            repair_raw = _coerce_candidate(repaired)
-            sql, clean_reason = _apply_guardrails(repair_raw, nlq, constraints)
-            repair_count += 1
-            trace.append(
-                {
-                    "stage": "repair_sql",
-                    "reason": f"intent_mismatch:{why}",
-                    "raw_sql": repair_raw,
-                    "sql_after_guardrails": sql,
-                    "guardrail_reason": clean_reason,
-                    "repair_count": repair_count,
-                }
-            )
-            if not sql:
-                return "", trace
-            continue
+            if config.use_intent_gate:
+                ok, why = intent_constraints(nlq, sql)
+                trace.append({"stage": "intent_check", "ok": ok, "reason": why})
+                if ok:
+                    return sql, trace
+                if not config.use_repair_policy or repair_count >= config.max_repairs:
+                    return sql, trace
+                repaired = repair_sql(nlq, sql, f"intent_mismatch:{why}", schema_text_full)
+                repair_raw = _coerce_candidate(repaired)
+                sql, clean_reason = _apply_guardrails(repair_raw, nlq, constraints)
+                repair_count += 1
+                trace.append(
+                    {
+                        "stage": "repair_sql",
+                        "reason": f"intent_mismatch:{why}",
+                        "raw_sql": repair_raw,
+                        "sql_after_guardrails": sql,
+                        "guardrail_reason": clean_reason,
+                        "repair_count": repair_count,
+                    }
+                )
+                if not sql:
+                    return "", trace
+                continue
+            trace.append({"stage": "intent_check", "skipped": True})
+            return sql, trace
 
         if not config.use_repair_policy or repair_count >= config.max_repairs:
             return sql, trace
@@ -257,11 +299,16 @@ def evaluate_react_ablation(
     ts_make_engine_fn: Optional[Callable[[str], Any]] = None,
     ts_max_rows: int = 500,
     progress_every: int = 20,
+    seed: Optional[int] = None,
+    run_metadata: Optional[dict[str, Any]] = None,
+    save_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """
     Evaluate one ablation config over a test set and return metrics + item logs.
     """
     rows = test_set[:limit] if limit else test_set
+    if seed is not None:
+        random.seed(seed)
     qr = QueryRunner(engine, max_rows=50)
     items: list[dict[str, Any]] = []
 
@@ -330,8 +377,13 @@ def evaluate_react_ablation(
     n = max(len(rows), 1)
     ts_values = [r["ts"] for r in items if r["ts"] is not None]
 
-    return {
+    report: dict[str, Any] = {
+        "timestamp": _now_utc_iso(),
+        "seed": seed,
+        "limit": limit,
+        "dataset_signature": _dataset_signature(rows),
         "config": config.name,
+        "config_snapshot": asdict(config),
         "n": len(rows),
         "va_rate": va_hits / n,
         "em_rate": em_hits / n,
@@ -339,6 +391,16 @@ def evaluate_react_ablation(
         "ts_rate": (sum(int(v) for v in ts_values) / max(len(ts_values), 1)) if ts_values else None,
         "items": items,
     }
+    if run_metadata:
+        report["run_metadata"] = run_metadata
+
+    if save_path is not None:
+        out = Path(save_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+        print(f"[{config.name}] Saved report: {out}")
+
+    return report
 
 
 def run_ablation_suite(
@@ -351,12 +413,18 @@ def run_ablation_suite(
     ts_make_engine_fn: Optional[Callable[[str], Any]] = None,
     ts_max_rows: int = 500,
     progress_every: int = 20,
+    seed: Optional[int] = None,
+    run_metadata: Optional[dict[str, Any]] = None,
+    save_dir: str | Path | None = None,
 ) -> list[dict[str, Any]]:
     """
     Run the default cumulative ablation plan and return one report per stage.
     """
     reports: list[dict[str, Any]] = []
     for cfg in default_ablation_plan():
+        cfg_save_path: Path | None = None
+        if save_dir is not None:
+            cfg_save_path = Path(save_dir) / f"{cfg.name}.json"
         report = evaluate_react_ablation(
             test_set=test_set,
             engine=engine,
@@ -367,6 +435,9 @@ def run_ablation_suite(
             ts_make_engine_fn=ts_make_engine_fn,
             ts_max_rows=ts_max_rows,
             progress_every=progress_every,
+            seed=seed,
+            run_metadata=run_metadata,
+            save_path=cfg_save_path,
         )
         reports.append(report)
         ts_s = "NA" if report["ts_rate"] is None else f"{report['ts_rate']:.3f}"
