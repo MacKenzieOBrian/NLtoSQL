@@ -69,12 +69,53 @@ def _find_latest_agent_json(project_root: Path) -> str | None:
     return str(latest.relative_to(project_root))
 
 
+def _slugify(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return slug or "model"
+
+
+def _discover_model_family_specs(project_root: Path) -> list[RunSpec]:
+    model_family_dir = project_root / "results" / "baseline" / "model_family"
+    if not model_family_dir.exists():
+        return []
+
+    specs: list[RunSpec] = []
+    seen_run_ids: set[str] = set()
+    for path in sorted(model_family_dir.glob("*_k*.json")):
+        match = re.match(r"(?P<alias>.+)_k(?P<k>\d+)\.json$", path.name)
+        if not match:
+            continue
+
+        alias = match.group("alias")
+        alias_slug = _slugify(alias)
+        k_value = int(match.group("k"))
+        run_id = f"modelfam_{alias_slug}_k{k_value}"
+        if run_id in seen_run_ids:
+            continue
+        seen_run_ids.add(run_id)
+
+        rel = str(path.relative_to(project_root))
+        specs.append(
+            RunSpec(
+                run_id=run_id,
+                label=f"{alias.replace('_', '-')} | k={k_value}",
+                method_family="model_family",
+                model_variant=alias_slug,
+                prompting=f"k={k_value}",
+                k=k_value,
+                run_type="direct",
+                path_candidates=(rel,),
+            )
+        )
+    return specs
+
+
 def default_specs(project_root: Path) -> list[RunSpec]:
     latest_agent = _find_latest_agent_json(project_root)
     agent_candidates: tuple[str, ...] = tuple(
         p for p in (latest_agent, "results/agent/results_react_200.json") if p is not None
     )
-    return [
+    specs = [
         RunSpec(
             run_id="baseline_k0",
             label="Base | k=0",
@@ -140,6 +181,8 @@ def default_specs(project_root: Path) -> list[RunSpec]:
             path_candidates=agent_candidates,
         ),
     ]
+    specs.extend(_discover_model_family_specs(project_root))
+    return specs
 
 
 def _resolve_existing_path(project_root: Path, candidates: tuple[str, ...]) -> Path | None:
@@ -510,6 +553,52 @@ def build_paired_deltas(per_item: pd.DataFrame) -> pd.DataFrame:
                 comparison_label=comp_label,
             )
         )
+
+    model_family = per_item[per_item["method_family"] == "model_family"][
+        ["run_id", "model_variant", "k"]
+    ].drop_duplicates()
+    if not model_family.empty:
+        model_family["k"] = pd.to_numeric(model_family["k"], errors="coerce")
+        for model_variant, group in model_family.groupby("model_variant", dropna=False):
+            group = group.dropna(subset=["k"])
+            if group.empty:
+                continue
+
+            k0 = group[group["k"] == 0]["run_id"].drop_duplicates().head(1).tolist()
+            k3 = group[group["k"] == 3]["run_id"].drop_duplicates().head(1).tolist()
+            if not k0 or not k3:
+                continue
+
+            left_id = k0[0]
+            right_id = k3[0]
+            if left_id not in by_run or right_id not in by_run:
+                continue
+
+            model_slug = _slugify(str(model_variant))
+            model_label = str(model_variant).replace("_", "-")
+            rows.extend(
+                _paired_metric_rows(
+                    by_run[left_id],
+                    by_run[right_id],
+                    left_id=left_id,
+                    right_id=right_id,
+                    comparison_id=f"few_shot_gain_{model_slug}",
+                    comparison_label=f"Few-shot gain ({model_label}: k=0 -> k=3)",
+                )
+            )
+
+            if "baseline_k3" in by_run:
+                rows.extend(
+                    _paired_metric_rows(
+                        by_run["baseline_k3"],
+                        by_run[right_id],
+                        left_id="baseline_k3",
+                        right_id=right_id,
+                        comparison_id=f"k3_model_family_{model_slug}",
+                        comparison_label=f"Model-family contrast (Base k=3 -> {model_label} k=3)",
+                    )
+                )
+
     if not rows:
         return pd.DataFrame()
     return pd.DataFrame(rows)
@@ -586,6 +675,11 @@ def _write_markdown_summary(
     lines.append("## Notes")
     lines.append("- Agent run is treated as execution infrastructure, not the primary contribution.")
     lines.append("- Primary claims should use base/QLoRA and k=0/k=3 controlled comparisons.")
+    loaded_model_family = manifest[
+        (manifest["status"] == "loaded") & (manifest["method_family"] == "model_family")
+    ]
+    if not loaded_model_family.empty:
+        lines.append("- Model-family runs were auto-loaded from `results/baseline/model_family/`.")
     out_path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -626,7 +720,7 @@ def save_figures(
 
     if not paired.empty:
         delta_df = paired[
-            paired["comparison_id"].isin(["few_shot_gain_base", "few_shot_gain_qlora"])
+            paired["comparison_id"].astype(str).str.startswith("few_shot_gain_")
             & paired["metric"].isin(["va", "em", "ex"])
         ].copy()
         if not delta_df.empty:

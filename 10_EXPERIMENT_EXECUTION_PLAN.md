@@ -7,7 +7,8 @@ This runbook turns the dissertation plan into a repeatable sequence with minimal
 Establish defensible differences for:
 - prompting (`k=0` vs `k>0`),
 - fine-tuning (base vs QLoRA),
-- execution infrastructure (ReAct as validity support, not primary semantic method).
+- execution infrastructure (ReAct as validity support, not primary semantic method),
+- open-model family robustness (same task/harness across different OSS model families and sizes).
 
 ## Seed Rule (important)
 
@@ -30,7 +31,47 @@ Both baseline/QLoRA notebooks now expose:
 - `SCHEMA_VARIANT`
 - `run_*_grid(...)` helpers that save per-run JSONs and summary CSVs.
 
+## Model-Family Extension (Added)
+
+Goal: test whether your core prompting trend (`k=0` -> `k=3`) is stable across open models, not only one base model.
+
+Recommended model set:
+- anchor (already used): `meta-llama/Meta-Llama-3-8B-Instruct`
+- low-parameter comparator: `microsoft/Phi-3.5-mini-instruct`
+- alternate OSS family comparator: `mistralai/Mistral-7B-Instruct-v0.3`
+
+Scope rule:
+- run these additional models as inference-only first (baseline notebook),
+- keep prompt/schema/exemplar controls fixed,
+- do not replace canonical baseline files used for primary dissertation comparisons.
+
 ## Standard Run Order
+
+### E0: Model-family check (new; inference-only first)
+
+Run `/Users/mackenzieobrian/MacDoc/Dissertation/notebooks/02_baseline_prompting_eval.ipynb` once per additional model with:
+- `MODEL_ID` set to the target model
+- `K_VALUES = [0, 3]`
+- `SEEDS = [7]`
+- `RUN_TAG = "baseline_<model_alias>_main"` (for example `baseline_phi35mini_main`)
+- `PROMPT_VARIANT = "default"`
+- `SCHEMA_VARIANT = "full"`
+- `EXEMPLAR_STRATEGY = "all"`
+- `copy_canonical=False` in the `run_baseline_grid(...)` call (important)
+
+Run count:
+- per added model: 2 runs (`k=0`, `k=3`)
+- for two added models: 4 runs total
+
+Optional stability extension:
+- repeat with `SEEDS = [7, 17, 27, 37, 47]`
+- effective runs per added model become 6 (`k=0` uses one seed, `k=3` uses all five)
+
+Output handling:
+- keep full outputs under `results/baseline/runs/<run_tag_timestamp>/...`
+- copy primary JSONs into `results/baseline/model_family/` with fixed names:
+  - `<model_alias>_k0.json`
+  - `<model_alias>_k3.json`
 
 ### E1: Core comparison with stability
 
@@ -105,6 +146,12 @@ Keep these as the "active" comparison set:
 - `/Users/mackenzieobrian/MacDoc/Dissertation/results/qlora/qlora_k3.json`
 - latest ReAct run JSON under `/Users/mackenzieobrian/MacDoc/Dissertation/results/agent/`
 
+Supplementary model-family files (do not replace the active set):
+- `/Users/mackenzieobrian/MacDoc/Dissertation/results/baseline/model_family/phi35mini_k0.json`
+- `/Users/mackenzieobrian/MacDoc/Dissertation/results/baseline/model_family/phi35mini_k3.json`
+- `/Users/mackenzieobrian/MacDoc/Dissertation/results/baseline/model_family/mistral7b_k0.json`
+- `/Users/mackenzieobrian/MacDoc/Dissertation/results/baseline/model_family/mistral7b_k3.json`
+
 Archive all other run copies under:
 - `/Users/mackenzieobrian/MacDoc/Dissertation/results/runs/`
 - `/Users/mackenzieobrian/MacDoc/Dissertation/results/archive/`
@@ -123,6 +170,10 @@ Expected artifacts:
 - `/Users/mackenzieobrian/MacDoc/Dissertation/results/analysis/paired_deltas.csv`
 - `/Users/mackenzieobrian/MacDoc/Dissertation/results/analysis/failure_taxonomy.csv`
 - `/Users/mackenzieobrian/MacDoc/Dissertation/results/analysis/summary.md`
+
+Note:
+- the default script uses core baseline/QLoRA/ReAct canonical files and auto-loads any model-family files present under `results/baseline/model_family/`.
+- treat model-family outputs as supplementary unless they are promoted to a primary research question.
 
 ## Reporting Template
 

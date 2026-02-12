@@ -54,7 +54,10 @@ Code pointers:
 
 ## Q6. What does the ReAct core loop do?
 
-`get_schema -> link_schema -> extract_constraints -> generate_sql -> validate_sql -> validate_constraints -> run_sql`, with `repair_sql` only on validation/execution failure and stop on first success.
+`get_schema -> link_schema -> extract_constraints -> generate_sql -> validate_sql -> validate_constraints -> run_sql`, with `repair_sql` only on validation/execution failure.
+
+If execution succeeds, the loop stops and returns that SQL.
+If repair budget is exhausted without a successful execution, the loop returns `no_prediction` (it does not return known-failed SQL).
 
 Code pointer:
 - `nl2sql/react_pipeline.py`
