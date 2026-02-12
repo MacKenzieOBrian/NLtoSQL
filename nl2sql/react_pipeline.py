@@ -1,9 +1,9 @@
 """
-Canonical, module-level ReAct-style NL->SQL pipeline.
+Module-level execution-guided NL->SQL pipeline.
 
-This module freezes the tool order in code so notebooks only call module APIs.
-It also provides a minimal core loop for primary research experiments plus
-optional ablations.
+This module freezes tool order in code for reproducible fixed-order runs.
+For paper-aligned, model-driven Thought/Action/Observation trajectories,
+use the notebook orchestration path in `notebooks/03_agentic_eval.ipynb`.
 """
 
 from __future__ import annotations
@@ -145,7 +145,7 @@ def run_react_pipeline(
     config: ReactAblationConfig,
 ) -> tuple[str, list[dict[str, Any]]]:
     """
-    Run one NLQ through the canonical, fixed-order tool pipeline.
+    Run one NLQ through the fixed-order execution pipeline.
     Returns: (pred_sql, trace)
     """
     trace: list[dict[str, Any]] = []
