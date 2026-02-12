@@ -53,6 +53,7 @@ Default loop used for comparison:
 5. Execute: `run_sql`
 6. Repair only if validation/execution fails
 7. Stop immediately on first successful execution
+8. If no successful execution is reached within repair budget, emit `no_prediction` (do not return known-failed SQL)
 
 Implementation source:
 - `nl2sql/react_pipeline.py`

@@ -299,8 +299,8 @@ def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: 
         table = str(constraints.get("self_join_table") or "").lower()
         if table:
             # Require a self-join pattern: table appears in FROM and JOIN.
-            has_from = re.search(rf"\\bfrom\\s+{re.escape(table)}\\b", sql_low) is not None
-            has_join = re.search(rf"\\bjoin\\s+{re.escape(table)}\\b", sql_low) is not None
+            has_from = re.search(rf"\bfrom\s+{re.escape(table)}\b", sql_low) is not None
+            has_join = re.search(rf"\bjoin\s+{re.escape(table)}\b", sql_low) is not None
             if not (has_from and has_join):
                 return {
                     "valid": False,
