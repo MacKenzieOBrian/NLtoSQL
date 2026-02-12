@@ -6,8 +6,8 @@ If you want to avoid committing large artifacts later, add explicit ignore patte
 
 ## Recommended dissertation outputs to keep
 
-- Baseline JSONs: `results/baseline/results_zero_shot_200.json`, `results/baseline/results_few_shot_k3_200.json`
-- QLoRA JSONs: `results/qlora/results_zero_shot_200.json`, `results/qlora/results_few_shot_k3_200.json`
+- Baseline JSONs: `results/baseline/baseline_k0.json`, `results/baseline/baseline_k3.json`
+- QLoRA JSONs: `results/qlora/qlora_k0.json`, `results/qlora/qlora_k3.json`
 - Key figures (PNG) used in the write-up (e.g., bar charts for VA/EM/EX)
 
 ## Metric naming note
@@ -31,10 +31,10 @@ Why there are multiple JSONs per method:
   - per-run metric snapshots.
 
 Active script inputs should remain:
-- `results/baseline/results_zero_shot_200.json`
-- `results/baseline/results_few_shot_k3_200.json`
-- `results/qlora/results_zero_shot_200.json`
-- `results/qlora/results_few_shot_k3_200.json`
+- `results/baseline/baseline_k0.json`
+- `results/baseline/baseline_k3.json`
+- `results/qlora/qlora_k0.json`
+- `results/qlora/qlora_k3.json`
 
 All historical/extra copies should live under:
 - `results/archive/` (raw legacy duplicates)

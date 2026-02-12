@@ -26,8 +26,11 @@ Relevant grounding:
 QLoRA/PEFT allows adaptation without full-model training and is the right tool for compute-constrained experimentation. In this dissertation, fine-tuning is evaluated as a semantic mapping intervention, not as a deployment optimization story.
 
 Relevant grounding:
+- LoRA low-rank adaptation method: `REFERENCES.md#ref-hu2021-lora`
+- QLoRA quantized adaptation method: `REFERENCES.md#ref-dettmers2023-qlora`
 - PEFT foundations: `REFERENCES.md#ref-ding2023-peft`
 - Applied PEFT evidence under constraints: `REFERENCES.md#ref-goswami2024-peft`
+- Local open model provenance (Llama 3): `REFERENCES.md#ref-dubey2024-llama3`
 
 ## Execution-Guided Agents: What They Solve
 
@@ -49,6 +52,7 @@ Relevant grounding:
 - Relation-aware schema linking: `REFERENCES.md#ref-wang2020-ratsql`
 - Decoupled schema linking and parsing: `REFERENCES.md#ref-li2023-resdsql`
 - Value linking (text -> table value correspondence): `REFERENCES.md#ref-lin2020-bridge`
+- Contextual interaction benchmarks: `REFERENCES.md#ref-yu2019-sparc`, `REFERENCES.md#ref-yu2019-cosql`
 
 ## Claim-Level Literature Anchors
 

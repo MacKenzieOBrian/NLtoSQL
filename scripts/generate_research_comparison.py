@@ -54,7 +54,15 @@ def _to_flag(value: Any) -> int | None:
 
 
 def _find_latest_agent_json(project_root: Path) -> str | None:
-    candidates = sorted((project_root / "results" / "agent").glob("results_react_200*.json"))
+    agent_dir = project_root / "results" / "agent"
+    preferred = agent_dir / "react_infra_n20_v9.json"
+    if preferred.exists():
+        return str(preferred.relative_to(project_root))
+
+    candidates = sorted(
+        list(agent_dir.glob("react_infra*.json"))
+        + list(agent_dir.glob("results_react_200*.json"))
+    )
     if not candidates:
         return None
     latest = max(candidates, key=lambda p: p.stat().st_mtime)
@@ -76,6 +84,7 @@ def default_specs(project_root: Path) -> list[RunSpec]:
             k=0,
             run_type="direct",
             path_candidates=(
+                "results/baseline/baseline_k0.json",
                 "results/baseline/results_zero_shot_200.json",
                 "results/results_zero_shot_200.json",
             ),
@@ -89,6 +98,7 @@ def default_specs(project_root: Path) -> list[RunSpec]:
             k=3,
             run_type="direct",
             path_candidates=(
+                "results/baseline/baseline_k3.json",
                 "results/baseline/results_few_shot_k3_200.json",
                 "results/results_few_shot_k3_200.json",
             ),
@@ -101,7 +111,10 @@ def default_specs(project_root: Path) -> list[RunSpec]:
             prompting="k=0",
             k=0,
             run_type="direct",
-            path_candidates=("results/qlora/results_zero_shot_200.json",),
+            path_candidates=(
+                "results/qlora/qlora_k0.json",
+                "results/qlora/results_zero_shot_200.json",
+            ),
         ),
         RunSpec(
             run_id="qlora_k3",
@@ -111,7 +124,10 @@ def default_specs(project_root: Path) -> list[RunSpec]:
             prompting="k=3",
             k=3,
             run_type="direct",
-            path_candidates=("results/qlora/results_few_shot_k3_200.json",),
+            path_candidates=(
+                "results/qlora/qlora_k3.json",
+                "results/qlora/results_few_shot_k3_200.json",
+            ),
         ),
         RunSpec(
             run_id="react_exec",

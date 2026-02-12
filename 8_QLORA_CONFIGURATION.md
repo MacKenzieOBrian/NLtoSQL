@@ -9,6 +9,13 @@ This document explains the default QLoRA setup used in `notebooks/05_qlora_train
 - Adapter output: `results/adapters/qlora_classicmodels`
 - Goal: stable, reproducible adaptation under Colab-level compute constraints.
 
+## Method Citations
+
+- Base model family (Llama 3): `REFERENCES.md#ref-dubey2024-llama3`
+- LoRA method: `REFERENCES.md#ref-hu2021-lora`
+- QLoRA method: `REFERENCES.md#ref-dettmers2023-qlora`
+- Transformers software stack citation: `REFERENCES.md#ref-wolf2020-transformers`
+
 ## TrainingArguments Rationale
 
 | Setting | Value | Why this is used | Tradeoff |

@@ -13,6 +13,9 @@ Replication target:
 
 This is a replication-oriented comparison study, not a claim of exact model parity with proprietary systems (for example GPT-4 class models in the source paper).
 
+For an examiner-facing replication narrative and claim templates, see:
+- `11_REPLICATION_POSITIONING.md`
+
 ## Research Questions
 
 - RQ1: How much does few-shot prompting (`k=0` vs `k=3`) improve VA/EX/TS/EM under fixed model weights?

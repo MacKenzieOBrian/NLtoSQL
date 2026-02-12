@@ -99,10 +99,10 @@ Interpretation rule:
 ## Canonical Files for Cross-Method Comparison
 
 Keep these as the "active" comparison set:
-- `/Users/mackenzieobrian/MacDoc/Dissertation/results/baseline/results_zero_shot_200.json`
-- `/Users/mackenzieobrian/MacDoc/Dissertation/results/baseline/results_few_shot_k3_200.json`
-- `/Users/mackenzieobrian/MacDoc/Dissertation/results/qlora/results_zero_shot_200.json`
-- `/Users/mackenzieobrian/MacDoc/Dissertation/results/qlora/results_few_shot_k3_200.json`
+- `/Users/mackenzieobrian/MacDoc/Dissertation/results/baseline/baseline_k0.json`
+- `/Users/mackenzieobrian/MacDoc/Dissertation/results/baseline/baseline_k3.json`
+- `/Users/mackenzieobrian/MacDoc/Dissertation/results/qlora/qlora_k0.json`
+- `/Users/mackenzieobrian/MacDoc/Dissertation/results/qlora/qlora_k3.json`
 - latest ReAct run JSON under `/Users/mackenzieobrian/MacDoc/Dissertation/results/agent/`
 
 Archive all other run copies under:
@@ -131,4 +131,3 @@ For each dissertation claim:
 2. report VA/EX/TS/EM + 95% interval,
 3. include paired delta and McNemar significance where applicable,
 4. explain change using error taxonomy shifts.
-

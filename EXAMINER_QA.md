@@ -11,6 +11,15 @@ A controlled, reproducible comparison of NL->SQL improvements under constrained 
 
 ReAct is included as execution infrastructure to stabilize validity and expose failure causes.
 
+## Q1b. How do you replicate Ojuri while emphasizing open-source work?
+
+I replicate Ojuri at the level of *comparison design* and *evaluation discipline* (prompting vs fine-tuning vs agent support, EX/TS-first interpretation, paired statistics), then run those contrasts on a fully open-source local stack with versioned artifacts and rerunnable scripts.
+
+I do not claim proprietary-model parity; I claim directional trend replication under constrained open-source conditions.
+
+Reference note:
+- `11_REPLICATION_POSITIONING.md`
+
 ## Q2. Why is ReAct not your main claim?
 
 Because the dissertation question is "what improves NL->SQL under constraints," not "how complex can the agent become." ReAct is used to enforce tool order, validation, and repair for robust evaluation.
