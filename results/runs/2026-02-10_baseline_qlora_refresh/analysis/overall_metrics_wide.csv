@@ -1,0 +1,6 @@
+run_id,run_label,method_family,model_variant,prompting,k,run_type,n,em,ex,ts,va,va_pct,em_pct,ex_pct,ts_pct
+baseline_k0,Base | k=0,baseline,base,k=0,0.0,direct,200,0.0,0.485,,0.875,87.5,0.0,48.5,
+baseline_k3,Base | k=3,baseline,base,k=3,3.0,direct,200,0.355,0.61,,0.895,89.5,35.5,61.0,
+qlora_k0,QLoRA | k=0,qlora,qlora,k=0,0.0,direct,200,0.03,0.455,,0.865,86.5,3.0,45.5,
+qlora_k3,QLoRA | k=3,qlora,qlora,k=3,3.0,direct,200,0.35,0.55,,0.87,87.0,35.0,55.00000000000001,
+react_exec,ReAct infra,agent_infra,unspecified,n/a,,agent,20,0.35,0.55,0.5789473684210527,0.95,95.0,35.0,55.00000000000001,57.89473684210527
