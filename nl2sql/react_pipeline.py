@@ -1,9 +1,9 @@
 """
-Canonical, module-level ReAct-style NL->SQL pipeline.
+Module-level execution-guided NL->SQL pipeline.
 
-This module freezes the tool order in code so notebooks only call module APIs.
-It also provides a minimal core loop for primary research experiments plus
-optional ablations.
+This module freezes tool order in code for reproducible fixed-order runs.
+For paper-aligned, model-driven Thought/Action/Observation trajectories,
+use the notebook orchestration path in `notebooks/03_agentic_eval.ipynb`.
 """
 
 from __future__ import annotations
@@ -50,6 +50,7 @@ def core_react_config(name: str = "react_core") -> ReactAblationConfig:
     """
     Minimal, dissertation-first ReAct setup:
     setup once -> generate -> validate -> execute -> repair only on failure.
+    A final SQL is accepted only after successful execution.
     """
     return ReactAblationConfig(
         name=name,
@@ -144,10 +145,16 @@ def run_react_pipeline(
     config: ReactAblationConfig,
 ) -> tuple[str, list[dict[str, Any]]]:
     """
-    Run one NLQ through the canonical, fixed-order tool pipeline.
+    Run one NLQ through the fixed-order execution pipeline.
     Returns: (pred_sql, trace)
     """
     trace: list[dict[str, Any]] = []
+
+    def _stop_no_prediction(reason: str, **extra: Any) -> tuple[str, list[dict[str, Any]]]:
+        payload: dict[str, Any] = {"stage": "stop", "reason": reason}
+        payload.update(extra)
+        trace.append(payload)
+        return "", trace
 
     schema = get_schema()
     schema_text_full = schema_to_text(schema)
@@ -182,7 +189,7 @@ def run_react_pipeline(
         }
     )
     if not sql:
-        return "", trace
+        return _stop_no_prediction("guardrail_reject_after_generate", guardrail_reason=clean_reason)
 
     repair_count = 0
     while True:
@@ -190,7 +197,12 @@ def run_react_pipeline(
         trace.append({"stage": "validate_sql", "sql": sql, "result": v_sql})
         if not v_sql.get("valid"):
             if not config.use_repair_policy or repair_count >= config.max_repairs:
-                return sql, trace
+                return _stop_no_prediction(
+                    "validate_sql_failed_no_repair_budget",
+                    failed_stage="validate_sql",
+                    validation=v_sql,
+                    final_sql=sql,
+                )
             repaired = repair_sql(nlq, sql, v_sql.get("reason", "validate_sql_failed"), schema_text_full)
             repair_raw = _coerce_candidate(repaired)
             sql, clean_reason = _apply_guardrails(repair_raw, nlq, constraints)
@@ -206,7 +218,11 @@ def run_react_pipeline(
                 }
             )
             if not sql:
-                return "", trace
+                return _stop_no_prediction(
+                    "guardrail_reject_after_repair",
+                    failed_stage="validate_sql",
+                    guardrail_reason=clean_reason,
+                )
             continue
 
         if constraints is not None:
@@ -214,7 +230,12 @@ def run_react_pipeline(
             trace.append({"stage": "validate_constraints", "sql": sql, "result": v_c})
             if not v_c.get("valid"):
                 if not config.use_repair_policy or repair_count >= config.max_repairs:
-                    return sql, trace
+                    return _stop_no_prediction(
+                        "validate_constraints_failed_no_repair_budget",
+                        failed_stage="validate_constraints",
+                        validation=v_c,
+                        final_sql=sql,
+                    )
                 repaired = repair_sql(nlq, sql, v_c.get("reason", "validate_constraints_failed"), schema_text_full)
                 repair_raw = _coerce_candidate(repaired)
                 sql, clean_reason = _apply_guardrails(repair_raw, nlq, constraints)
@@ -230,7 +251,11 @@ def run_react_pipeline(
                     }
                 )
                 if not sql:
-                    return "", trace
+                    return _stop_no_prediction(
+                        "guardrail_reject_after_repair",
+                        failed_stage="validate_constraints",
+                        guardrail_reason=clean_reason,
+                    )
                 continue
         else:
             trace.append({"stage": "validate_constraints", "skipped": True})
@@ -247,7 +272,12 @@ def run_react_pipeline(
                 if ok:
                     return sql, trace
                 if not config.use_repair_policy or repair_count >= config.max_repairs:
-                    return sql, trace
+                    return _stop_no_prediction(
+                        "intent_check_failed_no_repair_budget",
+                        failed_stage="intent_check",
+                        intent_reason=why,
+                        final_sql=sql,
+                    )
                 repaired = repair_sql(nlq, sql, f"intent_mismatch:{why}", schema_text_full)
                 repair_raw = _coerce_candidate(repaired)
                 sql, clean_reason = _apply_guardrails(repair_raw, nlq, constraints)
@@ -263,13 +293,22 @@ def run_react_pipeline(
                     }
                 )
                 if not sql:
-                    return "", trace
+                    return _stop_no_prediction(
+                        "guardrail_reject_after_repair",
+                        failed_stage="intent_check",
+                        guardrail_reason=clean_reason,
+                    )
                 continue
             trace.append({"stage": "intent_check", "skipped": True})
             return sql, trace
 
         if not config.use_repair_policy or repair_count >= config.max_repairs:
-            return sql, trace
+            return _stop_no_prediction(
+                "run_sql_failed_no_repair_budget",
+                failed_stage="run_sql",
+                execution_error=run.get("error", "execution_failed"),
+                final_sql=sql,
+            )
         repaired = repair_sql(nlq, sql, run.get("error", "execution_failed"), schema_text_full)
         repair_raw = _coerce_candidate(repaired)
         sql, clean_reason = _apply_guardrails(repair_raw, nlq, constraints)
@@ -285,7 +324,11 @@ def run_react_pipeline(
             }
         )
         if not sql:
-            return "", trace
+            return _stop_no_prediction(
+                "guardrail_reject_after_repair",
+                failed_stage="run_sql",
+                guardrail_reason=clean_reason,
+            )
 
 
 def evaluate_react_ablation(
