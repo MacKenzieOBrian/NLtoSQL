@@ -14,3 +14,15 @@ qlora_gain_k3,Fine-tune gain (k=3: Base -> QLoRA),baseline_k3,qlora_k3,ex,200,0.
 react_vs_base_k3,Execution infra effect (Base k=3 -> ReAct),baseline_k3,react_exec,va,20,0.95,0.95,0.0,0.0,1,1,18,2,1.0,0
 react_vs_base_k3,Execution infra effect (Base k=3 -> ReAct),baseline_k3,react_exec,em,20,0.2,0.35,0.14999999999999997,14.999999999999996,4,1,15,5,0.375,0
 react_vs_base_k3,Execution infra effect (Base k=3 -> ReAct),baseline_k3,react_exec,ex,20,0.7,0.55,-0.1499999999999999,-14.999999999999991,0,3,17,3,0.25,0
+few_shot_gain_llama3_8b_instruct,Few-shot gain (llama3-8b-instruct: k=0 -> k=3),modelfam_llama3_8b_instruct_k0,modelfam_llama3_8b_instruct_k3,va,200,0.875,0.895,0.020000000000000018,2.0000000000000018,11,7,182,18,0.480682373046875,0
+few_shot_gain_llama3_8b_instruct,Few-shot gain (llama3-8b-instruct: k=0 -> k=3),modelfam_llama3_8b_instruct_k0,modelfam_llama3_8b_instruct_k3,em,200,0.0,0.355,0.355,35.5,71,0,129,71,1.2596743309903347e-12,1
+few_shot_gain_llama3_8b_instruct,Few-shot gain (llama3-8b-instruct: k=0 -> k=3),modelfam_llama3_8b_instruct_k0,modelfam_llama3_8b_instruct_k3,ex,200,0.485,0.61,0.125,12.5,33,8,159,41,0.00011222142620681552,1
+k3_model_family_llama3_8b_instruct,Model-family contrast (Base k=3 -> llama3-8b-instruct k=3),baseline_k3,modelfam_llama3_8b_instruct_k3,va,200,0.895,0.895,0.0,0.0,0,0,200,0,1.0,0
+k3_model_family_llama3_8b_instruct,Model-family contrast (Base k=3 -> llama3-8b-instruct k=3),baseline_k3,modelfam_llama3_8b_instruct_k3,em,200,0.355,0.355,0.0,0.0,0,0,200,0,1.0,0
+k3_model_family_llama3_8b_instruct,Model-family contrast (Base k=3 -> llama3-8b-instruct k=3),baseline_k3,modelfam_llama3_8b_instruct_k3,ex,200,0.61,0.61,0.0,0.0,0,0,200,0,1.0,0
+few_shot_gain_qwen2_5_7b_instruct,Few-shot gain (qwen2-5-7b-instruct: k=0 -> k=3),modelfam_qwen2_5_7b_instruct_k0,modelfam_qwen2_5_7b_instruct_k3,va,200,0.855,0.885,0.030000000000000027,3.0000000000000027,18,12,170,30,0.361594608053565,0
+few_shot_gain_qwen2_5_7b_instruct,Few-shot gain (qwen2-5-7b-instruct: k=0 -> k=3),modelfam_qwen2_5_7b_instruct_k0,modelfam_qwen2_5_7b_instruct_k3,em,200,0.025,0.34,0.315,31.5,64,1,135,65,4.869560700851427e-13,1
+few_shot_gain_qwen2_5_7b_instruct,Few-shot gain (qwen2-5-7b-instruct: k=0 -> k=3),modelfam_qwen2_5_7b_instruct_k0,modelfam_qwen2_5_7b_instruct_k3,ex,200,0.495,0.585,0.08999999999999997,8.999999999999996,35,17,148,52,0.017533235299084904,1
+k3_model_family_qwen2_5_7b_instruct,Model-family contrast (Base k=3 -> qwen2-5-7b-instruct k=3),baseline_k3,modelfam_qwen2_5_7b_instruct_k3,va,200,0.895,0.885,-0.010000000000000009,-1.0000000000000009,11,13,176,24,0.8388197422027588,0
+k3_model_family_qwen2_5_7b_instruct,Model-family contrast (Base k=3 -> qwen2-5-7b-instruct k=3),baseline_k3,modelfam_qwen2_5_7b_instruct_k3,em,200,0.355,0.34,-0.014999999999999958,-1.4999999999999958,15,18,167,33,0.7283324808813632,0
+k3_model_family_qwen2_5_7b_instruct,Model-family contrast (Base k=3 -> qwen2-5-7b-instruct k=3),baseline_k3,modelfam_qwen2_5_7b_instruct_k3,ex,200,0.61,0.585,-0.025000000000000022,-2.500000000000002,11,16,173,27,0.44206833839416504,0
