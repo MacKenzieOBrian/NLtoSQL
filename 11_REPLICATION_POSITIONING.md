@@ -1,33 +1,28 @@
-# Replication Positioning
+# Replication Positioning (Concise)
 
-## One-line position
-
-This dissertation replicates Ojuri-style comparison logic on a fully open-source, reproducible local stack, aiming for directional replication rather than proprietary score parity.
+## Position
+This dissertation replicates Ojuri-style comparison logic on a fully open-source local stack. Success is directional replication, not proprietary score parity.
 
 ## What is replicated
-
-- comparison structure: prompting vs fine-tuning vs execution support,
-- semantic-first interpretation (EX/TS primary),
-- paired statistical reporting on shared examples.
+- comparison structure (prompting vs fine-tuning vs execution support)
+- EX/TS-first interpretation
+- paired statistical reporting
 
 ## What is not replicated
+- proprietary model stacks
+- proprietary infra settings
+- exact absolute scores from closed systems
 
-- proprietary model stacks,
-- proprietary infrastructure,
-- exact absolute scores from closed environments.
+## Claim boundaries
+- ReAct is an infrastructure claim unless EX/TS gains are significant.
+- EM is diagnostic.
+- Strong claims require paired deltas + uncertainty.
 
-## Contribution focus
+## Evidence map
+- Method deltas: `results/analysis/paired_deltas.csv`
+- Overall metrics: `results/analysis/overall_metrics_wide.csv`
+- Run coverage: `results/analysis/run_manifest.csv`
+- Error mechanism: `results/analysis/failure_taxonomy.csv`
 
-- reproducible open-source experiment pipeline,
-- controlled comparisons under constrained hardware,
-- artifact-backed interpretation with uncertainty and paired significance.
-
-## Claim boundary
-
-- ReAct is an infrastructure claim (validity/traceability) unless EX/TS gains are significant.
-- EM is diagnostic, not a primary semantic claim.
-- Directional agreement is a success criterion; exact parity is not required.
-
-## Paragraph starter (for dissertation)
-
-This work reproduces the experimental logic of enterprise NL-to-SQL comparison studies in an open-source environment. The contribution is not proprietary-model parity, but a transparent and rerunnable evaluation pipeline that tests whether key directional findings persist under constrained compute.
+## Anchor reference
+`REFERENCES.md#ref-ojuri2025-agents`
