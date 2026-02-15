@@ -45,6 +45,7 @@ class EvalItem:
     va: bool
     em: bool
     ex: bool
+    ts: Optional[int]
     error: Optional[str]
     gold_error: Optional[str]
 
@@ -58,6 +59,7 @@ class EvalItem:
             "va": self.va,
             "em": self.em,
             "ex": self.ex,
+            "ts": self.ts,
             "error": self.error,
             "gold_error": self.gold_error,
         }
@@ -338,6 +340,10 @@ def eval_run(
     avoid_exemplar_leakage: bool = True,
     max_compare_rows: int = 10000,
     allow_extra_columns_ex: bool = False,
+    ts_suite_db_names: Optional[list[str]] = None,
+    ts_make_engine_fn: Optional[Callable[[str], Engine]] = None,
+    ts_max_rows: int = 500,
+    ts_strict_gold: bool = True,
 ) -> list[EvalItem]:
     rng = random.Random(seed)
     items = test_set[:limit] if limit else test_set
@@ -401,6 +407,21 @@ def eval_run(
             max_compare_rows=max_compare_rows,
             allow_extra_columns=allow_extra_columns_ex,
         )
+        ts: Optional[int] = None
+        if (
+            bool(meta.success)
+            and ts_suite_db_names
+            and ts_make_engine_fn
+            and pred_sql
+        ):
+            ts, _ = test_suite_accuracy_for_item(
+                make_engine_fn=ts_make_engine_fn,
+                suite_db_names=ts_suite_db_names,
+                gold_sql=gold_sql,
+                pred_sql=pred_sql,
+                max_rows=ts_max_rows,
+                strict_gold=ts_strict_gold,
+            )
 
         out.append(
             EvalItem(
@@ -412,6 +433,7 @@ def eval_run(
                 va=bool(meta.success),
                 em=bool(em),
                 ex=bool(ex),
+                ts=ts,
                 error=meta.error or ex_pred_err,
                 gold_error=ex_gold_err,
             )
@@ -420,7 +442,10 @@ def eval_run(
     va_rate = sum(r.va for r in out) / max(len(out), 1)
     em_rate = sum(r.em for r in out) / max(len(out), 1)
     ex_rate = sum(r.ex for r in out) / max(len(out), 1)
-    print(f"k={k} | n={len(out)} | VA={va_rate:.3f} | EM={em_rate:.3f} | EX={ex_rate:.3f}")
+    ts_values = [int(r.ts) for r in out if r.ts is not None]
+    ts_rate = (sum(ts_values) / max(len(ts_values), 1)) if ts_values else None
+    ts_s = "NA" if ts_rate is None else f"{ts_rate:.3f}"
+    print(f"k={k} | n={len(out)} | VA={va_rate:.3f} | EM={em_rate:.3f} | EX={ex_rate:.3f} | TS={ts_s}")
 
     if save_path:
         save_path = Path(save_path)
@@ -434,6 +459,8 @@ def eval_run(
             "va_rate": va_rate,
             "em_rate": em_rate,
             "ex_rate": ex_rate,
+            "ts_rate": ts_rate,
+            "ts_n": len(ts_values),
             "results": [r.to_jsonable() for r in out],
         }
         if run_metadata:

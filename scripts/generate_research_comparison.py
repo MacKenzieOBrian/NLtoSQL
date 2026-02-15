@@ -110,6 +110,42 @@ def _discover_model_family_specs(project_root: Path) -> list[RunSpec]:
     return specs
 
 
+def _discover_qlora_model_family_specs(project_root: Path) -> list[RunSpec]:
+    model_family_dir = project_root / "results" / "qlora" / "model_family"
+    if not model_family_dir.exists():
+        return []
+
+    specs: list[RunSpec] = []
+    seen_run_ids: set[str] = set()
+    for path in sorted(model_family_dir.glob("*_qlora_k*.json")):
+        match = re.match(r"(?P<alias>.+)_qlora_k(?P<k>\d+)\.json$", path.name)
+        if not match:
+            continue
+
+        alias = match.group("alias")
+        alias_slug = _slugify(alias)
+        k_value = int(match.group("k"))
+        run_id = f"qlorafam_{alias_slug}_k{k_value}"
+        if run_id in seen_run_ids:
+            continue
+        seen_run_ids.add(run_id)
+
+        rel = str(path.relative_to(project_root))
+        specs.append(
+            RunSpec(
+                run_id=run_id,
+                label=f"{alias.replace('_', '-')} | QLoRA | k={k_value}",
+                method_family="qlora_model_family",
+                model_variant=alias_slug,
+                prompting=f"k={k_value}",
+                k=k_value,
+                run_type="direct",
+                path_candidates=(rel,),
+            )
+        )
+    return specs
+
+
 def default_specs(project_root: Path) -> list[RunSpec]:
     latest_agent = _find_latest_agent_json(project_root)
     agent_candidates: tuple[str, ...] = tuple(
@@ -153,6 +189,7 @@ def default_specs(project_root: Path) -> list[RunSpec]:
             k=0,
             run_type="direct",
             path_candidates=(
+                "results/qlora/llama3_8b_instruct_qlora_k0.json",
                 "results/qlora/qlora_k0.json",
                 "results/qlora/results_zero_shot_200.json",
             ),
@@ -166,6 +203,7 @@ def default_specs(project_root: Path) -> list[RunSpec]:
             k=3,
             run_type="direct",
             path_candidates=(
+                "results/qlora/llama3_8b_instruct_qlora_k3.json",
                 "results/qlora/qlora_k3.json",
                 "results/qlora/results_few_shot_k3_200.json",
             ),
@@ -182,6 +220,7 @@ def default_specs(project_root: Path) -> list[RunSpec]:
         ),
     ]
     specs.extend(_discover_model_family_specs(project_root))
+    specs.extend(_discover_qlora_model_family_specs(project_root))
     return specs
 
 
