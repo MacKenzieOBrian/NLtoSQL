@@ -1,22 +1,36 @@
-# Logbook (Dissertation Notes)
+# Logbook (Condensed Research Journey)
 
-## Project aim
-Evaluate open-source NL->SQL improvements under constrained hardware with controlled comparisons.
+## Project objective
+Build a reproducible open-source NL->SQL evaluation pipeline and test how prompting, QLoRA, and ReAct-style infrastructure affect semantic performance under constrained compute.
 
-## Timeline highlights
-- 2025-09 to 2025-10: scope and evaluation framing established (EX/TS-first).
-- 2025-11 to 2025-12: baseline execution pipeline and prompting runs completed.
-- 2026-01: QLoRA training/eval pipeline completed.
-- 2026-01 to 2026-02: ReAct infrastructure refined for bounded repair and traceability.
-- 2026-02: ReAct loop updated to model-driven Thought/Action/Observation (closer to reference behavior than fixed-order controller flow).
+## Phase 1: Framing and scope (Sep-Oct 2025)
+- Defined contribution around reproducibility and open-source constraints.
+- Shifted evaluation emphasis from syntax quality to execution semantics.
+- Locked claim boundary: EX/TS-first evidence, not benchmark storytelling.
 
-## Current evidence position
-- Primary claims: base vs qlora, controlled by k/seed.
-- Secondary claims: ReAct infrastructure behavior.
-- Residual errors: join path, aggregation, value linking.
+## Phase 2: Baseline pipeline (Nov-Dec 2025)
+- Implemented schema extraction, execution harness, and deterministic evaluation path.
+- Completed base prompting runs on ClassicModels 200-item set.
+- Established that few-shot improves structure and semantics relative to zero-shot.
 
-## Writing rule per claim
-1. State setup.
-2. Report EX/TS result and uncertainty.
-3. Add paired significance.
-4. Explain with failure taxonomy.
+## Phase 3: QLoRA adaptation (Jan 2026)
+- Built adapter training/evaluation workflow with constrained-resource settings.
+- Produced Llama QLoRA runs and matched base-vs-QLoRA comparisons.
+- Observed mixed adaptation gains in current snapshot, especially at matched `k=3`.
+
+## Phase 4: ReAct infrastructure alignment (Feb 2026)
+- Replaced fixed controller ordering with model-driven Thought/Action/Observation loop.
+- Added strict `finish` gating and bounded repair/step budgets.
+- Removed deterministic repair templates from the main reported loop path.
+- Interpreted ReAct as infrastructure unless EX/TS gains are demonstrated.
+
+## Current evidence position (from `results/analysis/`)
+- Strong few-shot EX gains for base and QLoRA (`k=0 -> k=3`).
+- Current Llama QLoRA snapshot does not outperform base EX at `k=3`.
+- Qwen baseline shows stronger EX at higher `k` in available runs.
+- ReAct diagnostic value is clear; performance claim remains secondary at current sample size.
+
+## Next analysis actions
+1. Complete remaining planned sweeps (especially missing matched QLoRA/model-family cells).
+2. Run TS checks on selected stable `k=3` runs.
+3. Regenerate comparison artifacts and finalize claim language from paired + taxonomy outputs.

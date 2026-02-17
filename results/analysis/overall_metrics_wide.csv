@@ -8,4 +8,6 @@ modelfam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | k=3,model_family,qwen2_5_7
 modelfam_qwen2_5_7b_instruct_k5,qwen2-5-7b-instruct | k=5,model_family,qwen2_5_7b_instruct,k=5,5.0,direct,200,0.4,0.65,,0.895,89.5,40.0,65.0,
 qlora_k0,QLoRA | k=0,qlora,qlora,k=0,0.0,direct,200,0.03,0.455,,0.865,86.5,3.0,45.5,
 qlora_k3,QLoRA | k=3,qlora,qlora,k=3,3.0,direct,200,0.35,0.55,,0.87,87.0,35.0,55.00000000000001,
+qlorafam_qwen2_5_7b_instruct_k0,qwen2-5-7b-instruct | QLoRA | k=0,qlora_model_family,qwen2_5_7b_instruct,k=0,0.0,direct,200,0.01,0.435,,0.815,81.5,1.0,43.5,
+qlorafam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | QLoRA | k=3,qlora_model_family,qwen2_5_7b_instruct,k=3,3.0,direct,200,0.315,0.535,,0.85,85.0,31.5,53.5,
 react_exec,ReAct infra,agent_infra,unspecified,n/a,,agent,20,0.35,0.55,0.5789473684210527,0.95,95.0,35.0,55.00000000000001,57.89473684210527
