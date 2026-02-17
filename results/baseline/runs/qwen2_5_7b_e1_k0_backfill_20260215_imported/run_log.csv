@@ -1,0 +1,3 @@
+file,k,seed,n,va_rate,em_rate,ex_rate,model_id,run_tag
+"results_k0_seed17.json","0","17","200","0.855","0.025","0.495","Qwen/Qwen2.5-7B-Instruct","qwen2_5_7b_e1_k0_backfill"
+"results_k0_seed27.json","0","27","200","0.855","0.025","0.495","Qwen/Qwen2.5-7B-Instruct","qwen2_5_7b_e1_k0_backfill"

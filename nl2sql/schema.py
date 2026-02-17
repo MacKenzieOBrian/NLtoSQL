@@ -38,7 +38,15 @@ def get_table_columns(engine: Engine, *, db_name: str, table_name: str) -> pd.Da
         """
     )
     with safe_connection(engine) as conn:
-        return pd.read_sql(query, conn, params={"db": db_name, "table": table_name})
+        # Use SQLAlchemy execution directly instead of pandas.read_sql to avoid
+        # pandas/SQLAlchemy adapter issues in some Colab environments.
+        result = conn.execute(query, {"db": db_name, "table": table_name})
+        rows = result.fetchall()
+
+    if not rows:
+        return pd.DataFrame(columns=["COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE", "COLUMN_KEY"])
+
+    return pd.DataFrame(rows, columns=["COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE", "COLUMN_KEY"])
 
 
 def build_schema_summary(engine: Engine, *, db_name: str, max_cols_per_table: int = 50) -> str:

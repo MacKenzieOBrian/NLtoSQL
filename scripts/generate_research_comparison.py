@@ -1,8 +1,23 @@
 #!/usr/bin/env python3
-"""Build dissertation-ready comparison artifacts from NL2SQL result JSON files.
+"""
+Statistical reporting:
+- Per-run uncertainty: Wilson 95% interval per metric rate.
+- Paired comparisons: right_rate - left_rate on identical NLQs.
+- Paired significance: exact McNemar from discordant pairs.
 
-This script treats agent runs as execution infrastructure and focuses analysis on
-controlled metric comparisons across prompting (k=0 vs k>0) and fine-tuning.
+Pipeline overview:
+1) discover and load run JSON files into one per-item table,
+2) compute per-run VA/EM/EX/TS with Wilson intervals,
+3) compute paired deltas and McNemar significance for fixed comparisons,
+4) build failure taxonomy and summary plots,
+5) write analysis artifacts to `results/analysis/`.
+
+References (project anchors):
+- Evaluation focus (execution semantics): `REFERENCES.md#ref-yu2018-spider`,
+  `REFERENCES.md#ref-zhong2020-ts`
+- Significance testing practice: `REFERENCES.md#ref-dror2018-significance`
+- Interval/test formulas: `REFERENCES.md#ref-wilson1927`,
+  `REFERENCES.md#ref-mcnemar1947`
 """
 
 from __future__ import annotations
@@ -445,6 +460,8 @@ def build_overall_metrics(per_item: pd.DataFrame) -> pd.DataFrame:
             successes = int(valid.sum())
             n = int(valid.count())
             rate = successes / n
+            # Wilson interval gives stable CI coverage for binary rates.
+            # Ref: REFERENCES.md#ref-wilson1927
             lo, hi = wilson_interval(successes, n)
             row = dict(base)
             row.update(
@@ -537,9 +554,13 @@ def _paired_metric_rows(
         valid = merged[[col_l, col_r]].dropna()
         if valid.empty:
             continue
+        # Paired delta on identical NLQs (controls per-example difficulty).
+        # Guidance ref: REFERENCES.md#ref-dror2018-significance
         left_rate = float(valid[col_l].mean())
         right_rate = float(valid[col_r].mean())
         delta = right_rate - left_rate
+        # Exact McNemar uses only discordant outcomes.
+        # Ref: REFERENCES.md#ref-mcnemar1947
         improve = int((valid[col_r] > valid[col_l]).sum())
         degrade = int((valid[col_r] < valid[col_l]).sum())
         ties = int((valid[col_r] == valid[col_l]).sum())
@@ -572,6 +593,7 @@ def build_paired_deltas(per_item: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
     rows = []
     by_run = {run_id: df.copy() for run_id, df in per_item.groupby("run_id")}
+    # Controlled, pre-registered style comparisons used for dissertation claims.
     pair_defs = [
         ("baseline_k0", "baseline_k3", "few_shot_gain_base", "Few-shot gain (Base: k=0 -> k=3)"),
         ("qlora_k0", "qlora_k3", "few_shot_gain_qlora", "Few-shot gain (QLoRA: k=0 -> k=3)"),
