@@ -1,96 +1,33 @@
-# Examiner Q&A
+# Examiner Q&A (Concise)
 
-This sheet is aligned with the current repository implementation.
+## Q1. Primary contribution?
+A controlled, reproducible open-source comparison of prompting vs QLoRA for NL->SQL under constrained hardware, with paired statistics and failure analysis.
 
-## Q1. What is your primary contribution?
+## Q2. How is this linked to Ojuri?
+I replicate comparison structure and evaluation discipline, not proprietary stack parity.
 
-A controlled, reproducible comparison of NL->SQL improvements under constrained compute:
-- prompting effect (`k=0` vs `k=3`)
-- QLoRA fine-tuning effect (base vs adapted model)
-- error-category analysis explaining metric movement
+Ref: `REFERENCES.md#ref-ojuri2025-agents`
 
-ReAct is included as execution infrastructure to stabilize validity and expose failure causes.
+## Q3. Why is ReAct not the main claim?
+ReAct is used as execution infrastructure (validation, repair, traceability). Semantic claims still require EX/TS evidence.
 
-## Q1b. How do you replicate Ojuri while emphasizing open-source work?
+## Q4. Which metrics matter most?
+EX and TS first, then VA; EM is diagnostic.
 
-I replicate Ojuri at the level of *comparison design* and *evaluation discipline* (prompting vs fine-tuning vs agent support, EX/TS-first interpretation, paired statistics), then run those contrasts on a fully open-source local stack with versioned artifacts and rerunnable scripts.
+## Q5. Statistical defensibility?
+95% Wilson intervals, paired deltas, exact McNemar p-values.
 
-I do not claim proprietary-model parity; I claim directional trend replication under constrained open-source conditions.
+## Q6. ReAct loop behavior?
+`get_schema -> link_schema -> extract_constraints -> generate_sql -> validate_sql -> validate_constraints -> run_sql`, repair only on failure, return `no_prediction` if repair budget is exhausted.
 
-Reference note:
-- `11_REPLICATION_POSITIONING.md`
+## Q7. What remains hard?
+Join path, aggregation scope, and value-linking errors.
 
-## Q2. Why is ReAct not your main claim?
+## Q8. Strongest artifacts?
+- `results/analysis/overall_metrics_wide.csv`
+- `results/analysis/paired_deltas.csv`
+- `results/analysis/failure_taxonomy.csv`
+- `results/analysis/run_manifest.csv`
 
-Because the dissertation question is "what improves NL->SQL under constraints," not "how complex can the agent become." ReAct is used to enforce tool order, validation, and repair for robust evaluation.
-
-## Q3. What metrics matter most and why?
-
-- EX and TS are primary semantic metrics.
-- VA measures executability.
-- EM is diagnostic only.
-
-Code pointers:
-- `nl2sql/eval.py`
-- `4_EVALUATION.md`
-
-## Q4. How do you defend differences statistically?
-
-- 95% Wilson intervals for per-run rates.
-- Paired deltas on identical examples.
-- Exact McNemar p-values for binary paired outcomes.
-
-Code pointers:
-- `nl2sql/research_stats.py`
-- `scripts/generate_research_comparison.py`
-
-## Q5. How do you ensure fair comparisons?
-
-- same test set
-- same evaluator
-- same SQL safety policy
-- same output artifact format
-- explicit run metadata
-
-## Q6. What does the ReAct core loop do?
-
-`get_schema -> link_schema -> extract_constraints -> generate_sql -> validate_sql -> validate_constraints -> run_sql`, with `repair_sql` only on validation/execution failure.
-
-In paper-aligned mode, action choice remains model-driven (Thought/Action/Observation), with no controller fallback to a non-ReAct baseline candidate.
-
-If execution succeeds, the loop returns the executed SQL.
-If the step/repair budget is exhausted without a successful execution, the loop returns `no_prediction` (it does not return known-failed SQL).
-
-Code pointer:
-- `nl2sql/react_pipeline.py`
-- `notebooks/03_agentic_eval.ipynb`
-
-## Q7. What remains hard even after improvements?
-
-Semantic alignment errors: join-path mistakes, aggregation scope errors, and value-linking misses. Execution guidance improves validity but does not eliminate these categories.
-
-## Q8. What are your strongest evidence artifacts?
-
-- run JSONs in `results/`
-- paired/comparison tables in `results/analysis/`
-- failure taxonomy in `results/analysis/failure_taxonomy.csv`
-- dated rationale in `LOGBOOK.md`
-
-## Q9. What do you explicitly not claim?
-
-- not a universal state-of-the-art Text-to-SQL agent
-- not proven cross-domain generalization
-- not full replacement for learned schema/linking models
-
-## 3-Minute Opening Script (Viva)
-
-1. Research focus:
-   - This project evaluates how far open-source NL->SQL can be pushed under constrained compute, using controlled and reproducible comparisons.
-2. Method:
-   - I compare prompting and QLoRA adaptation on the same held-out set, with paired statistics and explicit error taxonomy.
-3. ReAct role:
-   - ReAct is used as execution infrastructure for robustness and observability, not as the primary semantic claim.
-4. Main finding style:
-   - I report directional changes with effect size, uncertainty, and paired significance, then explain those changes using failure categories.
-5. Contribution:
-   - The main contribution is a fully reproducible open-source evaluation workflow with defensible comparative evidence.
+## Q9. What is not claimed?
+No claim of universal SOTA agent, proprietary parity, or cross-domain generalization from a single schema.

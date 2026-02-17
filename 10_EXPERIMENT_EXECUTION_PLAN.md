@@ -1,49 +1,39 @@
-# Experiment Execution Plan
+# Experiment Execution Plan (Concise)
 
-## Purpose
-
-Run controlled comparisons for:
-- prompting effect (`k=0` vs few-shot),
-- fine-tuning effect (base vs QLoRA),
-- optional ReAct infrastructure checks,
-- optional model-family robustness checks.
-
-## Control Rule
-
+## Control rule
 Change one axis at a time:
-1. model (`MODEL_ID`),
-2. prompting depth (`K_VALUES`, `SEEDS`),
-3. prompt (`PROMPT_VARIANT`),
-4. schema context (`SCHEMA_VARIANT`),
-5. exemplar strategy (`EXEMPLAR_STRATEGY`),
-6. TS toggle (`ENABLE_TS`).
+1. model (`MODEL_ID`)
+2. prompting (`K_VALUES`, `SEEDS`)
+3. prompt variant
+4. schema variant
+5. exemplar strategy
+6. TS toggle
 
-Keep all other knobs fixed when making a claim.
+## Core grid
+- `K_VALUES=[0,3,5]`
+- `SEEDS=[7,17,27]`
+- Methods: baseline + qlora
+- Models: llama3_8b_instruct + qwen2_5_7b_instruct
 
-## Run Order (default)
-
-1. Baseline quick (`k=0,3`, seed `7`).
-2. QLoRA quick (`k=0,3`, seed `7`).
-3. Baseline full sweep (`k=[0,1,3,5,8]`, seeds `[7,17,27,37,47]`).
-4. QLoRA full sweep (same grid).
-5. Optional TS check on `k=3` (small seed set).
-6. Regenerate analysis artifacts.
+## Run order
+1. Baseline quick check (`k=[0,3]`, `seed=[7]`)
+2. QLoRA quick check (`k=[0,3]`, `seed=[7]`)
+3. Baseline full grid
+4. QLoRA full grid
+5. Optional TS checks (`k=3`, small seed set)
+6. Regenerate analysis outputs
 
 ## Notebooks
+- Baseline: `notebooks/02_baseline_prompting_eval.ipynb`
+- QLoRA: `notebooks/05_qlora_train_eval.ipynb`
+- ReAct infra: `notebooks/03_agentic_eval.ipynb`
+- Comparison: `notebooks/06_research_comparison.ipynb`
 
-- Baseline: `/Users/mackenzieobrian/MacDoc/Dissertation/notebooks/02_baseline_prompting_eval.ipynb`
-- QLoRA: `/Users/mackenzieobrian/MacDoc/Dissertation/notebooks/05_qlora_train_eval.ipynb`
-- ReAct infra: `/Users/mackenzieobrian/MacDoc/Dissertation/notebooks/03_agentic_eval.ipynb`
-- Comparison: `/Users/mackenzieobrian/MacDoc/Dissertation/notebooks/06_research_comparison.ipynb`
+## Completion check
+- confirm coverage in `results/analysis/run_manifest.csv`
+- regenerate summary via `scripts/generate_research_comparison.py`
 
-## Post-run command
-
-```bash
-python /Users/mackenzieobrian/MacDoc/Dissertation/scripts/generate_research_comparison.py --out-dir /Users/mackenzieobrian/MacDoc/Dissertation/results/analysis
-```
-
-## Minimum artifacts for writing
-
+## Required output artifacts
 - `results/analysis/overall_metrics_wide.csv`
 - `results/analysis/paired_deltas.csv`
 - `results/analysis/failure_taxonomy.csv`
