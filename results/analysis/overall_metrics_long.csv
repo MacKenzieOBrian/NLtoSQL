@@ -27,3 +27,6 @@ modelfam_qwen2_5_7b_instruct_k0,qwen2-5-7b-instruct | k=0,model_family,qwen2_5_7
 modelfam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | k=3,model_family,qwen2_5_7b_instruct,k=3,3.0,direct,200,va,177,200,0.885,0.8333517476611362,0.9221368277817569,88.5,83.33517476611362,92.21368277817568
 modelfam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | k=3,model_family,qwen2_5_7b_instruct,k=3,3.0,direct,200,em,68,200,0.34,0.2779143922159556,0.40811632967790723,34.0,27.79143922159556,40.81163296779072
 modelfam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | k=3,model_family,qwen2_5_7b_instruct,k=3,3.0,direct,200,ex,117,200,0.585,0.5157378707263818,0.6510583082675037,58.5,51.573787072638176,65.10583082675036
+modelfam_qwen2_5_7b_instruct_k5,qwen2-5-7b-instruct | k=5,model_family,qwen2_5_7b_instruct,k=5,5.0,direct,200,va,179,200,0.895,0.8448186177864638,0.9302930375380627,89.5,84.48186177864639,93.02930375380627
+modelfam_qwen2_5_7b_instruct_k5,qwen2-5-7b-instruct | k=5,model_family,qwen2_5_7b_instruct,k=5,5.0,direct,200,em,80,200,0.4,0.3346046396837895,0.46916456149987484,40.0,33.46046396837895,46.91645614998748
+modelfam_qwen2_5_7b_instruct_k5,qwen2-5-7b-instruct | k=5,model_family,qwen2_5_7b_instruct,k=5,5.0,direct,200,ex,130,200,0.65,0.5816333576186576,0.712712840605846,65.0,58.16333576186577,71.2712840605846

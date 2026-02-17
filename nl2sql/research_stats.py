@@ -3,6 +3,17 @@ Statistical helpers for reproducible NL->SQL comparisons.
 
 These utilities support dissertation-style claims by quantifying uncertainty and
 paired differences (e.g., baseline vs few-shot on the same items).
+
+Rationale used across the project:
+- Per-run uncertainty: Wilson 95% intervals for binary rates.
+- Paired method comparisons: deltas on identical items.
+- Paired significance: exact McNemar on discordant pairs only.
+- Seed robustness is reported when aggregating per-seed run logs.
+
+References (project anchors):
+- `REFERENCES.md#ref-wilson1927`
+- `REFERENCES.md#ref-mcnemar1947`
+- `REFERENCES.md#ref-dror2018-significance`
 """
 
 from __future__ import annotations
@@ -13,10 +24,20 @@ from typing import Iterable, Sequence
 
 
 def wilson_interval(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
-    """Wilson score interval for a Bernoulli rate."""
+    """
+    Wilson score interval for a Bernoulli rate.
+
+    Default z=1.96 corresponds to an approximate 95% interval.
+    Wilson is preferred to the simple normal/Wald interval because it is more
+    stable for modest n and edge rates near 0 or 1 (common for EM/TS slices).
+
+    Ref: `REFERENCES.md#ref-wilson1927`
+    """
     if n <= 0:
         return (math.nan, math.nan)
     phat = successes / n
+    # Closed-form Wilson interval:
+    # center +/- margin, then clipped to [0, 1].
     denom = 1.0 + (z**2) / n
     center = (phat + (z**2) / (2.0 * n)) / denom
     margin = (z * math.sqrt((phat * (1.0 - phat) / n) + (z**2) / (4.0 * (n**2)))) / denom
@@ -32,6 +53,12 @@ def paired_switch_counts(
 
     Inputs are paired per-example outcomes for the same metric and examples.
     Missing values in either side are skipped.
+
+    Pairing on identical examples removes between-question difficulty effects,
+    so the comparison isolates method changes rather than dataset composition.
+
+    Statistical testing guidance for paired NLP outcomes:
+    Ref: `REFERENCES.md#ref-dror2018-significance`
     """
     n = 0
     improve = 0
@@ -71,6 +98,13 @@ def _binom_two_sided_p(n: int, k: int, p: float = 0.5) -> float:
 def mcnemar_exact_p(improved: int, degraded: int) -> float:
     """
     Exact McNemar test p-value (binomial form) for paired binary outcomes.
+
+    Only discordant pairs are informative:
+    - improved: left=0, right=1
+    - degraded: left=1, right=0
+    Ties do not affect the test statistic.
+
+    Ref: `REFERENCES.md#ref-mcnemar1947`
     """
     n_discordant = improved + degraded
     if n_discordant == 0:
@@ -81,7 +115,11 @@ def mcnemar_exact_p(improved: int, degraded: int) -> float:
 
 def summarize_binary(values: Iterable[int | bool | None]) -> dict[str, float | int]:
     """
-    Summarize a binary metric with Wilson interval.
+    Summarize a binary metric with point estimate + Wilson interval.
+
+    Used for per-run reporting of VA/EM/EX/TS rates.
+
+    Ref: `REFERENCES.md#ref-wilson1927`
     """
     clean = [int(bool(v)) for v in values if v is not None]
     n = len(clean)

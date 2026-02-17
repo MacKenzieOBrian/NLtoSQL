@@ -51,3 +51,9 @@ modelfam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | k=3,model_family,qwen2_5_7
 modelfam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | k=3,model_family,qwen2_5_7b_instruct,k=3,other_semantic,13,0.1566265060240964,0.065
 modelfam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | k=3,model_family,qwen2_5_7b_instruct,k=3,value_linking,12,0.14457831325301204,0.06
 modelfam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | k=3,model_family,qwen2_5_7b_instruct,k=3,aggregation,3,0.03614457831325301,0.015
+modelfam_qwen2_5_7b_instruct_k5,qwen2-5-7b-instruct | k=5,model_family,qwen2_5_7b_instruct,k=5,invalid_sql,21,0.3,0.105
+modelfam_qwen2_5_7b_instruct_k5,qwen2-5-7b-instruct | k=5,model_family,qwen2_5_7b_instruct,k=5,projection,18,0.2571428571428571,0.09
+modelfam_qwen2_5_7b_instruct_k5,qwen2-5-7b-instruct | k=5,model_family,qwen2_5_7b_instruct,k=5,other_semantic,13,0.18571428571428572,0.065
+modelfam_qwen2_5_7b_instruct_k5,qwen2-5-7b-instruct | k=5,model_family,qwen2_5_7b_instruct,k=5,value_linking,9,0.12857142857142856,0.045
+modelfam_qwen2_5_7b_instruct_k5,qwen2-5-7b-instruct | k=5,model_family,qwen2_5_7b_instruct,k=5,join_path,7,0.1,0.035
+modelfam_qwen2_5_7b_instruct_k5,qwen2-5-7b-instruct | k=5,model_family,qwen2_5_7b_instruct,k=5,aggregation,2,0.02857142857142857,0.01
