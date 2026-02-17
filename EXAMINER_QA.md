@@ -18,7 +18,9 @@ EX and TS first, then VA; EM is diagnostic.
 95% Wilson intervals, paired deltas, exact McNemar p-values.
 
 ## Q6. ReAct loop behavior?
-`get_schema -> link_schema -> extract_constraints -> generate_sql -> validate_sql -> validate_constraints -> run_sql`, repair only on failure, return `no_prediction` if repair budget is exhausted.
+Model-driven `Thought -> Action -> Observation` loop over tools (not fixed controller order). `finish` is only accepted after successful `run_sql`; otherwise the run continues until success or returns `no_prediction` on step/repair budget exhaustion.
+
+Why this matters: it aligns implementation behavior with the ReAct reference style, so any EX/TS outcome is interpreted as an empirical result of the method, not a controller artifact.
 
 ## Q7. What remains hard?
 Join path, aggregation scope, and value-linking errors.

@@ -19,7 +19,6 @@ from .prompting import SYSTEM_INSTRUCTIONS
 from .query_runner import QueryRunner
 from .agent_schema_linking import build_schema_subset, format_join_hints
 from .constraint_policy import build_constraints
-from .repair_policy import deterministic_repair
 from .validation import validate_sql as _validate_sql, validate_constraints as _validate_constraints
 
 
@@ -47,6 +46,11 @@ def _require_ctx() -> AgentContext:
     if _CTX is None:
         raise RuntimeError("Agent tools not initialized. Call set_agent_context(...) first.")
     return _CTX
+
+
+def get_agent_context() -> AgentContext:
+    """Public accessor used by module-level ReAct orchestration."""
+    return _require_ctx()
 
 
 def schema_to_text(schema: dict) -> str:
@@ -199,11 +203,13 @@ def generate_sql(
     )
 
 
-def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str) -> str:
+def repair_sql(
+    nlq: str,
+    bad_sql: str,
+    error: str,
+    schema_text: str,
+) -> str:
     """LLM call that revises SQL using execution feedback."""
-    deterministic_sql = deterministic_repair(nlq, bad_sql, error)
-    if deterministic_sql:
-        return deterministic_sql
 
     messages = [
         {"role": "system", "content": SYSTEM_INSTRUCTIONS},
