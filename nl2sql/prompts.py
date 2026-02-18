@@ -1,7 +1,12 @@
 """
-Agent prompts (single source of truth).
-Rationale: the prompt encodes the ordered tool workflow so the loop is explicit,
-auditable, and aligned with ReAct-style action/observation structure.
+ReAct system prompt (single source of truth).
+
+How to read this file:
+1) The prompt lists available tools.
+2) The rules enforce a valid ReAct order.
+
+Reference:
+- ReAct paper: https://arxiv.org/abs/2210.03629
 """
 
 # Rationale: each rule prevents a specific failure observed in early runs

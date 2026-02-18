@@ -1,11 +1,13 @@
 """
-DB connector helpers.
-Refs:
-- Cloud SQL Connector pattern (GCP MySQL docs): https://cloud.google.com/sql/docs/mysql/connect-run
-- SQLAlchemy custom creator/engine: https://docs.sqlalchemy.org/en/20/core/engines.html#custom-dbapi-connect
+Database connection helpers.
 
-Connector + custom creator hook pattern to keep DB access private/IAM-auth’d and pooled.
-# These are: the GCP connector opens a secure socket to Cloud SQL; SQLAlchemy creator plugs that into an Engine so the rest of the code can just ask for connections.
+How to read this file:
+1) `create_engine_with_connector()` builds a SQLAlchemy engine via Cloud SQL Connector.
+2) `safe_connection()` gives a short-lived connection context.
+
+References:
+- Cloud SQL connector docs: https://cloud.google.com/sql/docs/mysql/connect-run
+- SQLAlchemy engine creator docs: https://docs.sqlalchemy.org/en/20/core/engines.html#custom-dbapi-connect
 """
 
 from __future__ import annotations

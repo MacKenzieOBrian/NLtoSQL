@@ -1,12 +1,14 @@
 """
-Evaluation helpers (VA/EM/EX).
-Refs: execution-based metrics common in NL->SQL work (e.g., Spider/EMNLP'20 TS:
-https://aclanthology.org/2020.emnlp-main.29/) and Ojuri et al. style VA/EX.
-SQLAlchemy execution docs: https://docs.sqlalchemy.org/en/20/core/connections.html#sqlalchemy.engine.Connection.execute
+Evaluation helpers for VA/EM/EX/TS.
 
+How to read this file:
+1) `execute_fetch()` runs SQL safely and returns rows/errors.
+2) `execution_accuracy()` compares predicted vs gold execution results (EX).
+3) `eval_run()` generates SQL, postprocesses it, and logs VA/EM/EX/TS per item.
 
-# Used here: execute predicted SQL, compare to gold results, and compute VA/EX/EM.
-# What these are: VA = does it run, EX = does it return the right rows, EM = strict string match. 
+References:
+- Spider test-suite paper (TS concept): https://aclanthology.org/2020.emnlp-main.29/
+- SQLAlchemy execution docs: https://docs.sqlalchemy.org/en/20/core/connections.html
 """
 
 from __future__ import annotations

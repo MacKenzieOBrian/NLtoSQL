@@ -1,6 +1,14 @@
 """
 Agent tool interface for a ReAct-style NL->SQL loop.
-The LLM selects actions; these functions execute them.
+
+How to read this file:
+1) `AgentContext` stores model, DB, and runner handles.
+2) Tool functions expose schema, constraints, generate/repair/validate/run.
+3) `react_pipeline.py` calls these tools in a Thought->Action->Observation loop.
+
+References:
+- ReAct paper: https://arxiv.org/abs/2210.03629
+- SQLAlchemy execute docs: https://docs.sqlalchemy.org/en/20/core/connections.html
 """
 
 from __future__ import annotations

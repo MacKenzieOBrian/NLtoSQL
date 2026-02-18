@@ -1,11 +1,13 @@
 """
 Prompt builders.
-Refs: schema-grounded prompting practice from NL->SQL surveys
-(https://arxiv.org/abs/2410.06011) and few-shot ICL patterns
-(e.g., https://arxiv.org/abs/2005.14165). We build system/schema/exemplar/NLQ
-messages, guard leakage, and order schema text for better column choice.
 
-#  builds the chat messages (system + schema + k exemplars + NLQ)
+How to read this file:
+1) `SYSTEM_INSTRUCTIONS` is the stable baseline prompt contract.
+2) `make_few_shot_messages()` builds chat messages: system + schema + exemplars + NLQ.
+
+References:
+- NL->SQL survey context: https://arxiv.org/abs/2410.06011
+- In-context learning reference: https://arxiv.org/abs/2005.14165
 """
 
 from __future__ import annotations

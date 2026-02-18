@@ -1,11 +1,14 @@
 """
 Module-level ReAct NL->SQL pipeline.
 
-This implementation follows the literature-style ReAct structure:
-Thought -> Action -> Observation (iterative, model-driven tool selection).
-The environment executes tool actions and returns observations until:
-- the model calls `finish` after a successful `run_sql`, or
-- the step budget is exhausted.
+How to read this file:
+1) `ReactAblationConfig` defines loop behavior switches.
+2) `run_react_pipeline()` runs one NLQ through Thought->Action->Observation.
+3) `evaluate_react_ablation()` runs the loop over a dataset and computes metrics.
+
+References:
+- ReAct paper: https://arxiv.org/abs/2210.03629
+- JSON format docs (trace serialization): https://docs.python.org/3/library/json.html
 """
 
 from __future__ import annotations

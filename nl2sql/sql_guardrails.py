@@ -1,5 +1,10 @@
 """
 Lightweight SQL text guardrails for candidate cleanup.
+
+Goal: turn raw model text into one executable SELECT statement.
+
+Reference:
+- Python regex docs: https://docs.python.org/3/library/re.html
 """
 
 from __future__ import annotations
@@ -9,7 +14,7 @@ from typing import Optional
 
 
 def _normalize_spaced_keywords(text: str) -> str:
-    """Fix tokenized SQL keywords like 'S E L E C T'."""
+    """Fix tokenized keywords like 'S E L E C T' produced by some decoders."""
     keywords = [
         "select",
         "from",
@@ -26,173 +31,64 @@ def _normalize_spaced_keywords(text: str) -> str:
         "having",
         "distinct",
     ]
+    out = text or ""
     for kw in keywords:
-        pattern = r"\\b" + "\\s*".join(list(kw)) + r"\\b"
-        text = re.sub(pattern, kw.upper(), text, flags=re.I)
-    return text
+        pattern = r"\b" + r"\s*".join(list(kw)) + r"\b"
+        out = re.sub(pattern, kw.upper(), out, flags=re.I)
+    return out
 
 
-_ECHO_CUTOFF_RE = re.compile(
-    r"(?is)\b("
-    r"output\s+only|"
-    r"no\s+explanation|"
-    r"no\s+markdown|"
-    r"respond\s+with|"
-    r"show\s+output|"
-    r"outputformatting|"
-    r"output\s+formatting|"
-    r"return\s+a\s+corrected\s+single\s+sql\s+select|"
-    r"error\s*:|"
-    r"y/n"
-    r")\b"
+_FORBIDDEN_SQL = (
+    "insert",
+    "update",
+    "delete",
+    "drop",
+    "alter",
+    "truncate",
+    "create",
+    "grant",
+    "revoke",
 )
-
-_SQL_KEYWORDS = {
-    "select",
-    "from",
-    "where",
-    "group",
-    "by",
-    "order",
-    "limit",
-    "having",
-    "join",
-    "left",
-    "right",
-    "inner",
-    "outer",
-    "on",
-    "as",
-    "distinct",
-    "union",
-    "all",
-    "exists",
-    "in",
-    "and",
-    "or",
-    "not",
-    "case",
-    "when",
-    "then",
-    "else",
-    "end",
-    "asc",
-    "desc",
-    "like",
-    "between",
-    "is",
-    "null",
-    "count",
-    "sum",
-    "avg",
-    "min",
-    "max",
-    "show",
-    "explain",
-    "analyze",
-    "optimize",
-    "repair",
-    "checksum",
-    "procedure",
-    "call",
-    "row",
-    "rows",
-}
 
 
 def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
     """
-    Extract a single executable SELECT statement (or explain rejection reason).
+    Extract a single safe SELECT statement.
+
+    Returns:
+      (sql, "ok") on success
+      (None, reason) on rejection
     """
-    if not raw:
+    if not raw or not raw.strip():
         return None, "empty"
 
     text = _normalize_spaced_keywords(raw)
-    # Defensive local import: notebook kernels may hold stale module globals.
+
+    # Remove markdown fences commonly returned by chat models.
+    text = text.replace("```sql", "```").replace("```json", "```")
+    text = re.sub(r"```(.*?)```", r"\1", text, flags=re.S).strip()
+
+    # Reuse shared extraction helper so behavior matches other code paths.
     from nl2sql.llm import extract_first_select as _extract_first_select
 
-    sql = _extract_first_select(text) or text
-    sql = (sql or "").strip()
-    lower = sql.lower()
-
-    idx = lower.find("select")
-    if idx == -1:
+    sql = _extract_first_select(text)
+    if not sql:
         return None, "no_select"
-    sql = sql[idx:].strip()
-    lower = sql.lower()
 
-    m = _ECHO_CUTOFF_RE.search(sql)
-    if m:
-        sql = sql[: m.start()].strip()
-        lower = sql.lower()
-
-    # Extra defensive truncation for mixed "SQL + error/explanation + SQL" outputs.
-    for marker in [
-        "\nerror:",
-        " error:",
-        "\ntraceback",
-        " traceback",
-        " return a corrected single sql select",
-        " return corrected single sql select",
-        " return a corrected sql select",
-    ]:
-        idx = lower.find(marker)
-        if idx != -1:
-            sql = sql[:idx].strip()
-            lower = sql.lower()
-
-    m2 = re.search(r"(?is)\berror\b.*\bselect\b", sql)
-    if m2:
-        sql = sql[: m2.start()].strip()
-        lower = sql.lower()
-
-    # Keep first SELECT when a second one appears after correction text.
-    select_hits = list(re.finditer(r"(?is)\bselect\b", sql))
-    if len(select_hits) > 1:
-        second_idx = select_hits[1].start()
-        lookback = sql[max(0, second_idx - 96) : second_idx].lower()
-        if any(tag in lookback for tag in ("error", "corrected", "return", "fix")):
-            sql = sql[:second_idx].strip()
-            lower = sql.lower()
-
-    if ";" in sql:
-        sql = sql.split(";", 1)[0].strip()
-        lower = sql.lower()
-
-    if not re.search(r"\bfrom\b", lower):
+    sql = sql.strip()
+    if not sql.lower().startswith("select"):
+        return None, "no_select"
+    if " from " not in f" {sql.lower()} ":
         return None, "no_from"
 
-    m = re.search(r"(?is)^\s*select\s+(.*?)\s+from\s+", sql)
-    if m:
-        select_part = m.group(1).strip()
-        if "*" not in select_part and "(" not in select_part:
-            tokens = re.findall(r"[a-zA-Z_][\w$]*", select_part)
-            if not tokens:
-                return None, "no_select_fields"
-            if all(t.lower() in _SQL_KEYWORDS for t in tokens):
-                return None, "no_select_fields"
+    # Keep only the first statement.
+    if ";" in sql:
+        sql = sql.split(";", 1)[0].strip() + ";"
+    else:
+        sql = sql.rstrip(";") + ";"
 
-    if not re.search(r"(?is)\bfrom\s*\(", sql):
-        m = re.search(r"(?is)\bfrom\s+([a-zA-Z_][\w$\.]*)(?:\s|$)", sql)
-        if not m:
-            return None, "no_from"
-        if m.group(1).lower() in _SQL_KEYWORDS:
-            return None, "no_from_table"
+    low = sql.lower()
+    if any(tok in low for tok in _FORBIDDEN_SQL):
+        return None, "forbidden_sql"
 
-    tokens = re.findall(r"[a-zA-Z_][\w$]*", sql)
-    if tokens:
-        kw = sum(1 for t in tokens if t.lower() in _SQL_KEYWORDS)
-        ident = sum(1 for t in tokens if t.lower() not in _SQL_KEYWORDS)
-        if ident == 0:
-            return None, "no_identifiers"
-        if len(tokens) >= 12 and kw >= 3 * ident:
-            return None, "keyword_soup"
-
-    bad_phrases = ("```", "answer:", "explanation")
-    if any(bp in lower for bp in bad_phrases):
-        return None, "bad_phrase"
-
-    if re.search(r"\bselect\s+(query|statement)\b", lower):
-        return None, "instruction_echo"
-
-    return sql.rstrip(";") + ";", "ok"
+    return sql, "ok"

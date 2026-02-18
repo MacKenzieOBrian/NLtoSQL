@@ -1,5 +1,13 @@
 """
-Intent classification and intent-to-SQL structural checks.
+Intent classification and simple intent-to-SQL checks.
+
+How to read this file:
+1) Classify NLQ into one coarse intent bucket.
+2) Check SQL contains the required clause pattern for that bucket.
+
+References:
+- SQL ORDER BY / LIMIT usage: https://dev.mysql.com/doc/refman/8.0/en/select.html
+- Python regex docs: https://docs.python.org/3/library/re.html
 """
 
 from __future__ import annotations
@@ -8,6 +16,7 @@ import re
 
 
 def classify_intent(nlq: str) -> str:
+    """Return one of: lookup, aggregate, grouped_aggregate, topk."""
     nl = (nlq or "").lower()
     if re.search(r"\b(top|highest|lowest|first|last|most|least)\b", nl):
         return "topk"
@@ -25,6 +34,7 @@ def classify_intent(nlq: str) -> str:
 
 
 def intent_constraints(nlq: str, sql: str) -> tuple[bool, str]:
+    """Return (is_valid, reason) for coarse intent-vs-SQL shape alignment."""
     intent = classify_intent(nlq)
     s = (sql or "").lower()
 
@@ -50,4 +60,3 @@ def intent_constraints(nlq: str, sql: str) -> tuple[bool, str]:
         if not (has_order and has_limit):
             return False, "topk_requires_order_limit"
     return True, "ok"
-

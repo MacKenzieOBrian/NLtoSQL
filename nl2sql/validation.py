@@ -1,6 +1,14 @@
 """
 Shared validation utilities used by both the tool-driven and class-based agents.
-Centralizes schema parsing, join-key validation, and constraint checks.
+
+How to read this file:
+1) Parse schema text into tables/columns.
+2) Validate SQL against schema and join-key rules.
+3) Validate SQL shape against extracted constraints.
+
+References:
+- Python regex docs: https://docs.python.org/3/library/re.html
+- SQL SELECT syntax (GROUP BY / ORDER BY / LIMIT): https://dev.mysql.com/doc/refman/8.0/en/select.html
 """
 
 from __future__ import annotations

@@ -1,12 +1,14 @@
 """
-LLM loading helpers.
-Refs: Hugging Face Transformers 4-bit NF4 + BitsAndBytes loading
-(https://huggingface.co/docs/transformers/main_classes/quantization),
-PEFT/QLoRA examples (https://huggingface.co/docs/peft/),
-BitsAndBytes docs (https://github.com/TimDettmers/bitsandbytes).
+Model-generation helpers for chat LLMs.
 
-# Used here: consistent 4-bit Llama-3 load with deterministic decoding for eval.
-loads Llama‑3‑8B in 4-bit NF4 with BitsAndBytes, deterministic decoding (do_sample=False), and a helper to grab the first SELECT from generated text.
+How to read this file:
+1) `extract_first_select()` cleans raw model text to one SQL statement.
+2) `generate_sql_from_messages()` runs chat-template generation with safe defaults.
+3) Optional lightweight constraints block non-SELECT DDL/DML tokens.
+
+References:
+- Transformers generation docs: https://huggingface.co/docs/transformers/main_classes/text_generation
+- Transformers quantization docs: https://huggingface.co/docs/transformers/main_classes/quantization
 """
 
 from __future__ import annotations

@@ -1,13 +1,14 @@
 """
 Safe query executor.
-Refs:
-- SQLAlchemy connection/execute docs: https://docs.sqlalchemy.org/en/20/core/connections.html
-- GCP connector examples (custom creator) and safe SELECT-only guards used in NL->SQL eval practice.
-Purpose: give the ReAct loop a controlled Act step and enforce read-only VA/EX runs.
 
-# Used here: run model SQL safely (SELECT-only), capture result previews/errors, and feed ReAct/eval.
-# What this is: a tiny wrapper around SQLAlchemy execution that refuses DDL/DML,
-# so the model can only read; doubles as the "Act" tool in ReAct.
+How to read this file:
+1) `QueryRunner` executes model SQL in read-only mode.
+2) It blocks destructive keywords and caps returned rows.
+3) Results are stored as `QueryResult` records for traceability.
+
+References:
+- SQLAlchemy execute docs: https://docs.sqlalchemy.org/en/20/core/connections.html
+- Python dataclasses docs: https://docs.python.org/3/library/dataclasses.html
 """
 
 from __future__ import annotations

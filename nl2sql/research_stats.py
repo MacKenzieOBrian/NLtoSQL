@@ -1,14 +1,10 @@
 """
 Statistical helpers for reproducible NL->SQL comparisons.
 
-These utilities support dissertation-style claims by quantifying uncertainty and
-paired differences (e.g., baseline vs few-shot on the same items).
-
-Rationale used across the project:
-- Per-run uncertainty: Wilson 95% intervals for binary rates.
-- Paired method comparisons: deltas on identical items.
-- Paired significance: exact McNemar on discordant pairs only.
-- Seed robustness is reported when aggregating per-seed run logs.
+How to read this file:
+1) `summarize_binary()` for rate + Wilson interval.
+2) `paired_switch_counts()` for paired improve/degrade counts.
+3) `mcnemar_exact_p()` for paired significance on discordant pairs.
 
 References (project anchors):
 - `REFERENCES.md#ref-wilson1927`

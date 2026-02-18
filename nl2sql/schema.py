@@ -1,11 +1,14 @@
 """
 Schema helpers.
-Refs: schema summarisation ideas from NL→SQL prompting surveys
-(https://arxiv.org/abs/2410.06011) and SQLAlchemy metadata/inspection docs:
-https://docs.sqlalchemy.org/en/20/core/metadata.html
 
-# Used here: build ordered table/column text (PK/name-first) to feed prompts/ReAct
-# introspects the ClassicModels DB via SQLAlchemy, lists tables/columns (PK/name-first).
+How to read this file:
+1) `list_tables()` gets DB table names.
+2) `get_table_columns()` reads ordered column metadata from INFORMATION_SCHEMA.
+3) `build_schema_summary()` builds the compact table(column,...) text used in prompts.
+
+References:
+- SQLAlchemy metadata/inspection docs: https://docs.sqlalchemy.org/en/20/core/metadata.html
+- NL->SQL schema-grounding context: https://arxiv.org/abs/2410.06011
 """
 
 from __future__ import annotations

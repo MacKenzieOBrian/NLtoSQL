@@ -1,15 +1,8 @@
 """
 Backward-compatible facade for legacy imports.
 
-The original `agent_utils.py` mixed multiple concerns in one file.
-Functions are now split into focused modules:
-- `constraint_hints.py`
-- `agent_schema_linking.py`
-- `intent_rules.py`
-- `sql_guardrails.py`
-
-This module re-exports the existing public helpers so notebooks and older
-imports continue to work without changes.
+This module only re-exports helper functions so old notebook imports still work.
+If you are starting fresh, import from the focused modules directly.
 """
 
 from __future__ import annotations
@@ -54,4 +47,3 @@ __all__ = [
     "_normalize_spaced_keywords",
     "clean_candidate_with_reason",
 ]
-

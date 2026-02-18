@@ -1,18 +1,14 @@
 """
-Post-processing for model SQL text.
-Refs:
-- Common NL->SQL cleanup after generation; HF generation tips:
-  https://huggingface.co/docs/transformers/en/main_classes/text_generation
-- Projection minimisation to satisfy Spider-style EM (Yu et al., 2018).
-- Lightweight constrained decoding ideas (Scholak et al., 2021, PICARD) implemented
-  as regex-only guards without a SQL parser.
+Post-processing for model-generated SQL text.
 
-# - Keep only the first SELECT block.
-# - Strip ORDER BY / LIMIT when the NLQ does not ask for ranking.
-# - Drop ID-like columns (orderNumber, customerNumber, codes) when the NLQ
-#   does not mention IDs/codes; this improves EM without harming EX in our eval.
-# - Normalise whitespace/case for comparisons.
-# - Keep a minimal projection helper for "list all ..." patterns.
+How to read this file:
+1) Normalize SQL text for stable EM comparison.
+2) Keep one SELECT statement and remove obvious prompt artifacts.
+3) Apply small projection/order heuristics used in this project.
+
+References:
+- Transformers generation docs: https://huggingface.co/docs/transformers/main_classes/text_generation
+- Python regex docs: https://docs.python.org/3/library/re.html
 """
 
 from __future__ import annotations
