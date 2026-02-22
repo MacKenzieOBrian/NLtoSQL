@@ -1,0 +1,8 @@
+run_tag,prompt_variant,schema_variant,exemplar_strategy,exemplar_pool_size,k,seed,n,va_rate,em_rate,ex_rate,ts_rate,ts_n,json_path
+baseline_llama_gapfill_full,default,full,all,200,0,7,200,0.895,0.0,0.46,,0,results/baseline/runs/baseline_llama_gapfill_full_20260220_194509Z/results_k0_seed7.json
+baseline_llama_gapfill_full,default,full,all,200,3,7,200,0.91,0.325,0.55,0.5824175824175825,182,results/baseline/runs/baseline_llama_gapfill_full_20260220_194509Z/results_k3_seed7.json
+baseline_llama_gapfill_full,default,full,all,200,3,17,200,0.91,0.345,0.545,0.5824175824175825,182,results/baseline/runs/baseline_llama_gapfill_full_20260220_194509Z/results_k3_seed17.json
+baseline_llama_gapfill_full,default,full,all,200,3,27,200,0.955,0.355,0.58,0.5863874345549738,191,results/baseline/runs/baseline_llama_gapfill_full_20260220_194509Z/results_k3_seed27.json
+baseline_llama_gapfill_full,default,full,all,200,5,7,200,0.93,0.39,0.565,,0,results/baseline/runs/baseline_llama_gapfill_full_20260220_194509Z/results_k5_seed7.json
+baseline_llama_gapfill_full,default,full,all,200,5,17,200,0.945,0.42,0.61,,0,results/baseline/runs/baseline_llama_gapfill_full_20260220_194509Z/results_k5_seed17.json
+baseline_llama_gapfill_full,default,full,all,200,5,27,200,0.95,0.435,0.585,,0,results/baseline/runs/baseline_llama_gapfill_full_20260220_194509Z/results_k5_seed27.json

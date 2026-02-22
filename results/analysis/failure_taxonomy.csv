@@ -39,18 +39,24 @@ modelfam_llama3_8b_instruct_k3,llama3-8b-instruct | k=3,model_family,llama3_8b_i
 modelfam_llama3_8b_instruct_k3,llama3-8b-instruct | k=3,model_family,llama3_8b_instruct,k=3,value_linking,10,0.1282051282051282,0.05
 modelfam_llama3_8b_instruct_k3,llama3-8b-instruct | k=3,model_family,llama3_8b_instruct,k=3,join_path,6,0.07692307692307693,0.03
 modelfam_llama3_8b_instruct_k3,llama3-8b-instruct | k=3,model_family,llama3_8b_instruct,k=3,aggregation,5,0.0641025641025641,0.025
-qlorafam_qwen2_5_7b_instruct_k0,qwen2-5-7b-instruct | QLoRA | k=0,qlora_model_family,qwen2_5_7b_instruct,k=0,projection,44,0.3893805309734513,0.22
-qlorafam_qwen2_5_7b_instruct_k0,qwen2-5-7b-instruct | QLoRA | k=0,qlora_model_family,qwen2_5_7b_instruct,k=0,invalid_sql,37,0.3274336283185841,0.185
-qlorafam_qwen2_5_7b_instruct_k0,qwen2-5-7b-instruct | QLoRA | k=0,qlora_model_family,qwen2_5_7b_instruct,k=0,other_semantic,11,0.09734513274336283,0.055
-qlorafam_qwen2_5_7b_instruct_k0,qwen2-5-7b-instruct | QLoRA | k=0,qlora_model_family,qwen2_5_7b_instruct,k=0,value_linking,9,0.07964601769911504,0.045
-qlorafam_qwen2_5_7b_instruct_k0,qwen2-5-7b-instruct | QLoRA | k=0,qlora_model_family,qwen2_5_7b_instruct,k=0,aggregation,7,0.061946902654867256,0.035
-qlorafam_qwen2_5_7b_instruct_k0,qwen2-5-7b-instruct | QLoRA | k=0,qlora_model_family,qwen2_5_7b_instruct,k=0,join_path,5,0.04424778761061947,0.025
-qlorafam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | QLoRA | k=3,qlora_model_family,qwen2_5_7b_instruct,k=3,projection,35,0.3763440860215054,0.175
-qlorafam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | QLoRA | k=3,qlora_model_family,qwen2_5_7b_instruct,k=3,invalid_sql,30,0.3225806451612903,0.15
-qlorafam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | QLoRA | k=3,qlora_model_family,qwen2_5_7b_instruct,k=3,other_semantic,10,0.10752688172043011,0.05
-qlorafam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | QLoRA | k=3,qlora_model_family,qwen2_5_7b_instruct,k=3,value_linking,10,0.10752688172043011,0.05
-qlorafam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | QLoRA | k=3,qlora_model_family,qwen2_5_7b_instruct,k=3,aggregation,4,0.043010752688172046,0.02
-qlorafam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | QLoRA | k=3,qlora_model_family,qwen2_5_7b_instruct,k=3,join_path,4,0.043010752688172046,0.02
+qlorafam_qwen2_5_7b_instruct_k0,qwen2-5-7b-instruct | QLoRA | k=0,qlora_model_family,qwen2_5_7b_instruct,k=0,projection,30,0.35294117647058826,0.15
+qlorafam_qwen2_5_7b_instruct_k0,qwen2-5-7b-instruct | QLoRA | k=0,qlora_model_family,qwen2_5_7b_instruct,k=0,invalid_sql,19,0.2235294117647059,0.095
+qlorafam_qwen2_5_7b_instruct_k0,qwen2-5-7b-instruct | QLoRA | k=0,qlora_model_family,qwen2_5_7b_instruct,k=0,other_semantic,10,0.11764705882352941,0.05
+qlorafam_qwen2_5_7b_instruct_k0,qwen2-5-7b-instruct | QLoRA | k=0,qlora_model_family,qwen2_5_7b_instruct,k=0,join_path,9,0.10588235294117647,0.045
+qlorafam_qwen2_5_7b_instruct_k0,qwen2-5-7b-instruct | QLoRA | k=0,qlora_model_family,qwen2_5_7b_instruct,k=0,value_linking,9,0.10588235294117647,0.045
+qlorafam_qwen2_5_7b_instruct_k0,qwen2-5-7b-instruct | QLoRA | k=0,qlora_model_family,qwen2_5_7b_instruct,k=0,aggregation,8,0.09411764705882353,0.04
+qlorafam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | QLoRA | k=3,qlora_model_family,qwen2_5_7b_instruct,k=3,projection,55,0.5612244897959183,0.275
+qlorafam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | QLoRA | k=3,qlora_model_family,qwen2_5_7b_instruct,k=3,invalid_sql,16,0.16326530612244897,0.08
+qlorafam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | QLoRA | k=3,qlora_model_family,qwen2_5_7b_instruct,k=3,join_path,8,0.08163265306122448,0.04
+qlorafam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | QLoRA | k=3,qlora_model_family,qwen2_5_7b_instruct,k=3,other_semantic,8,0.08163265306122448,0.04
+qlorafam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | QLoRA | k=3,qlora_model_family,qwen2_5_7b_instruct,k=3,value_linking,8,0.08163265306122448,0.04
+qlorafam_qwen2_5_7b_instruct_k3,qwen2-5-7b-instruct | QLoRA | k=3,qlora_model_family,qwen2_5_7b_instruct,k=3,aggregation,3,0.030612244897959183,0.015
+qlorafam_qwen2_5_7b_instruct_k5,qwen2-5-7b-instruct | QLoRA | k=5,qlora_model_family,qwen2_5_7b_instruct,k=5,projection,49,0.4666666666666667,0.245
+qlorafam_qwen2_5_7b_instruct_k5,qwen2-5-7b-instruct | QLoRA | k=5,qlora_model_family,qwen2_5_7b_instruct,k=5,invalid_sql,34,0.3238095238095238,0.17
+qlorafam_qwen2_5_7b_instruct_k5,qwen2-5-7b-instruct | QLoRA | k=5,qlora_model_family,qwen2_5_7b_instruct,k=5,other_semantic,8,0.0761904761904762,0.04
+qlorafam_qwen2_5_7b_instruct_k5,qwen2-5-7b-instruct | QLoRA | k=5,qlora_model_family,qwen2_5_7b_instruct,k=5,value_linking,7,0.06666666666666667,0.035
+qlorafam_qwen2_5_7b_instruct_k5,qwen2-5-7b-instruct | QLoRA | k=5,qlora_model_family,qwen2_5_7b_instruct,k=5,join_path,6,0.05714285714285714,0.03
+qlorafam_qwen2_5_7b_instruct_k5,qwen2-5-7b-instruct | QLoRA | k=5,qlora_model_family,qwen2_5_7b_instruct,k=5,aggregation,1,0.009523809523809525,0.005
 modelfam_qwen2_5_7b_instruct_k0,qwen2-5-7b-instruct | k=0,model_family,qwen2_5_7b_instruct,k=0,projection,37,0.36633663366336633,0.185
 modelfam_qwen2_5_7b_instruct_k0,qwen2-5-7b-instruct | k=0,model_family,qwen2_5_7b_instruct,k=0,invalid_sql,29,0.2871287128712871,0.145
 modelfam_qwen2_5_7b_instruct_k0,qwen2-5-7b-instruct | k=0,model_family,qwen2_5_7b_instruct,k=0,other_semantic,10,0.09900990099009901,0.05

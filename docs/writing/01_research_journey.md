@@ -1,0 +1,13 @@
+# Research Journey
+
+This dissertation follows a single practical question: how far can an open-source NL-to-SQL stack go when it is evaluated with semantic discipline and built under realistic compute constraints. The project is positioned as a transparent replication pathway inspired by Ojuri-style study structure, but not as a proprietary-stack replication. The value of the work is that every design choice, run artifact, and claim can be traced in code and data.
+
+The journey began with a baseline-first phase. I built a stable prompting pipeline so that the project had a defensible reference point before introducing additional complexity. The early focus was deliberately narrow: one benchmark set, one evaluator path, and one artifact format. This made it possible to compare later interventions against a constant backbone rather than constantly changing the environment and the method at the same time.
+
+The second phase introduced QLoRA adaptation. The intent was not to chase raw training scale, but to test whether parameter-efficient adaptation could improve semantic behavior under hardware limits. This required careful handling of model loading, adapter training, and evaluation consistency. The same benchmark and scoring contract were preserved so that differences could be interpreted as method effects instead of protocol drift.
+
+The third phase introduced a ReAct-style agent loop as infrastructure. The loop was updated toward a model-driven Thought-Action-Observation pattern with bounded safety constraints. This phase improved traceability and diagnostic visibility. It also clarified a claim boundary used throughout writing: agent infrastructure value does not automatically imply semantic improvement unless EX and TS gains are demonstrated under matched conditions.
+
+The fourth phase focused on analysis maturity. Statistical reporting moved from point estimates to uncertainty and paired significance, including Wilson intervals and exact McNemar tests. This phase converted many disconnected run outputs into a coherent evidence layer suitable for dissertation claims. The result is a writing pipeline where narrative statements can be tied to specific artifacts in `results/analysis/`, not just to notebook screenshots.
+
+The overall contribution is therefore methodological and evidential at the same time. Methodologically, the project shows a reproducible open-source implementation path across baseline prompting, QLoRA adaptation, and agentic execution support. Evidentially, it shows how to make claims in a way that remains auditable under scrutiny from examiners and developers.
