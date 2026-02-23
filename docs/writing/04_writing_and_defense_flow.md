@@ -1,0 +1,11 @@
+# Writing and Defense Flow
+
+The most effective writing flow for this project is to present it as an evidence-led progression from baseline control to adaptation and then to agentic infrastructure, ending in paired statistical synthesis. This keeps the narrative coherent for both examiners and technical readers. The baseline chapter establishes what prompting can do under fixed weights. The QLoRA chapter asks whether adaptation changes that baseline under the same evaluation contract. The agent chapter explains why traceable execution infrastructure matters and where it does and does not support performance claims.
+
+For defense and demo settings, explanations should stay anchored to module boundaries and artifact outputs. When discussing generation behavior, point to `nl2sql/core/llm.py` and `nl2sql/core/postprocess.py`. When discussing execution safety, point to `nl2sql/core/query_runner.py`. When discussing semantics validation and agent policy, point to `nl2sql/core/validation.py`, `nl2sql/agent/constraint_policy.py`, and `nl2sql/agent/react_pipeline.py`. When discussing claims, point to `results/analysis/overall_metrics_wide.csv`, `results/analysis/paired_deltas.csv`, and `results/analysis/failure_taxonomy.csv`.
+
+A practical writing rule is to keep each claim paragraph self-contained: state the setup, report the metric change, provide significance context, explain likely failure-pattern interpretation, and cite the artifact path. This style reduces ambiguity and lets a reviewer verify statements quickly.
+
+The project also includes AI-assisted boilerplate in scaffolding and formatting layers. The recommended disclosure stance is concise and specific: describe where assistance was used for repetitive infrastructure code or formatting support, and emphasize that method design, experimental decisions, interpretation boundaries, and final claims were researcher-directed and evidence-checked against generated artifacts.
+
+The final defense posture is straightforward. The project does not claim proprietary parity or universal cross-domain generalization. It claims a reproducible open-source research pathway with controlled comparisons, transparent implementation decisions, and statistically grounded interpretation. That is the strongest and most defensible framing for this work.
