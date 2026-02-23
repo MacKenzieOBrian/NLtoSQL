@@ -14,7 +14,7 @@ References:
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from typing import Any, Iterable
 
 
 def normalize_sql(s: str) -> str:
@@ -263,19 +263,98 @@ def guarded_postprocess(
     - minimal projection for "list all ..." phrasing
     - reorder projections to match explicit NLQ field order
     """
-    # Ordering matters: we first isolate the SQL, then remove known noisy clauses,
-    # then apply projection heuristics. This keeps the layer deterministic and auditable.
-    cleaned = first_select_only(sql)
-    cleaned = _strip_order_by_limit(cleaned, nlq)
-    if explicit_fields:
-        cleaned = enforce_explicit_projection(cleaned, explicit_fields)
-    else:
-        cleaned = prune_id_like_columns(
-            cleaned,
-            nlq,
-            explicit_fields=explicit_fields,
-            required_fields=required_fields,
+    return debug_guarded_postprocess(
+        sql=sql,
+        nlq=nlq,
+        explicit_fields=explicit_fields,
+        required_fields=required_fields,
+    )["final_sql"]
+
+
+def debug_guarded_postprocess(
+    sql: str,
+    nlq: str,
+    *,
+    explicit_fields: Iterable[str] | None = None,
+    required_fields: Iterable[str] | None = None,
+) -> dict[str, Any]:
+    """
+    Return a full stage-by-stage trace of SQL cleanup used by guarded_postprocess.
+
+    Intended for notebook demos and debugging:
+    - shows each transform input/output
+    - marks whether each stage changed the SQL
+    - keeps final behavior identical to guarded_postprocess
+    """
+    explicit_list = list(explicit_fields) if explicit_fields is not None else None
+    required_list = list(required_fields) if required_fields is not None else None
+
+    steps: list[dict[str, Any]] = []
+
+    def _record(stage: str, before: str, after: str, note: str | None = None) -> str:
+        steps.append(
+            {
+                "stage": stage,
+                "before": before,
+                "after": after,
+                "changed": before != after,
+                "note": note,
+            }
         )
-        cleaned = enforce_minimal_projection(cleaned, nlq, required_fields=required_fields)
-    cleaned = reorder_projection(cleaned, explicit_fields)
-    return cleaned
+        return after
+
+    current = sql or ""
+    current = _record(
+        "first_select_only",
+        current,
+        first_select_only(current),
+        "extract first SELECT candidate and normalize statement boundary",
+    )
+    current = _record(
+        "strip_order_by_limit",
+        current,
+        _strip_order_by_limit(current, nlq),
+        "remove ranking clauses when NLQ does not request ranking",
+    )
+
+    if explicit_list:
+        current = _record(
+            "enforce_explicit_projection",
+            current,
+            enforce_explicit_projection(current, explicit_list),
+            "trim projection to explicitly requested fields",
+        )
+    else:
+        current = _record(
+            "prune_id_like_columns",
+            current,
+            prune_id_like_columns(
+                current,
+                nlq,
+                explicit_fields=explicit_list,
+                required_fields=required_list,
+            ),
+            "drop identifier-like columns when not requested",
+        )
+        current = _record(
+            "enforce_minimal_projection",
+            current,
+            enforce_minimal_projection(current, nlq, required_fields=required_list),
+            "collapse over-wide projection for list-style NLQs",
+        )
+
+    current = _record(
+        "reorder_projection",
+        current,
+        reorder_projection(current, explicit_list),
+        "align projection order with explicit NLQ field ordering",
+    )
+
+    return {
+        "input_sql": sql,
+        "nlq": nlq,
+        "explicit_fields": explicit_list,
+        "required_fields": required_list,
+        "steps": steps,
+        "final_sql": current,
+    }

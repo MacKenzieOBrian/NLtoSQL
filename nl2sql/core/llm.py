@@ -87,6 +87,68 @@ def extract_first_select(text: str) -> str | None:
     return None
 
 
+def debug_extract_first_select(text: str) -> dict[str, Any]:
+    """
+    Debug companion for extract_first_select().
+
+    Returns candidate-level reasoning so notebooks can show:
+    - what SQL-like spans were inspected
+    - why candidates were rejected
+    - which candidate (if any) was selected
+    """
+    t = (text or "").strip()
+    t = t.replace("```json", "```").replace("```sql", "```")
+    t = re.sub(r"```(.*?)```", r"\1", t, flags=re.DOTALL).strip()
+
+    candidates: list[dict[str, Any]] = []
+    selected_sql: str | None = None
+
+    for m in SQL_START_RE.finditer(t):
+        start = m.start()
+        tail = t[start:]
+        semi = tail.find(";")
+        stmt = tail if semi == -1 else tail[: semi + 1]
+        stmt = re.sub(r"(?im)^\s*sql\s*:\s*", "", stmt, count=1).strip()
+
+        candidate: dict[str, Any] = {
+            "start_index": start,
+            "candidate_sql": stmt,
+            "accepted": False,
+            "reject_reason": None,
+        }
+
+        from_m = re.search(r"(?is)\bfrom\b", stmt)
+        if not from_m:
+            candidate["reject_reason"] = "missing_from_clause"
+            candidates.append(candidate)
+            continue
+        target = _read_from_target(stmt[from_m.end() :])
+        candidate["from_target"] = target
+        if not target:
+            candidate["reject_reason"] = "missing_from_target"
+            candidates.append(candidate)
+            continue
+        if target != "(" and target.lower() in _PROSE_FROM_STOPWORDS:
+            candidate["reject_reason"] = "prose_from_target"
+            candidates.append(candidate)
+            continue
+
+        if not stmt.endswith(";"):
+            stmt += ";"
+        candidate["candidate_sql"] = stmt
+        candidate["accepted"] = True
+        candidates.append(candidate)
+        selected_sql = stmt
+        break
+
+    return {
+        "input_text": text,
+        "normalized_text": t,
+        "candidates": candidates,
+        "selected_sql": selected_sql,
+    }
+
+
 def generate_sql_from_messages(
     *,
     model: Any,
@@ -98,7 +160,8 @@ def generate_sql_from_messages(
     temperature: float = 0.2,
     top_p: float = 0.9,
     num_return_sequences: int = 1,
-) -> str | list[str]:
+    return_debug: bool = False,
+) -> Any:
     import torch
     try:
         from transformers import BadWordsLogitsProcessor, LogitsProcessorList
@@ -206,15 +269,56 @@ def generate_sql_from_messages(
 
     if num_return_sequences and num_return_sequences > 1:
         results: list[str] = []
+        seq_debug: list[dict[str, Any]] = []
         for seq in out:
             gen_ids = seq[input_ids.shape[-1] :]
             gen_text = tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
             sql = extract_first_select(gen_text)
             results.append(sql if sql is not None else gen_text)
+            if return_debug:
+                seq_debug.append(
+                    {
+                        "raw_generated_text": gen_text,
+                        "extract_debug": debug_extract_first_select(gen_text),
+                        "final_candidate": sql if sql is not None else gen_text,
+                        "used_raw_fallback": sql is None,
+                    }
+                )
+        if return_debug:
+            return results, {
+                "message_count": len(messages),
+                "input_token_count": int(input_ids.shape[-1]),
+                "num_return_sequences": int(num_return_sequences),
+                "generation_args": {
+                    "max_new_tokens": int(max_new_tokens),
+                    "constrained": bool(constrained),
+                    "do_sample": bool(do_sample),
+                    "temperature": float(temperature),
+                    "top_p": float(top_p),
+                },
+                "sequences": seq_debug,
+            }
         return results
 
     gen_ids = out[0][input_ids.shape[-1] :]
     gen_text = tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
 
     sql = extract_first_select(gen_text)
-    return sql if sql is not None else gen_text
+    final_candidate = sql if sql is not None else gen_text
+    if return_debug:
+        return final_candidate, {
+            "message_count": len(messages),
+            "input_token_count": int(input_ids.shape[-1]),
+            "generation_args": {
+                "max_new_tokens": int(max_new_tokens),
+                "constrained": bool(constrained),
+                "do_sample": bool(do_sample),
+                "temperature": float(temperature),
+                "top_p": float(top_p),
+            },
+            "raw_generated_text": gen_text,
+            "extract_debug": debug_extract_first_select(gen_text),
+            "final_candidate": final_candidate,
+            "used_raw_fallback": sql is None,
+        }
+    return final_candidate

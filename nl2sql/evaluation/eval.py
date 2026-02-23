@@ -27,7 +27,7 @@ from sqlalchemy.engine import Engine
 
 from ..core.db import safe_connection
 from ..core.llm import generate_sql_from_messages
-from ..core.postprocess import guarded_postprocess, normalize_sql
+from ..core.postprocess import debug_guarded_postprocess, guarded_postprocess, normalize_sql
 from ..agent.constraint_policy import build_constraints
 from ..core.prompting import make_few_shot_messages
 from ..core.query_runner import DEFAULT_FORBIDDEN_TOKENS, QueryRunner
@@ -476,3 +476,145 @@ def eval_run(
         print("Saved:", str(save_path))
 
     return out
+
+
+def debug_single_item_pipeline(
+    *,
+    item: dict[str, Any],
+    test_set: list[dict[str, Any]],
+    engine: Engine,
+    model: Any,
+    tokenizer: Any,
+    schema_summary: str,
+    k: int = 3,
+    seed: int = 7,
+    max_rows: int = 50,
+    max_new_tokens: int = 128,
+    avoid_exemplar_leakage: bool = True,
+    max_compare_rows: int = 10000,
+    regenerate_attempts: int = 2,
+    do_sample_regen: bool = True,
+    temperature: float = 0.2,
+    top_p: float = 0.9,
+) -> dict[str, Any]:
+    """
+    Live-debug helper for a single NLQ through the baseline/QLoRA pipeline.
+
+    Returns detailed internals useful for notebook demos:
+    - few-shot exemplar selection
+    - prompt/message construction
+    - generation debug (raw text + extraction trace)
+    - postprocess stage-by-stage transforms
+    - VA/EM/EX result per attempt
+    - optional regeneration attempts when first output fails
+    """
+    if "nlq" not in item or "sql" not in item:
+        raise ValueError("item must contain 'nlq' and 'sql' keys")
+
+    nlq = item["nlq"]
+    gold_sql = item["sql"]
+    rng = random.Random(seed)
+
+    pool = list(test_set)
+    if avoid_exemplar_leakage:
+        pool = [
+            ex
+            for ex in pool
+            if not (ex.get("nlq") == nlq and ex.get("sql") == gold_sql)
+        ]
+
+    if k > 0 and len(pool) < k:
+        raise ValueError(f"Exemplar pool too small: k={k} but pool has {len(pool)} items")
+    exemplars = rng.sample(pool, k) if k > 0 else []
+    messages = make_few_shot_messages(schema=schema_summary, exemplars=exemplars, nlq=nlq)
+
+    constraints = build_constraints(nlq, schema_summary)
+    explicit_fields = constraints.get("explicit_fields")
+    explicit_projection = constraints.get("explicit_projection")
+    required_fields = constraints.get("required_output_fields")
+
+    qr = QueryRunner(engine, max_rows=max_rows)
+    attempts: list[dict[str, Any]] = []
+    total_attempts = max(int(regenerate_attempts), 0) + 1
+
+    for attempt_idx in range(total_attempts):
+        use_sampling = bool(attempt_idx > 0 and do_sample_regen)
+        generated, gen_debug = generate_sql_from_messages(
+            model=model,
+            tokenizer=tokenizer,
+            messages=messages,
+            max_new_tokens=max_new_tokens,
+            constrained=True,
+            do_sample=use_sampling,
+            temperature=temperature,
+            top_p=top_p,
+            return_debug=True,
+        )
+        raw_sql = generated if isinstance(generated, str) else str(generated)
+        post_debug = debug_guarded_postprocess(
+            raw_sql,
+            nlq,
+            explicit_fields=explicit_fields if explicit_projection else None,
+            required_fields=required_fields,
+        )
+        pred_sql = str(post_debug["final_sql"] or "")
+
+        meta = qr.run(pred_sql, capture_df=False)
+        em = normalize_sql(pred_sql) == normalize_sql(gold_sql)
+        ex, ex_pred_err, ex_gold_err = execution_accuracy(
+            engine=engine,
+            pred_sql=pred_sql,
+            gold_sql=gold_sql,
+            max_compare_rows=max_compare_rows,
+            allow_extra_columns=False,
+        )
+
+        attempts.append(
+            {
+                "attempt": attempt_idx + 1,
+                "mode": "regen_sampled" if use_sampling else "initial_deterministic",
+                "generation_debug": gen_debug,
+                "raw_sql": raw_sql,
+                "postprocess_debug": post_debug,
+                "pred_sql": pred_sql,
+                "va": int(bool(meta.success)),
+                "em": int(bool(em)),
+                "ex": int(bool(ex)),
+                "error": meta.error or ex_pred_err,
+                "gold_error": ex_gold_err,
+            }
+        )
+
+        if bool(meta.success):
+            break
+
+    selected_index = next((i for i, a in enumerate(attempts) if a.get("va") == 1), len(attempts) - 1)
+
+    message_preview = [
+        {
+            "role": m.get("role"),
+            "content_preview": str(m.get("content", "")).replace("\n", " ")[:220],
+        }
+        for m in messages[:8]
+    ]
+
+    exemplar_preview = [
+        {
+            "nlq": str(ex.get("nlq", "")),
+            "sql": str(ex.get("sql", "")),
+        }
+        for ex in exemplars
+    ]
+
+    return {
+        "nlq": nlq,
+        "gold_sql": gold_sql,
+        "k": int(k),
+        "seed": int(seed),
+        "constraints": constraints,
+        "message_count": len(messages),
+        "message_preview": message_preview,
+        "exemplars_used": exemplar_preview,
+        "attempts": attempts,
+        "selected_attempt": attempts[selected_index] if attempts else None,
+    }

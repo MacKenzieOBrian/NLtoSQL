@@ -578,6 +578,84 @@ def evaluate_react_ablation(
     return report
 
 
+def debug_react_single_item(
+    *,
+    item: dict[str, Any],
+    engine: Any,
+    config: ReactAblationConfig,
+    allow_extra_columns_ex: bool = False,
+    ts_suite_db_names: Optional[list[str]] = None,
+    ts_make_engine_fn: Optional[Callable[[str], Any]] = None,
+    ts_max_rows: int = 500,
+) -> dict[str, Any]:
+    """
+    Run one NLQ through ReAct and return a debug-rich trace report.
+
+    Useful for notebook walkthroughs where users need to inspect:
+    - per-step action decisions and observations
+    - final SQL outcome
+    - VA/EM/EX/TS metrics for that single item
+    """
+    if "nlq" not in item or "sql" not in item:
+        raise ValueError("item must contain 'nlq' and 'sql' keys")
+
+    nlq = item["nlq"]
+    gold_sql = item["sql"]
+    pred_sql, trace = run_react_pipeline(nlq=nlq, config=config)
+
+    qr = QueryRunner(engine, max_rows=50)
+    if pred_sql:
+        meta = qr.run(pred_sql, capture_df=False)
+        va = bool(meta.success)
+        error = meta.error
+        ex, pred_err, gold_err = execution_accuracy(
+            engine=engine,
+            pred_sql=pred_sql,
+            gold_sql=gold_sql,
+            allow_extra_columns=allow_extra_columns_ex,
+        )
+    else:
+        va = False
+        error = "no_prediction"
+        ex, pred_err, gold_err = False, "no_prediction", None
+
+    em = normalize_sql(pred_sql or "") == normalize_sql(gold_sql or "")
+
+    ts = None
+    ts_debug = None
+    if ts_suite_db_names and ts_make_engine_fn and pred_sql:
+        ts, ts_debug = test_suite_accuracy_for_item(
+            make_engine_fn=ts_make_engine_fn,
+            suite_db_names=ts_suite_db_names,
+            gold_sql=gold_sql,
+            pred_sql=pred_sql,
+            max_rows=ts_max_rows,
+            strict_gold=True,
+        )
+
+    action_counts: dict[str, int] = {}
+    for step in trace:
+        a = str(step.get("action") or "none")
+        action_counts[a] = action_counts.get(a, 0) + 1
+
+    return {
+        "nlq": nlq,
+        "gold_sql": gold_sql,
+        "pred_sql": pred_sql,
+        "config_name": config.name,
+        "va": int(va),
+        "em": int(em),
+        "ex": int(ex),
+        "ts": ts,
+        "error": error or pred_err,
+        "gold_error": gold_err,
+        "action_counts": action_counts,
+        "trace_len": len(trace),
+        "trace": trace,
+        "ts_debug": ts_debug,
+    }
+
+
 def run_ablation_suite(
     *,
     test_set: list[dict[str, Any]],
