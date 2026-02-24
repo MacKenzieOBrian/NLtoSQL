@@ -16,8 +16,6 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable
 
-from transformers import StoppingCriteria, StoppingCriteriaList
-
 
 # Regex reference: https://docs.python.org/3/library/re.html
 #
@@ -164,10 +162,19 @@ def generate_sql_from_messages(
 ) -> Any:
     import torch
     try:
-        from transformers import BadWordsLogitsProcessor, LogitsProcessorList
+        from transformers import (
+            BadWordsLogitsProcessor,
+            LogitsProcessorList,
+            StoppingCriteria,
+            StoppingCriteriaList,
+        )
     except Exception:  # pragma: no cover - fallback if transformers API shifts
         BadWordsLogitsProcessor = None  # type: ignore
         LogitsProcessorList = None  # type: ignore
+        StoppingCriteria = object  # type: ignore
+
+        class StoppingCriteriaList(list):  # type: ignore
+            pass
 
     class _StopOnSemicolon(StoppingCriteria):
         """Stop generation at the first ';' to reduce run-on explanations."""
