@@ -1,0 +1,17 @@
+run_id,run_label,metric,n,mean,median,std,shapiro_w,shapiro_p,decision_alpha_0_05,null_hypothesis,reference_url,note
+baseline_k0,Base | k=0,em,200,0.0,0.0,0.0,1.0,1.0,fail_to_reject_normality,data_is_normally_distributed,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html,
+baseline_k0,Base | k=0,ex,200,0.485,0.0,0.5010290917239926,0.636107850952573,1.959123002230993e-20,reject_normality,data_is_normally_distributed,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html,
+baseline_k0,Base | k=0,ts,0,,,,,,insufficient_n,data_is_normally_distributed,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html,need at least 3 samples for Shapiro-Wilk
+baseline_k0,Base | k=0,va,200,0.875,1.0,0.3315488246330816,0.3872162260570443,1.3857687412640736e-25,reject_normality,data_is_normally_distributed,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html,
+baseline_k3,Base | k=3,em,200,0.355,0.0,0.4797141108417625,0.6051004519433805,3.348169190782243e-21,reject_normality,data_is_normally_distributed,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html,
+baseline_k3,Base | k=3,ex,200,0.61,1.0,0.488973902562228,0.6185883835277033,7.12415382644071e-21,reject_normality,data_is_normally_distributed,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html,
+baseline_k3,Base | k=3,ts,0,,,,,,insufficient_n,data_is_normally_distributed,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html,need at least 3 samples for Shapiro-Wilk
+baseline_k3,Base | k=3,va,200,0.895,1.0,0.3073226906378775,0.3516660084925244,3.5260055145654213e-26,reject_normality,data_is_normally_distributed,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html,
+qlora_k0,QLoRA | k=0,em,200,0.03,0.0,0.1710152950930958,0.15970300403959237,5.251876801012569e-29,reject_normality,data_is_normally_distributed,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html,
+qlora_k0,QLoRA | k=0,ex,200,0.455,0.0,0.4992204979041213,0.6334824801500221,1.6796606223586217e-20,reject_normality,data_is_normally_distributed,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html,
+qlora_k0,QLoRA | k=0,ts,0,,,,,,insufficient_n,data_is_normally_distributed,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html,need at least 3 samples for Shapiro-Wilk
+qlora_k0,QLoRA | k=0,va,200,0.865,1.0,0.3425810984938111,0.403453139092645,2.643601649227645e-25,reject_normality,data_is_normally_distributed,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html,
+qlora_k3,QLoRA | k=3,em,200,0.35,0.0,0.4781665150137579,0.602843695794995,2.9564715817718186e-21,reject_normality,data_is_normally_distributed,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html,
+qlora_k3,QLoRA | k=3,ex,200,0.55,1.0,0.49874213637205883,0.6327879058239755,1.6128674754788904e-20,reject_normality,data_is_normally_distributed,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html,
+qlora_k3,QLoRA | k=3,ts,0,,,,,,insufficient_n,data_is_normally_distributed,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html,need at least 3 samples for Shapiro-Wilk
+qlora_k3,QLoRA | k=3,va,200,0.87,1.0,0.33714735904132875,0.39545310579778215,1.9197874886422926e-25,reject_normality,data_is_normally_distributed,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html,

@@ -56,7 +56,7 @@ def _read_from_target(s: str) -> str | None:
 
 def extract_first_select(text: str) -> str | None:
     # Strip common markdown code-fence wrappers before trying to extract SQL.
-    # This keeps downstream postprocess deterministic and avoids fence fragments
+    # This keeps downstream evaluation deterministic and avoids fence fragments
     # leaking into execution.
     t = (text or "").strip()
     t = t.replace("```json", "```").replace("```sql", "```")
@@ -153,7 +153,9 @@ def generate_sql_from_messages(
     tokenizer: Any,
     messages: list[dict[str, str]],
     max_new_tokens: int = 128,
-    constrained: bool = True,
+    constrained: bool = False,
+    extract_select: bool = False,
+    stop_on_semicolon: bool = False,
     do_sample: bool = False,
     temperature: float = 0.2,
     top_p: float = 0.9,
@@ -259,9 +261,11 @@ def generate_sql_from_messages(
         "do_sample": do_sample,
         "pad_token_id": pad_token_id,
         "eos_token_id": eos_token_id,
-        "stopping_criteria": StoppingCriteriaList([_StopOnSemicolon(tokenizer)]),
-        "logits_processor": logits_processor,
     }
+    if stop_on_semicolon:
+        gen_kwargs["stopping_criteria"] = StoppingCriteriaList([_StopOnSemicolon(tokenizer)])
+    if logits_processor is not None:
+        gen_kwargs["logits_processor"] = logits_processor
     if do_sample:
         gen_kwargs.update({"temperature": temperature, "top_p": top_p})
     if num_return_sequences and num_return_sequences > 1:
@@ -280,15 +284,16 @@ def generate_sql_from_messages(
         for seq in out:
             gen_ids = seq[input_ids.shape[-1] :]
             gen_text = tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
-            sql = extract_first_select(gen_text)
-            results.append(sql if sql is not None else gen_text)
+            sql = extract_first_select(gen_text) if extract_select else None
+            final_candidate = sql if sql is not None else gen_text
+            results.append(final_candidate)
             if return_debug:
                 seq_debug.append(
                     {
                         "raw_generated_text": gen_text,
-                        "extract_debug": debug_extract_first_select(gen_text),
-                        "final_candidate": sql if sql is not None else gen_text,
-                        "used_raw_fallback": sql is None,
+                        "extract_debug": debug_extract_first_select(gen_text) if extract_select else None,
+                        "final_candidate": final_candidate,
+                        "used_raw_fallback": bool(extract_select and sql is None),
                     }
                 )
         if return_debug:
@@ -299,6 +304,8 @@ def generate_sql_from_messages(
                 "generation_args": {
                     "max_new_tokens": int(max_new_tokens),
                     "constrained": bool(constrained),
+                    "extract_select": bool(extract_select),
+                    "stop_on_semicolon": bool(stop_on_semicolon),
                     "do_sample": bool(do_sample),
                     "temperature": float(temperature),
                     "top_p": float(top_p),
@@ -310,7 +317,7 @@ def generate_sql_from_messages(
     gen_ids = out[0][input_ids.shape[-1] :]
     gen_text = tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
 
-    sql = extract_first_select(gen_text)
+    sql = extract_first_select(gen_text) if extract_select else None
     final_candidate = sql if sql is not None else gen_text
     if return_debug:
         return final_candidate, {
@@ -319,13 +326,15 @@ def generate_sql_from_messages(
             "generation_args": {
                 "max_new_tokens": int(max_new_tokens),
                 "constrained": bool(constrained),
+                "extract_select": bool(extract_select),
+                "stop_on_semicolon": bool(stop_on_semicolon),
                 "do_sample": bool(do_sample),
                 "temperature": float(temperature),
                 "top_p": float(top_p),
             },
             "raw_generated_text": gen_text,
-            "extract_debug": debug_extract_first_select(gen_text),
+            "extract_debug": debug_extract_first_select(gen_text) if extract_select else None,
             "final_candidate": final_candidate,
-            "used_raw_fallback": sql is None,
+            "used_raw_fallback": bool(extract_select and sql is None),
         }
     return final_candidate

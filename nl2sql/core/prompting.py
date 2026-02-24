@@ -2,50 +2,60 @@
 Prompt builders.
 
 How to read this file:
-1) `SYSTEM_INSTRUCTIONS` is the stable baseline prompt contract.
-2) `make_few_shot_messages()` builds chat messages: system + schema + exemplars + NLQ.
+1) `SYSTEM_INSTRUCTIONS` is intentionally minimal for easy explanation.
+2) `make_few_shot_messages()` assembles schema context + few-shot examples + NLQ.
 
-References:
-- NL->SQL survey context: https://arxiv.org/abs/2410.06011
-- In-context learning reference: https://arxiv.org/abs/2005.14165
+Reliability-extension rationale:
+- Prompt engineering + schema grounding are used to reduce hallucinated SQL.
+- Few-shot examples are used as structured in-context support.
+
+References (project anchors):
+- `REFERENCES.md#ref-brown2020-gpt3`
+- `REFERENCES.md#ref-mosbach2023-icl`
+- `REFERENCES.md#ref-wang2020-ratsql`
+- `REFERENCES.md#ref-lin2020-bridge`
+- `REFERENCES.md#ref-li2023-resdsql`
 """
 
 from __future__ import annotations
 
 
-# The system prompt is deliberately stable across experiments so differences in VA/EX
-# can be attributed to the method (prompting vs QLoRA vs agent controls), not prompt drift.
-#
-# Most rules below are motivated by observed failure modes in early baselines:
-# - "Output only SQL" reduces prompt-echo/explanations that cause VA=0.
-# - "Minimal projection" reduces EM noise and discourages selecting extra columns.
-# - "Use LIMIT/ORDER BY only when asked" prevents spurious ranking/limits.
-# - Routing hints reduce schema-linking errors without hardcoding full answers.
-SYSTEM_INSTRUCTIONS = """You are an expert data analyst writing MySQL queries.
-Given the database schema and a natural language question, write a single SQL SELECT query.
+SYSTEM_INSTRUCTIONS = """You are a MySQL analyst.
+Write one SQL SELECT query for the user question.
 
-Rules (schema-grounded and minimal):
-- Output ONLY SQL (no explanation, no markdown).
-- Output exactly ONE statement, starting with SELECT.
-- Select ONLY the columns needed to answer the question (minimal projection).
-- Use only the tables/columns listed in the schema; do NOT invent columns.
-- Prefer explicit JOIN syntax.
-- Use LIMIT/ORDER BY only when the NLQ implies ranking (top/highest/lowest/first/last).
-- Status literals allowed: 'Shipped', 'Cancelled', 'On Hold', 'Disputed', 'In Process', 'Resolved'.
-- Routing hints:
-  * country/creditLimit filters -> join customers (orders.customerNumber = customers.customerNumber).
-  * productLine/productVendor -> use products (and orderdetails for aggregates).
-  * order totals -> SUM(orderdetails.quantityOrdered * orderdetails.priceEach) grouped by orderNumber.
+Rules:
+- Output only SQL.
+- Output exactly one statement starting with SELECT.
+- Use only tables and columns in the provided schema details.
+- Use ORDER BY and LIMIT only when the question asks for ranking.
 """
 
 
-def make_few_shot_messages(*, schema: str, exemplars: list[dict], nlq: str) -> list[dict[str, str]]:
+def make_few_shot_messages(
+    *,
+    schema: str,
+    exemplars: list[dict],
+    nlq: str,
+    table_descriptions: str | None = None,
+) -> list[dict[str, str]]:
+    """
+    Build a schema-grounded few-shot prompt in a single, explainable format.
+
+    Design intent:
+    - keep prompt structure fixed for comparability across runs
+    - include schema/table context before examples to anchor decoding
+    - include curated NLQ->SQL exemplars for in-context adaptation
+    """
+    context_parts = ["Schema Details:\n" + schema]
+    if table_descriptions:
+        context_parts.append("Table Descriptions:\n" + table_descriptions)
+
     msgs: list[dict[str, str]] = [
         {"role": "system", "content": SYSTEM_INSTRUCTIONS},
-        {"role": "user", "content": "Schema:\n" + schema},
+        {"role": "user", "content": "\n\n".join(context_parts)},
     ]
     for ex in exemplars:
-        msgs.append({"role": "user", "content": f"NLQ: {ex['nlq']}"})
+        msgs.append({"role": "user", "content": f"Example Question: {ex['nlq']}"})
         msgs.append({"role": "assistant", "content": ex["sql"].rstrip(";") + ";"})
-    msgs.append({"role": "user", "content": f"NLQ: {nlq}"})
+    msgs.append({"role": "user", "content": f"Natural Language Question: {nlq}"})
     return msgs
