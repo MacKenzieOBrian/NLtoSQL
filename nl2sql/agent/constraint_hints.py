@@ -6,7 +6,11 @@ How to read this file:
 2) Find value hints (for WHERE values).
 3) Map value hints to likely schema columns.
 
-References:
+References (project anchors):
+- `REFERENCES.md#ref-li2023-resdsql`
+- `REFERENCES.md#ref-zhu2024-survey`
+
+Implementation docs:
 - Python regex docs: https://docs.python.org/3/library/re.html
 """
 
@@ -15,7 +19,7 @@ from __future__ import annotations
 import re
 
 
-# Common NL phrases -> schema columns.
+# common nl phrases -> schema columns.
 _FIELD_PHRASES = {
     "customer name": "customerName",
     "customer number": "customerNumber",
@@ -41,7 +45,7 @@ _FIELD_PHRASES = {
     "msrp": "MSRP",
 }
 
-# Entity words -> useful output fields for listing questions.
+# entity words -> useful output fields for listing questions.
 _ENTITY_PROJECTION_FIELDS = {
     "customer": ["customerName"],
     "order": ["orderNumber", "orderDate"],
@@ -51,7 +55,7 @@ _ENTITY_PROJECTION_FIELDS = {
     "office": ["city", "country"],
 }
 
-# Entity words -> primary identifier field.
+# entity words -> primary identifier field.
 _ENTITY_IDENTIFIER_FIELDS = {
     "customer": ["customerName"],
     "order": ["orderNumber"],
@@ -61,7 +65,7 @@ _ENTITY_IDENTIFIER_FIELDS = {
     "office": ["officeCode"],
 }
 
-# Column hints used when mapping NL values to likely WHERE columns.
+# column hints used when mapping nl values to likely where columns.
 _VALUE_COLUMN_HINTS = {
     "country": ["country", "nation"],
     "city": ["city", "town"],
@@ -156,15 +160,15 @@ def _extract_value_hints(nlq: str) -> list[str]:
     text = (nlq or "")
     out: list[str] = []
 
-    # Quoted literals are high-confidence value hints.
+    # quoted literals are high-confidence value hints.
     out.extend(m.group(1).strip().lower() for m in re.finditer(r"'([^']+)'", text))
     out.extend(m.group(1).strip().lower() for m in re.finditer(r'"([^\"]+)"', text))
 
-    # Dates and years are common filter values.
+    # dates and years are common filter values.
     out.extend(m.group(0).lower() for m in _DATE_RE.finditer(text))
     out.extend(m.group(0).lower() for m in _YEAR_RE.finditer(text))
 
-    # Status literals often appear unquoted in NLQ.
+    # status literals often appear unquoted in nlq.
     status_tokens = ["shipped", "cancelled", "on hold", "disputed", "in process", "resolved"]
     nl = text.lower()
     for token in status_tokens:
@@ -188,7 +192,7 @@ def _value_linked_columns_from_tables(nlq: str, tables: dict[str, list[str]]) ->
         if any(p in nl for p in phrases):
             out.append(available[col.lower()])
 
-    # If a value + location wording appears, prefer location columns when present.
+    # if a value + location wording appears, prefer location columns when present.
     value_hints = _extract_value_hints(nlq)
     if value_hints and re.search(r"\b(in|from|located|based)\b", nl):
         for location_col in ["city", "country", "state", "postalCode"]:

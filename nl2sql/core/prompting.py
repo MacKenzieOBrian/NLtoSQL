@@ -12,9 +12,11 @@ Reliability-extension rationale:
 References (project anchors):
 - `REFERENCES.md#ref-brown2020-gpt3`
 - `REFERENCES.md#ref-mosbach2023-icl`
+- `REFERENCES.md#ref-velasquez2023-prompteng`
 - `REFERENCES.md#ref-wang2020-ratsql`
 - `REFERENCES.md#ref-lin2020-bridge`
 - `REFERENCES.md#ref-li2023-resdsql`
+- `REFERENCES.md#ref-zhu2024-survey`
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ Rules:
 """
 
 
+# primary path: this prompt builder is used for model-only raw runs.
 def make_few_shot_messages(
     *,
     schema: str,

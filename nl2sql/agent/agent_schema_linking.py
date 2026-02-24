@@ -6,7 +6,13 @@ How to read this file:
 2) Keep required columns and join key columns.
 3) Emit join hints and validate join-key usage.
 
-References:
+References (project anchors):
+- `REFERENCES.md#ref-wang2020-ratsql`
+- `REFERENCES.md#ref-lin2020-bridge`
+- `REFERENCES.md#ref-li2023-resdsql`
+- `REFERENCES.md#ref-yao2023-react`
+
+Implementation docs:
 - Python regex docs: https://docs.python.org/3/library/re.html
 """
 
@@ -22,7 +28,7 @@ from .constraint_hints import (
 )
 
 
-# NL words -> likely tables.
+# nl words -> likely tables.
 _TABLE_HINTS = {
     "customer": ["customers"],
     "client": ["customers"],
@@ -37,7 +43,7 @@ _TABLE_HINTS = {
     "product line": ["productlines"],
 }
 
-# Canonical ClassicModels joins.
+# canonical classicmodels joins.
 _JOIN_HINTS = [
     "orders.customerNumber = customers.customerNumber",
     "orderdetails.orderNumber = orders.orderNumber",
@@ -205,7 +211,7 @@ def _tokenize(text: str) -> set[str]:
 
 
 def _split_ident(name: str) -> set[str]:
-    # Split camel/snake-ish identifiers into lowercase tokens.
+    # split camel/snake-ish identifiers into lowercase tokens.
     parts = re.findall(r"[A-Z]?[a-z]+|[0-9]+", name or "")
     if not parts:
         parts = re.split(r"_+", name or "")
@@ -251,20 +257,20 @@ def build_schema_subset(
         score = 0.0
         reasons: list[str] = []
 
-        # Direct lexical table hints.
+        # direct lexical table hints.
         for key, hinted_tables in _TABLE_HINTS.items():
             if key in nl and table in hinted_tables:
                 score += 2.0
                 reasons.append(f"hint:{key}")
 
-        # Table-name overlap with question words.
+        # table-name overlap with question words.
         if _split_ident(table) & nl_tokens:
             score += 1.5
             reasons.append("table_overlap")
 
         col_lows = {c.lower() for c in cols}
 
-        # Support explicit/projection/value cues.
+        # support explicit/projection/value cues.
         if explicit_set & col_lows:
             score += 2.0
             reasons.append("explicit_fields")
@@ -275,7 +281,7 @@ def build_schema_subset(
             score += 1.5
             reasons.append("value_columns")
 
-        # Small score for NL-token overlap with columns.
+        # small score for nl-token overlap with columns.
         col_hits = sum(1 for col in cols if _split_ident(col) & nl_tokens)
         if col_hits:
             score += min(2.0, 0.5 * col_hits)
@@ -285,11 +291,11 @@ def build_schema_subset(
             table_scores[table] = score
             table_reasons[table] = reasons
 
-    # Fallback: if no hints fire, keep schema head tables for stability.
+    # fallback: if no hints fire, keep schema head tables for stability.
     if not table_scores:
         picked = list(tables.keys())[:max_tables]
     else:
-        # Light relation boost: tables neighboring strong tables get a bump.
+        # light relation boost: tables neighboring strong tables get a bump.
         adjacency: dict[str, set[str]] = {}
         for t1, _c1, t2, _c2 in _JOIN_HINT_PAIRS:
             adjacency.setdefault(t1, set()).add(t2)
@@ -313,7 +319,7 @@ def build_schema_subset(
 
     picked_set = set(picked)
 
-    # Keep join key columns for selected table pairs.
+    # keep join key columns for selected table pairs.
     lower_to_actual = {t.lower(): t for t in tables.keys()}
     picked_lower = {t.lower() for t in picked}
     join_cols_by_table: dict[str, set[str]] = {t: set() for t in picked}
@@ -334,7 +340,7 @@ def build_schema_subset(
         else:
             selected = set(cols[:max_cols_per_table])
 
-        # Always keep explicit/projection/value and join key columns.
+        # always keep explicit/projection/value and join key columns.
         for col in cols:
             col_low = col.lower()
             if col_low in explicit_set or col_low in projection_set or col_low in value_set:

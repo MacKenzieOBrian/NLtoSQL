@@ -6,7 +6,12 @@ How to read this file:
 2) Add minimal required tables for known NL patterns.
 3) Return one constraints dict used by generator + validator.
 
-References:
+References (project anchors):
+- `REFERENCES.md#ref-scholak2021-picard`
+- `REFERENCES.md#ref-wang2018-eg-decoding`
+- `REFERENCES.md#ref-pourreza2023-dinsql`
+
+Implementation docs:
 - SQL SELECT clauses (GROUP BY / ORDER BY / LIMIT): https://dev.mysql.com/doc/refman/8.0/en/select.html
 - Python regex docs: https://docs.python.org/3/library/re.html
 """
@@ -76,10 +81,10 @@ def build_constraints(nlq: str, schema_text: str) -> dict[str, Any]:
     tables = _parse_schema_summary(schema_text)
     value_columns = _value_linked_columns_from_tables(nlq, tables)
 
-    # Required output fields should be explicit and stable.
+    # required output fields should be explicit and stable.
     required_output_fields = list(dict.fromkeys(explicit_fields))
 
-    # Minimal table requirements by simple lexical triggers.
+    # minimal table requirements by simple lexical triggers.
     required_tables: list[str] = []
     required_tables_all = False
     rule_tags: list[str] = []
@@ -107,13 +112,13 @@ def build_constraints(nlq: str, schema_text: str) -> dict[str, Any]:
         _extend_unique(required_tables, ["orders", "customers"])
         rule_tags.append("orders_customers_pair")
 
-    # Location requirement drives stricter downstream validation when values are present.
+    # location requirement drives stricter downstream validation when values are present.
     needs_location = bool(
         re.search(r"\b(city|country|state|region|territory|office)\b", nl)
         or (value_hints and re.search(r"\b(in|from|located|based)\b", nl))
     )
 
-    # Detect location-capable tables from schema text.
+    # detect location-capable tables from schema text.
     location_cols = {"city", "country", "state", "territory", "region"}
     location_tables = sorted(
         [

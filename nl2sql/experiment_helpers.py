@@ -3,6 +3,11 @@ Shared helpers for notebook experiment orchestration.
 
 These helpers keep baseline and QLoRA notebooks aligned so behavior does not
 drift when one notebook is edited.
+
+References (project anchors):
+- `REFERENCES.md#ref-brown2020-gpt3`
+- `REFERENCES.md#ref-mosbach2023-icl`
+- `REFERENCES.md#ref-dror2018-significance`
 """
 
 from __future__ import annotations
@@ -82,4 +87,3 @@ __all__ = [
     "model_alias_from_id",
     "schema_variant_text",
 ]
-

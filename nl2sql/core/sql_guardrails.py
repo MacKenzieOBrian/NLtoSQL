@@ -3,7 +3,12 @@ Lightweight SQL text guardrails for candidate cleanup.
 
 Goal: turn raw model text into one executable SELECT statement.
 
-Reference:
+References (project anchors):
+- `REFERENCES.md#ref-scholak2021-picard`
+- `REFERENCES.md#ref-wang2018-eg-decoding`
+- `REFERENCES.md#ref-pourreza2023-dinsql`
+
+Implementation docs:
 - Python regex docs: https://docs.python.org/3/library/re.html
 """
 
@@ -51,6 +56,7 @@ _FORBIDDEN_SQL = (
 )
 
 
+# extension path: guardrails are optional and excluded from primary model-only claims.
 def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
     """
     Extract a single safe SELECT statement.
@@ -64,11 +70,11 @@ def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
 
     text = _normalize_spaced_keywords(raw)
 
-    # Remove markdown fences commonly returned by chat models.
+    # remove markdown fences commonly returned by chat models.
     text = text.replace("```sql", "```").replace("```json", "```")
     text = re.sub(r"```(.*?)```", r"\1", text, flags=re.S).strip()
 
-    # Reuse shared extraction helper so behavior matches other code paths.
+    # reuse shared extraction helper so behavior matches other code paths.
     from .llm import extract_first_select as _extract_first_select
 
     sql = _extract_first_select(text)
@@ -81,7 +87,7 @@ def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
     if " from " not in f" {sql.lower()} ":
         return None, "no_from"
 
-    # Keep only the first statement.
+    # keep only the first statement.
     if ";" in sql:
         sql = sql.split(";", 1)[0].strip() + ";"
     else:

@@ -6,9 +6,13 @@ How to read this file:
 2) `get_table_columns()` reads ordered column metadata from INFORMATION_SCHEMA.
 3) `build_schema_summary()` builds the compact table(column,...) text used in prompts.
 
-References:
+References (project anchors):
+- `REFERENCES.md#ref-wang2020-ratsql`
+- `REFERENCES.md#ref-li2023-resdsql`
+- `REFERENCES.md#ref-zhu2024-survey`
+
+Implementation docs:
 - SQLAlchemy metadata/inspection docs: https://docs.sqlalchemy.org/en/20/core/metadata.html
-- NL->SQL schema-grounding context: https://arxiv.org/abs/2410.06011
 """
 
 from __future__ import annotations
@@ -41,8 +45,8 @@ def get_table_columns(engine: Engine, *, db_name: str, table_name: str) -> pd.Da
         """
     )
     with safe_connection(engine) as conn:
-        # Use SQLAlchemy execution directly instead of pandas.read_sql to avoid
-        # pandas/SQLAlchemy adapter issues in some Colab environments.
+        # use sqlalchemy execution directly instead of pandas.read_sql to avoid
+        # pandas/sqlalchemy adapter issues in some colab environments.
         result = conn.execute(query, {"db": db_name, "table": table_name})
         rows = result.fetchall()
 

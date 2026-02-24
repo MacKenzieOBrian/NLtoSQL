@@ -6,7 +6,13 @@ How to read this file:
 2) `generate_sql_from_messages()` runs chat-template generation with safe defaults.
 3) Optional lightweight constraints block non-SELECT DDL/DML tokens.
 
-References:
+References (project anchors):
+- `REFERENCES.md#ref-wolf2020-transformers`
+- `REFERENCES.md#ref-scholak2021-picard`
+- `REFERENCES.md#ref-wang2018-eg-decoding`
+- `REFERENCES.md#ref-pourreza2023-dinsql`
+
+Implementation docs:
 - Transformers generation docs: https://huggingface.co/docs/transformers/main_classes/text_generation
 - Transformers quantization docs: https://huggingface.co/docs/transformers/main_classes/quantization
 """
@@ -17,19 +23,19 @@ import re
 from typing import Any, Iterable
 
 
-# Regex reference: https://docs.python.org/3/library/re.html
-#
-# Rationale: try to extract a single executable SELECT from model output while
+# regex reference: https://docs.python.org/3/library/re.html
+# 
+# rationale: try to extract a single executable select from model output while
 # tolerating explanatory text before/after.
-#
-# We bias toward "SQL-ish" statements:
-# - the SELECT should start a line (or be prefixed by "SQL:")
-# - the statement should contain a FROM clause
-#
-# This avoids common false positives like "please select ... from ..." in prose.
+# 
+# we bias toward "sql-ish" statements:
+# the select should start a line (or be prefixed by "sql:")
+# the statement should contain a from clause
+# 
+# this avoids common false positives like "please select ... from ..." in prose.
 SQL_START_RE = re.compile(r"(?im)^\s*(?:sql\s*:\s*)?select\b")
 
-# Tiny stopword list to filter obvious prose like "from the ...".
+# tiny stopword list to filter obvious prose like "from the ...".
 _PROSE_FROM_STOPWORDS = {"the", "a", "an", "this", "that", "these", "those"}
 
 
@@ -55,8 +61,8 @@ def _read_from_target(s: str) -> str | None:
 
 
 def extract_first_select(text: str) -> str | None:
-    # Strip common markdown code-fence wrappers before trying to extract SQL.
-    # This keeps downstream evaluation deterministic and avoids fence fragments
+    # strip common markdown code-fence wrappers before trying to extract sql.
+    # this keeps downstream evaluation deterministic and avoids fence fragments
     # leaking into execution.
     t = (text or "").strip()
     t = t.replace("```json", "```").replace("```sql", "```")
@@ -69,7 +75,7 @@ def extract_first_select(text: str) -> str | None:
         stmt = tail if semi == -1 else tail[: semi + 1]
         stmt = re.sub(r"(?im)^\s*sql\s*:\s*", "", stmt, count=1).strip()
 
-        # Must look like a table-backed query (ClassicModels items are).
+        # must look like a table-backed query (classicmodels items are).
         from_m = re.search(r"(?is)\bfrom\b", stmt)
         if not from_m:
             continue
@@ -162,6 +168,8 @@ def generate_sql_from_messages(
     num_return_sequences: int = 1,
     return_debug: bool = False,
 ) -> Any:
+    # primary path: keep constrained/extract/stop flags false for dissertation claims.
+    # extension path: set those flags true only for optional reliability experiments.
     import torch
     try:
         from transformers import (
@@ -195,7 +203,7 @@ def generate_sql_from_messages(
         for w in words:
             variants.extend([w, w.upper(), w.lower(), w.capitalize()])
             variants.extend([f" {w}", f" {w.upper()}", f" {w.lower()}", f" {w.capitalize()}"])
-        # De-dupe while preserving order.
+        # de-dupe while preserving order.
         seen = set()
         out = []
         for v in variants:
@@ -205,8 +213,8 @@ def generate_sql_from_messages(
         return out
 
     def _build_bad_words_ids(tok: Any) -> list[list[int]]:
-        # Conservative DDL/DML/transaction keywords to prevent non-SELECT output.
-        # This is a light PICARD-style constraint that should not over-block SELECTs.
+        # conservative ddl/dml/transaction keywords to prevent non-select output.
+        # this is a light picard-style constraint that should not over-block selects.
         bad_words = [
             "insert",
             "update",
@@ -236,8 +244,8 @@ def generate_sql_from_messages(
         add_generation_prompt=True,
         return_tensors="pt",
     ).to(model.device)
-    # Some tokenizers share pad/eos ids, which prevents generate() from inferring an
-    # attention mask reliably. Our prompts are not padded, so an all-ones mask is valid.
+    # some tokenizers share pad/eos ids, which prevents generate() from inferring an
+    # attention mask reliably. our prompts are not padded, so an all-ones mask is valid.
     attention_mask = torch.ones_like(input_ids)
 
     pad_token_id = getattr(tokenizer, "pad_token_id", None)

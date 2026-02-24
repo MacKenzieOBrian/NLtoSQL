@@ -6,8 +6,12 @@ How to read this file:
 2) Keep one SELECT statement and remove obvious prompt artifacts.
 3) Apply small projection/order heuristics used in this project.
 
-References:
-- Transformers generation docs: https://huggingface.co/docs/transformers/main_classes/text_generation
+References (project anchors):
+- `REFERENCES.md#ref-pourreza2023-dinsql`
+- `REFERENCES.md#ref-zhai2025-excot`
+- `REFERENCES.md#ref-zhu2024-survey`
+
+Implementation docs:
 - Python regex docs: https://docs.python.org/3/library/re.html
 """
 
@@ -16,37 +20,38 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable
 
+# extension path: this postprocess module is optional and excluded from primary model-only claims.
 
 def normalize_sql(s: str) -> str:
-    # Regex reference: https://docs.python.org/3/library/re.html
-    # Rationale: early evals showed formatting noise dominating EM; normalization keeps EM focused on real errors.
-    # Used for EM (Exact Match): normalize surface form so EM detects real regressions
-    # (missing JOIN, wrong predicate) rather than harmless whitespace/casing differences.
+    # regex reference: https://docs.python.org/3/library/re.html
+    # rationale: early evals showed formatting noise dominating em; normalization keeps em focused on real errors.
+    # used for em (exact match): normalize surface form so em detects real regressions
+    # (missing join, wrong predicate) rather than harmless whitespace/casing differences.
     s = (s or "").strip()
     s = re.sub(r"\s+", " ", s)
     s = s.rstrip(";")
     return s.lower()
 
 
-# "List all ..." is a common prompt pattern where the model over-selects columns.
-# We clamp projection for that specific phrasing to reduce evaluation noise.
+# "list all ..." is a common prompt pattern where the model over-selects columns.
+# we clamp projection for that specific phrasing to reduce evaluation noise.
 LIST_ALL_RE = re.compile(r"(?is)^\s*list\s+all\s+")
 
-# Capture the SELECT list for projection heuristics (best-effort, not a full parser).
+# capture the select list for projection heuristics (best-effort, not a full parser).
 SELECT_LIST_RE = re.compile(r"(?is)^\s*select\s+(.*?)\s+from\s+", re.DOTALL)
 
-# First SELECT block extraction: prevents multi-statement outputs and trailing explanations.
+# first select block extraction: prevents multi-statement outputs and trailing explanations.
 SQL_RE = re.compile(r"(?is)\bselect\b.*?(;|\Z)")
 
-# Models often add ORDER BY / LIMIT even when the question does not ask for ranking.
-# We keep these clauses only when the NLQ contains ranking cues.
+# models often add order by / limit even when the question does not ask for ranking.
+# we keep these clauses only when the nlq contains ranking cues.
 RANKING_HINT_RE = re.compile(
     r"\b(top|highest|lowest|most|least|largest|smallest|first|last|max|min|order|sort|rank)\b",
     re.IGNORECASE,
 )
 
-# Some gold queries do not include ID/code columns unless explicitly requested.
-# Dropping ID-like projections can improve EM without changing execution semantics.
+# some gold queries do not include id/code columns unless explicitly requested.
+# dropping id-like projections can improve em without changing execution semantics.
 ID_IN_NLQ_RE = re.compile(r"\b(id|ids|number|numbers|code|codes|line item|line number)\b", re.IGNORECASE)
 ID_LIKE_COL_RE = re.compile(
     r"\b(order(number)?|customer(number)?|employee(number)?|office(code)?|product(code)?|line(number)?)\b",
@@ -71,9 +76,9 @@ def _strip_order_by_limit(sql: str, nlq: str) -> str:
     """Remove ORDER BY / LIMIT when the NLQ does not imply ranking."""
     if RANKING_HINT_RE.search(nlq or ""):
         return sql
-    # Motivation: ranking/limit clauses are a frequent "model habit" that can:
-    # - reduce EM (gold often omits ORDER BY)
-    # - change semantics if LIMIT is applied unintentionally
+    # motivation: ranking/limit clauses are a frequent "model habit" that can:
+    # reduce em (gold often omits order by)
+    # change semantics if limit is applied unintentionally
     out = re.sub(r"(?is)\sorder\s+by\s+[^;]+", "", sql)
     out = re.sub(r"(?is)\slimit\s+\d+\s*", "", out)
     return out
@@ -100,8 +105,8 @@ def _split_select_list(select_part: str) -> list[str]:
 
 
 def _rebuild_select(sql: str, new_select_items: Iterable[str]) -> str:
-    # Rebuild SELECT list with a regex substitution. This is intentionally simple
-    # (no full SQL AST) so the postprocess layer remains inspectable.
+    # rebuild select list with a regex substitution. this is intentionally simple
+    # (no full sql ast) so the postprocess layer remains inspectable.
     return re.sub(SELECT_LIST_RE, lambda _: f"SELECT {', '.join(new_select_items)} FROM ", sql, count=1)
 
 
@@ -134,7 +139,7 @@ def enforce_explicit_projection(sql: str, explicit_fields: Iterable[str] | None)
                 used.add(idx)
                 break
         if found is None:
-            # If we can't confidently match all explicit fields, skip trimming.
+            # if we can't confidently match all explicit fields, skip trimming.
             return sql
     if ordered == cols:
         return sql
@@ -153,12 +158,12 @@ def prune_id_like_columns(
     """
     if ID_IN_NLQ_RE.search(nlq or ""):
         return sql
-    # If explicit fields include an ID-like column, keep identifiers.
+    # if explicit fields include an id-like column, keep identifiers.
     if explicit_fields:
         for field in explicit_fields:
             if ID_LIKE_COL_RE.search(field):
                 return sql
-    # If required fields include an ID-like column, keep identifiers.
+    # if required fields include an id-like column, keep identifiers.
     if required_fields:
         for field in required_fields:
             if ID_LIKE_COL_RE.search(str(field)):
@@ -168,10 +173,10 @@ def prune_id_like_columns(
         return sql
     select_part = m.group(1).strip()
     if "*" in select_part:
-        return sql  # do not touch SELECT *
+        return sql  # do not touch select *
     cols = _split_select_list(select_part)
-    # Keep only non-ID-like projection items. This is a heuristic; it can be wrong
-    # if the NLQ implicitly expects IDs, so we only do it when the NLQ lacks ID cues.
+    # keep only non-id-like projection items. this is a heuristic; it can be wrong
+    # if the nlq implicitly expects ids, so we only do it when the nlq lacks id cues.
     kept = [c for c in cols if not ID_LIKE_COL_RE.search(c.split()[-1])]
     if not kept:
         return sql  # avoid empty select list
@@ -185,10 +190,10 @@ def enforce_minimal_projection(
 ) -> str:
     if not sql or not nlq:
         return sql
-    # If the NLQ (or constraints) require specific output fields, avoid collapsing the projection.
+    # if the nlq (or constraints) require specific output fields, avoid collapsing the projection.
     if required_fields:
         return sql
-    # If the NLQ enumerates fields or uses "with", keep the full projection.
+    # if the nlq enumerates fields or uses "with", keep the full projection.
     if "," in nlq or " and " in nlq.lower() or " with " in nlq.lower():
         return sql
     if not LIST_ALL_RE.search(nlq.strip()):
@@ -199,8 +204,8 @@ def enforce_minimal_projection(
     select_part = m.group(1).strip()
     if "*" in select_part:
         return sql
-    # Motivation: "list all ..." questions are commonly answered with multiple columns.
-    # Gold queries in this benchmark often use a minimal projection (e.g., names only).
+    # motivation: "list all ..." questions are commonly answered with multiple columns.
+    # gold queries in this benchmark often use a minimal projection (e.g., names only).
     first_expr = select_part.split(",")[0].strip()
     rebuilt = re.sub(SELECT_LIST_RE, lambda _: f"SELECT {first_expr} FROM ", sql, count=1)
     return rebuilt
