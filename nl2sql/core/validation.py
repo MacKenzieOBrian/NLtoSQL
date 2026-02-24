@@ -6,7 +6,12 @@ How to read this file:
 2) Validate SQL against schema and join-key rules.
 3) Validate SQL shape against extracted constraints.
 
-References:
+References (project anchors):
+- `REFERENCES.md#ref-wang2020-ratsql`
+- `REFERENCES.md#ref-lin2020-bridge`
+- `REFERENCES.md#ref-li2023-resdsql`
+
+Implementation docs:
 - Python regex docs: https://docs.python.org/3/library/re.html
 - SQL SELECT syntax (GROUP BY / ORDER BY / LIMIT): https://dev.mysql.com/doc/refman/8.0/en/select.html
 """
@@ -121,7 +126,7 @@ def schema_validate(
 
     sql_low = (sql or "").lower()
 
-    # Validate explicit table names in FROM/JOIN (skip subqueries).
+    # validate explicit table names in from/join (skip subqueries).
     for m in re.finditer(r"(?is)\b(from|join)\s+([a-zA-Z_][\w$]*)", sql_low):
         table = m.group(2)
         after = sql_low[m.end() : m.end() + 1]
@@ -130,7 +135,7 @@ def schema_validate(
         if table not in tables:
             return False, f"unknown_table:{table}", {}
 
-    # Validate qualified columns table.column when table is known.
+    # validate qualified columns table.column when table is known.
     for m in re.finditer(r"(?is)\b([a-zA-Z_][\w$]*)\.([a-zA-Z_][\w$]*)\b", sql_low):
         table = m.group(1)
         col = m.group(2)
@@ -147,7 +152,7 @@ def schema_validate(
 
 def validate_sql(sql: str, schema_text: Optional[str] = None, *, enforce_join_hints: bool = True) -> dict:
     """Validate SQL formatting + schema references without executing."""
-    # Rationale: catch obvious formatting/schema errors before hitting the database.
+    # rationale: catch obvious formatting/schema errors before hitting the database.
     if not sql or not sql.strip():
         return {"valid": False, "reason": "empty_sql"}
 
@@ -178,7 +183,7 @@ def validate_sql(sql: str, schema_text: Optional[str] = None, *, enforce_join_hi
 
 def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: Optional[str] = None) -> dict:
     """Validate SQL structure against extracted constraints."""
-    # Rationale: prevents "runs but wrong shape" (e.g., missing GROUP BY or LIMIT).
+    # rationale: prevents "runs but wrong shape" (e.g., missing group by or limit).
     if not constraints:
         return {"valid": True, "reason": "no_constraints"}
     if not isinstance(constraints, dict):
@@ -232,8 +237,8 @@ def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: 
                 "missing_fields": missing_required,
             }
 
-    # Entity identifiers are treated as soft hints at generation/rerank time.
-    # Strict projection checks are handled via required_output_fields above.
+    # entity identifiers are treated as soft hints at generation/rerank time.
+    # strict projection checks are handled via required_output_fields above.
 
     if constraints.get("needs_location"):
         tables_in_query = _tables_in_query(sql_low)
@@ -271,7 +276,7 @@ def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: 
                 "reason": "missing_value_column_table",
                 "missing_value_columns": value_columns,
             }
-        # If present value columns span multiple tables, require a connected join path.
+        # if present value columns span multiple tables, require a connected join path.
         tables_for_values = set()
         for tables in value_col_tables.values():
             tables_for_values.update(tables)
@@ -306,7 +311,7 @@ def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: 
     if constraints.get("needs_self_join") and constraints.get("self_join_table"):
         table = str(constraints.get("self_join_table") or "").lower()
         if table:
-            # Require a self-join pattern: table appears in FROM and JOIN.
+            # require a self-join pattern: table appears in from and join.
             has_from = re.search(rf"\bfrom\s+{re.escape(table)}\b", sql_low) is not None
             has_join = re.search(rf"\bjoin\s+{re.escape(table)}\b", sql_low) is not None
             if not (has_from and has_join):

@@ -9,6 +9,12 @@ Default mode:
 Optional mode:
 - Enable constrained decoding and reliability cleanup layers
   (guardrails/postprocess) for extension runs.
+
+References (project anchors):
+- `REFERENCES.md#ref-yu2018-spider`
+- `REFERENCES.md#ref-zhong2020-ts`
+- `REFERENCES.md#ref-li2023-bigbench`
+- `REFERENCES.md#ref-gao2025-llm-sql`
 """
 
 from __future__ import annotations
@@ -53,6 +59,7 @@ def _apply_optional_reliability_layer(
     explicit_fields: Iterable[str] | None = None,
     required_fields: Iterable[str] | None = None,
 ) -> str:
+    # extension path: keep this layer off for primary model-only claims.
     out = _passthrough_sql(sql_text)
 
     if apply_sql_guardrails:
@@ -387,7 +394,8 @@ def eval_run(
             table_descriptions=table_descriptions,
         )
 
-        # Generation options are configurable so reliability layers can be used as an optional extension.
+        # primary path: run with all reliability flags off.
+        # extension path: enable reliability flags only in extension runs.
         raw_sql = generate_sql_from_messages(
             model=model,
             tokenizer=tokenizer,

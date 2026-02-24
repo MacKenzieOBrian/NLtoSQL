@@ -7,7 +7,7 @@ How to read this file:
 
 References:
 - Cloud SQL connector docs: https://cloud.google.com/sql/docs/mysql/connect-run
-- SQLAlchemy engine creator docs: https://docs.sqlalchemy.org/en/20/core/engines.html#custom-dbapi-connect
+- SQLAlchemy engine creator docs: https://docs.sqlalchemy.org/en/20/core/engines.html# custom-dbapi-connect
 """
 
 from __future__ import annotations

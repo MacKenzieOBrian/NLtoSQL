@@ -6,7 +6,11 @@ How to read this file:
 2) It blocks destructive keywords and caps returned rows.
 3) Results are stored as `QueryResult` records for traceability.
 
-References:
+References (project anchors):
+- `REFERENCES.md#ref-zhong2020-ts`
+- `REFERENCES.md#ref-gao2025-llm-sql`
+
+Implementation docs:
 - SQLAlchemy execute docs: https://docs.sqlalchemy.org/en/20/core/connections.html
 - Python dataclasses docs: https://docs.python.org/3/library/dataclasses.html
 """
@@ -42,7 +46,7 @@ DEFAULT_FORBIDDEN_TOKENS = [
     "update ",
     "insert ",
 ]
-# Rationale: simple SELECT-only guard to keep evaluation safe and reproducible.
+# rationale: simple select-only guard to keep evaluation safe and reproducible.
 
 
 @dataclass(frozen=True)
@@ -84,7 +88,7 @@ class QueryRunner:
         lowered = (sql or "").strip().lower()
         if not lowered:
             raise QueryExecutionError("Empty SQL string")
-        # Motivation: this project executes model-generated SQL against a real DB.
+        # motivation: this project executes model-generated sql against a real db.
         # A simple token blocklist is a pragmatic safety layer for evaluation runs.
         for token in self.forbidden_tokens:
             if token in lowered:
@@ -99,8 +103,8 @@ class QueryRunner:
             with safe_connection(self.engine) as conn:
                 result = conn.execute(sqlalchemy.text(sql), params or {})
                 cols = list(result.keys())
-                # Bound how much we fetch: QueryRunner is for gating + debugging previews,
-                # not for full result materialization (EX/TS do their own bounded fetch).
+                # bound how much we fetch: queryrunner is for gating + debugging previews,
+                # not for full result materialization (ex/ts do their own bounded fetch).
                 rows = result.fetchmany(self.max_rows + 1)
                 truncated = len(rows) > self.max_rows
                 if truncated:
@@ -111,7 +115,7 @@ class QueryRunner:
 
             df = None
             if capture_df:
-                # The preview DataFrame is a debugging aid for notebooks; it is not used for scoring.
+                # the preview dataframe is a debugging aid for notebooks; it is not used for scoring.
                 df = pd.DataFrame(rows, columns=cols)
 
             out = QueryResult(

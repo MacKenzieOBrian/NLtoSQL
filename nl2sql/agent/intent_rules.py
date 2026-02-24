@@ -5,7 +5,11 @@ How to read this file:
 1) Classify NLQ into one coarse intent bucket.
 2) Check SQL contains the required clause pattern for that bucket.
 
-References:
+References (project anchors):
+- `REFERENCES.md#ref-zhu2024-survey`
+- `REFERENCES.md#ref-yao2023-react`
+
+Implementation docs:
 - SQL ORDER BY / LIMIT usage: https://dev.mysql.com/doc/refman/8.0/en/select.html
 - Python regex docs: https://docs.python.org/3/library/re.html
 """
