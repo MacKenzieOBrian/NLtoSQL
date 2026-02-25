@@ -19,6 +19,6 @@ primary evidence rule:
 
 current coverage note:
 - baseline llama kept: k=0 and k=3, seeds 7/17/27.
-- baseline qwen kept: k=0 and k=3, seed 7.
+- baseline qwen kept: k=0 seeds 7/17 and k=3 seeds 7/17/27.
 - qlora qwen pending new runs.
 - qlora llama pending new runs.

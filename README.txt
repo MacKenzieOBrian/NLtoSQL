@@ -20,8 +20,8 @@ Top-level layout:
 - `data/`
   - `classicmodels_test_200.json`: fixed 200-item evaluation set.
   - `train/classicmodels_train_200.jsonl`: QLoRA training set.
-- `docs/`
-  - writing and project documentation.
+- root project documentation:
+  - `README.txt`, `REFERENCES.md`, `documentation.md`.
 - `nl2sql/`
   - canonical runtime/evaluation code (`core/`, `evaluation/`).
   - compatibility wrappers at package root preserve legacy import paths.
@@ -41,8 +41,9 @@ Top-level layout:
 
 Primary evidence folders:
 - `results/baseline/runs`
-- `results/qlora/runs`
 - `results/analysis`
+- `results/qlora/runs` (staging area only; selected QLoRA runs are copied into
+  `results/baseline/runs` for unified analysis)
 
 
 3) Code ownership and provenance
