@@ -1,8 +1,0 @@
-file,k,seed,n,va_rate,em_rate,ex_rate,model_id
-"results_k0_seed7.json","0","7","200","0.855","0.025","0.495","Qwen/Qwen2.5-7B-Instruct"
-"results_k3_seed17.json","3","17","200","0.86","0.375","0.605","Qwen/Qwen2.5-7B-Instruct"
-"results_k3_seed27.json","3","27","200","0.885","0.385","0.615","Qwen/Qwen2.5-7B-Instruct"
-"results_k3_seed7.json","3","7","200","0.885","0.34","0.585","Qwen/Qwen2.5-7B-Instruct"
-"results_k5_seed17.json","5","17","200","0.915","0.435","0.65","Qwen/Qwen2.5-7B-Instruct"
-"results_k5_seed27.json","5","27","200","0.875","0.42","0.605","Qwen/Qwen2.5-7B-Instruct"
-"results_k5_seed7.json","5","7","200","0.895","0.4","0.65","Qwen/Qwen2.5-7B-Instruct"

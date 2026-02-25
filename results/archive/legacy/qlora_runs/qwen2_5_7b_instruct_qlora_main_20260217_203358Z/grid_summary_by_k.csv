@@ -1,3 +1,0 @@
-prompt_variant,schema_variant,exemplar_strategy,k,runs,va_mean,va_std,em_mean,em_std,ex_mean,ex_std,ts_mean,ts_std
-default,full,all,0,1,0.91,,0.065,,0.58,,,
-default,full,all,3,1,0.88,,0.33,,0.605,,,
