@@ -1,0 +1,9 @@
+comparison,left_condition_id,right_condition_id,metric,pair_key,matched_seeds,n_pairs,diff_shapiro_w,diff_shapiro_p,diff_shapiro_decision_alpha_0_05,diff_shapiro_note,diff_shapiro_reference_url
+Llama Base k0->k3,llama_base_k0,llama_base_k3,em,seed+example_id,"7,17,27",600,0.5926723828897345,3.431111881717438e-35,reject_normality,,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html
+Llama Base k0->k3,llama_base_k0,llama_base_k3,ex,seed+example_id,"7,17,27",600,0.5009517292433389,6.795659573797921e-38,reject_normality,,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html
+Llama Base k0->k3,llama_base_k0,llama_base_k3,ts,seed+example_id,"7,17,27",0,,,insufficient_n,,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html
+Llama Base k0->k3,llama_base_k0,llama_base_k3,va,seed+example_id,"7,17,27",600,0.4985128642774955,5.835191334733213e-38,reject_normality,,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html
+Qwen Base k0->k3,qwen_base_k0,qwen_base_k3,em,seed+example_id,7,200,0.6217164885708365,8.512143476295595e-21,reject_normality,,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html
+Qwen Base k0->k3,qwen_base_k0,qwen_base_k3,ex,seed+example_id,7,200,0.6741171681171729,2.009370352989715e-19,reject_normality,,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html
+Qwen Base k0->k3,qwen_base_k0,qwen_base_k3,ts,seed+example_id,7,0,,,insufficient_n,,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html
+Qwen Base k0->k3,qwen_base_k0,qwen_base_k3,va,seed+example_id,7,200,0.44088105872484684,1.2366540339605566e-24,reject_normality,,https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html
