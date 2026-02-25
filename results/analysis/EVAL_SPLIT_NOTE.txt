@@ -1,5 +1,0 @@
-Current split policy (set on request):
-- All currently saved runs are treated as constrained/cleaned extension runs.
-- Primary hypothesis files are reserved for new model-only raw reruns.
-- Extension per-item file: results/analysis/per_item_metrics_extension_constrained.csv
-- Primary placeholder file: results/analysis/per_item_metrics_primary_raw.csv

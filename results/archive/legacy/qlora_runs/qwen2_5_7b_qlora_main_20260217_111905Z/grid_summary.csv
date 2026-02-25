@@ -1,3 +1,0 @@
-run_tag,prompt_variant,schema_variant,exemplar_strategy,exemplar_pool_size,k,seed,n,va_rate,em_rate,ex_rate,ts_rate,ts_n,json_path
-qwen2_5_7b_qlora_main,default,full,all,200,0,7,200,0.815,0.01,0.435,,0,results/qlora/runs/qwen2_5_7b_qlora_main_20260217_111905Z/results_k0_seed7.json
-qwen2_5_7b_qlora_main,default,full,all,200,3,7,200,0.85,0.315,0.535,,0,results/qlora/runs/qwen2_5_7b_qlora_main_20260217_111905Z/results_k3_seed7.json

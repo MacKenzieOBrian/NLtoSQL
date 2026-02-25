@@ -256,6 +256,11 @@ def generate_sql_from_messages(
     if num_return_sequences and num_return_sequences > 1 and not do_sample:
         do_sample = True
 
+    # transformers generation docs: temperature/top_p are sampling controls.
+    # deterministic eval policy: when do_sample=false, neutralize both to 1.0.
+    effective_temperature = float(temperature) if do_sample else 1.0
+    effective_top_p = float(top_p) if do_sample else 1.0
+
     logits_processor = None
     if constrained and LogitsProcessorList is not None and BadWordsLogitsProcessor is not None:
         bad_words_ids = _build_bad_words_ids(tokenizer)
@@ -267,6 +272,8 @@ def generate_sql_from_messages(
     gen_kwargs = {
         "max_new_tokens": max_new_tokens,
         "do_sample": do_sample,
+        "temperature": effective_temperature,
+        "top_p": effective_top_p,
         "pad_token_id": pad_token_id,
         "eos_token_id": eos_token_id,
     }
@@ -274,8 +281,6 @@ def generate_sql_from_messages(
         gen_kwargs["stopping_criteria"] = StoppingCriteriaList([_StopOnSemicolon(tokenizer)])
     if logits_processor is not None:
         gen_kwargs["logits_processor"] = logits_processor
-    if do_sample:
-        gen_kwargs.update({"temperature": temperature, "top_p": top_p})
     if num_return_sequences and num_return_sequences > 1:
         gen_kwargs["num_return_sequences"] = num_return_sequences
 
@@ -315,8 +320,8 @@ def generate_sql_from_messages(
                     "extract_select": bool(extract_select),
                     "stop_on_semicolon": bool(stop_on_semicolon),
                     "do_sample": bool(do_sample),
-                    "temperature": float(temperature),
-                    "top_p": float(top_p),
+                    "temperature": float(effective_temperature),
+                    "top_p": float(effective_top_p),
                 },
                 "sequences": seq_debug,
             }
@@ -337,8 +342,8 @@ def generate_sql_from_messages(
                 "extract_select": bool(extract_select),
                 "stop_on_semicolon": bool(stop_on_semicolon),
                 "do_sample": bool(do_sample),
-                "temperature": float(temperature),
-                "top_p": float(top_p),
+                "temperature": float(effective_temperature),
+                "top_p": float(effective_top_p),
             },
             "raw_generated_text": gen_text,
             "extract_debug": debug_extract_first_select(gen_text) if extract_select else None,
