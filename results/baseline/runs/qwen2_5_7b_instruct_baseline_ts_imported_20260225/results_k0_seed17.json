@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-02-25T14:44:50.585609Z",
+  "timestamp": "2026-02-25T17:43:32.970041Z",
   "k": 0,
   "seed": 17,
   "limit": null,
@@ -2623,7 +2623,7 @@
     "model_alias": "qwen2_5_7b_instruct",
     "notebook": "02_baseline_prompting_eval.ipynb",
     "method": "baseline",
-    "run_tag": "qwen2_5_7b_base_backfill_s17_s27",
+    "run_tag": "qwen2_5_7b_base_backfill_missing_only",
     "k": 0,
     "seed": 17,
     "prompt_variant": "default",

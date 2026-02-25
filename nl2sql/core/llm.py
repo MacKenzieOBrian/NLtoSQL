@@ -256,10 +256,11 @@ def generate_sql_from_messages(
     if num_return_sequences and num_return_sequences > 1 and not do_sample:
         do_sample = True
 
-    # transformers generation docs: temperature/top_p are sampling controls.
-    # deterministic eval policy: when do_sample=false, neutralize both to 1.0.
+    # transformers generation docs: temperature/top_p/top_k are sampling controls.
+    # deterministic eval policy: when do_sample=false, neutralize to warning-free values.
     effective_temperature = float(temperature) if do_sample else 1.0
     effective_top_p = float(top_p) if do_sample else 1.0
+    effective_top_k = None if do_sample else 50
 
     logits_processor = None
     if constrained and LogitsProcessorList is not None and BadWordsLogitsProcessor is not None:
@@ -277,6 +278,8 @@ def generate_sql_from_messages(
         "pad_token_id": pad_token_id,
         "eos_token_id": eos_token_id,
     }
+    if effective_top_k is not None:
+        gen_kwargs["top_k"] = effective_top_k
     if stop_on_semicolon:
         gen_kwargs["stopping_criteria"] = StoppingCriteriaList([_StopOnSemicolon(tokenizer)])
     if logits_processor is not None:
@@ -322,6 +325,7 @@ def generate_sql_from_messages(
                     "do_sample": bool(do_sample),
                     "temperature": float(effective_temperature),
                     "top_p": float(effective_top_p),
+                    "top_k": int(effective_top_k) if effective_top_k is not None else None,
                 },
                 "sequences": seq_debug,
             }
@@ -344,6 +348,7 @@ def generate_sql_from_messages(
                 "do_sample": bool(do_sample),
                 "temperature": float(effective_temperature),
                 "top_p": float(effective_top_p),
+                "top_k": int(effective_top_k) if effective_top_k is not None else None,
             },
             "raw_generated_text": gen_text,
             "extract_debug": debug_extract_first_select(gen_text) if extract_select else None,
