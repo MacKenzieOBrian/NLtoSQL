@@ -245,7 +245,7 @@
   },
   {
     "nlq": "List customers in France.",
-    "sql": "SELECT customerName FROM customers WHERE city = 'France';"
+    "sql": "SELECT customerName FROM customers WHERE country = 'France';"
   },
   {
     "nlq": "How many orders from customers in Germany have status 'Shipped'?",
@@ -285,7 +285,7 @@
   },
   {
     "nlq": "List customers in Germany.",
-    "sql": "SELECT customerName FROM customers WHERE city = 'Germany';"
+    "sql": "SELECT customerName FROM customers WHERE country = 'Germany';"
   },
   {
     "nlq": "How many orders from customers in UK have status 'Shipped'?",
@@ -325,7 +325,7 @@
   },
   {
     "nlq": "List customers in UK.",
-    "sql": "SELECT customerName FROM customers WHERE city = 'UK';"
+    "sql": "SELECT customerName FROM customers WHERE country = 'UK';"
   },
   {
     "nlq": "How many orders from customers in Spain have status 'Shipped'?",
@@ -365,7 +365,7 @@
   },
   {
     "nlq": "List customers in Spain.",
-    "sql": "SELECT customerName FROM customers WHERE city = 'Spain';"
+    "sql": "SELECT customerName FROM customers WHERE country = 'Spain';"
   },
   {
     "nlq": "How many orders from customers in Australia have status 'Shipped'?",
@@ -405,7 +405,7 @@
   },
   {
     "nlq": "List customers in Australia.",
-    "sql": "SELECT customerName FROM customers WHERE city = 'Australia';"
+    "sql": "SELECT customerName FROM customers WHERE country = 'Australia';"
   },
   {
     "nlq": "How many orders from customers in Canada have status 'Shipped'?",
@@ -445,7 +445,7 @@
   },
   {
     "nlq": "List customers in Canada.",
-    "sql": "SELECT customerName FROM customers WHERE city = 'Canada';"
+    "sql": "SELECT customerName FROM customers WHERE country = 'Canada';"
   },
   {
     "nlq": "How many orders from customers in Japan have status 'Shipped'?",
@@ -485,7 +485,7 @@
   },
   {
     "nlq": "List customers in Japan.",
-    "sql": "SELECT customerName FROM customers WHERE city = 'Japan';"
+    "sql": "SELECT customerName FROM customers WHERE country = 'Japan';"
   },
   {
     "nlq": "How many orders from customers in Italy have status 'Shipped'?",
@@ -525,7 +525,7 @@
   },
   {
     "nlq": "List customers in Italy.",
-    "sql": "SELECT customerName FROM customers WHERE city = 'Italy';"
+    "sql": "SELECT customerName FROM customers WHERE country = 'Italy';"
   },
   {
     "nlq": "How many orders from customers in Norway have status 'Shipped'?",
@@ -565,7 +565,7 @@
   },
   {
     "nlq": "List customers in Norway.",
-    "sql": "SELECT customerName FROM customers WHERE city = 'Norway';"
+    "sql": "SELECT customerName FROM customers WHERE country = 'Norway';"
   },
   {
     "nlq": "What is the average order total for orders with status Shipped?",

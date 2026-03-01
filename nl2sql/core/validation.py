@@ -320,5 +320,17 @@ def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: 
                 "reason": "missing_required_output_field",
                 "missing_fields": missing_required,
             }
+    if constraints.get("strict_required_output_fields") and required_output_fields and not has_select_star:
+        exprs = _split_select_expressions(select_clause)
+        unexpected = [
+            expr for expr in exprs
+            if not any(_select_has_field(expr, f) for f in required_output_fields)
+        ]
+        if unexpected:
+            return {
+                "valid": False,
+                "reason": "unexpected_output_field",
+                "unexpected_fields": unexpected[:3],
+            }
 
     return {"valid": True, "reason": "ok"}
