@@ -17,6 +17,7 @@ References (project anchors):
 from __future__ import annotations
 
 import json
+import random
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,7 @@ from sqlalchemy.engine import Engine
 
 from ..core.llm import extract_first_select, generate_sql_from_messages
 from ..core.postprocess import guarded_postprocess, normalize_sql
+from ..core.prompting import make_few_shot_messages
 from ..core.validation import parse_schema_text, validate_sql
 from ..evaluation.eval import execution_accuracy, test_suite_accuracy_for_item
 from .agent_tools import ensure_schema_text, get_agent_context
@@ -39,6 +41,8 @@ class ReactAblationConfig:
     use_repair_policy: bool = True
     max_repairs: int = 1
     max_steps: int = 8
+    few_shot_k: int = 3
+    few_shot_seed: int = 7
     max_new_tokens: int = 256
     do_sample: bool = False
     temperature: float = 0.2
@@ -168,6 +172,74 @@ def _postprocess_sql(sql: str, nlq: str, schema_text: str) -> str:
     )
 
 
+def _build_prompt_messages(
+    *,
+    nlq: str,
+    schema_text: str,
+    system_prompt: str,
+    final_user_content: str | None = None,
+) -> list[dict[str, str]]:
+    ctx = get_agent_context()
+    config = _effective_config()
+    exemplars: list[dict[str, Any]] = []
+    pool = list(ctx.exemplar_pool or [])
+
+    if config.few_shot_k > 0 and pool:
+        pool = [ex for ex in pool if ex.get("nlq") != nlq]
+        if pool:
+            sample_n = min(config.few_shot_k, len(pool))
+            rng = random.Random(f"{config.few_shot_seed}:{_normalize_text(nlq)}")
+            exemplars = rng.sample(pool, sample_n)
+
+    messages = make_few_shot_messages(
+        schema=schema_text,
+        exemplars=exemplars,
+        nlq=nlq,
+    )
+    messages[0] = {"role": "system", "content": system_prompt}
+    if final_user_content is not None:
+        messages[-1] = {"role": "user", "content": final_user_content}
+    return messages
+
+
+def _repair_hint(error: str, schema_text: str) -> str:
+    if not error.startswith("validate_sql:"):
+        return ""
+
+    reason = error.split(":", 1)[1]
+    tables, table_cols = parse_schema_text(schema_text)
+    if reason == "select_star_forbidden":
+        return (
+            "Repair hint: do not use SELECT *. Return only the smallest set of columns "
+            "needed to answer the question."
+        )
+
+    if reason.startswith("unknown_column:"):
+        raw_col = reason.split(":", 1)[1].strip().lower()
+        base_col = raw_col.split(".")[-1]
+        owners = sorted(table for table in tables if base_col in table_cols.get(table, set()))
+        if owners:
+            owner_text = ", ".join(f"{table}.{base_col}" for table in owners)
+            return (
+                f"Repair hint: the column {raw_col} is invalid in this query. "
+                f"The schema contains {owner_text}. Use only real table/column pairs."
+            )
+        return f"Repair hint: the column {raw_col} does not exist in the schema."
+
+    if reason.startswith("ambiguous_column:"):
+        col = reason.split(":", 1)[1].strip().lower()
+        owners = sorted(table for table in tables if col in table_cols.get(table, set()))
+        if owners:
+            owner_text = ", ".join(f"{table}.{col}" for table in owners)
+            return (
+                f"Repair hint: the column {col} appears in multiple tables ({owner_text}). "
+                "Qualify it with the correct table alias."
+            )
+        return f"Repair hint: qualify the ambiguous column {col} with the correct table alias."
+
+    return ""
+
+
 def generate_sql(nlq: str, schema_text: str, constraints: Optional[dict[str, Any]] = None) -> str:
     """
     Generate one SQL candidate for the NLQ.
@@ -178,16 +250,11 @@ def generate_sql(nlq: str, schema_text: str, constraints: Optional[dict[str, Any
     if ctx.model is None or ctx.tok is None:
         raise RuntimeError("Agent context model/tokenizer not set for SQL generation.")
 
-    messages = [
-        {"role": "system", "content": SQL_GENERATOR_SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": (
-                f"Schema Details:\n{schema_text}\n\n"
-                f"Natural Language Question: {nlq}"
-            ),
-        },
-    ]
+    messages = _build_prompt_messages(
+        nlq=nlq,
+        schema_text=schema_text,
+        system_prompt=SQL_GENERATOR_SYSTEM_PROMPT,
+    )
     out = generate_sql_from_messages(
         model=ctx.model,
         tokenizer=ctx.tok,
@@ -213,19 +280,22 @@ def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str) -> str:
     if ctx.model is None or ctx.tok is None:
         raise RuntimeError("Agent context model/tokenizer not set for SQL repair.")
 
-    messages = [
-        {"role": "system", "content": SQL_REPAIR_SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": (
-                f"Schema Details:\n{schema_text}\n\n"
-                f"Natural Language Question: {nlq}\n\n"
-                f"Previous SQL:\n{bad_sql}\n\n"
-                f"Observed Error:\n{error}\n\n"
-                "Return one corrected SQL SELECT."
-            ),
-        },
-    ]
+    hint = _repair_hint(error, schema_text)
+    repair_prompt = (
+        f"Natural Language Question: {nlq}\n\n"
+        f"Previous SQL:\n{bad_sql}\n\n"
+        f"Observed Error:\n{error}\n"
+    )
+    if hint:
+        repair_prompt += f"\n{hint}\n"
+    repair_prompt += "\nReturn one corrected SQL SELECT."
+
+    messages = _build_prompt_messages(
+        nlq=nlq,
+        schema_text=schema_text,
+        system_prompt=SQL_REPAIR_SYSTEM_PROMPT,
+        final_user_content=repair_prompt,
+    )
     out = generate_sql_from_messages(
         model=ctx.model,
         tokenizer=ctx.tok,
