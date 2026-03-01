@@ -3,8 +3,8 @@ Shared validation utilities used by both the tool-driven and class-based agents.
 
 How to read this file:
 1) Parse schema text into tables/columns.
-2) Validate SQL against schema and join-key rules.
-3) Validate SQL shape against extracted constraints.
+2) Validate SQL against basic schema references.
+3) Optionally validate a small set of simple SQL-shape hints.
 
 References (project anchors):
 - `REFERENCES.md#ref-wang2020-ratsql`
@@ -22,7 +22,6 @@ from typing import Optional
 
 import re
 
-from ..agent.agent_schema_linking import _tables_connected, validate_join_hints
 from .sql_guardrails import clean_candidate_with_reason
 
 
@@ -48,6 +47,25 @@ def parse_schema_text(schema_text: str) -> tuple[set[str], dict[str, set[str]]]:
 
 _SELECT_CLAUSE_RE = re.compile(r"(?is)\bselect\b(.*?)\bfrom\b")
 _AGG_EXPR_RE = re.compile(r"(?is)\b(count|sum|avg|min|max)\s*\(")
+_STRING_LITERAL_RE = re.compile(r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"")
+_TABLE_ALIAS_RE = re.compile(
+    r"(?is)\b(?:from|join)\s+([a-zA-Z_][\w$]*)"
+    r"(?:\s+(?:as\s+)?(?!(?:on|where|group|order|having|limit|join|left|right|inner|outer|using)\b)([a-zA-Z_][\w$]*))?"
+)
+_OUTPUT_ALIAS_RE = re.compile(r"(?is)\bas\s+([a-zA-Z_][\w$]*)\b")
+_IDENT_RE = re.compile(r"(?<!\.)\b([a-zA-Z_][\w$]*)\b")
+_SELECT_STAR_RE = re.compile(r"(?is)\bselect\s+([a-zA-Z_][\w$]*\.)?\*")
+_SELECT_STAR_ALLOW_RE = re.compile(
+    r"\b(all columns|all fields|full details|full row|entire row|all details|every column)\b",
+    re.IGNORECASE,
+)
+_SQL_KEYWORDS = {
+    "select", "from", "where", "join", "left", "right", "inner", "outer", "on", "as",
+    "group", "by", "order", "having", "limit", "distinct", "and", "or", "not", "in",
+    "is", "null", "like", "between", "case", "when", "then", "else", "end", "desc", "asc",
+    "using", "union", "all", "exists", "count", "sum", "avg", "min", "max", "round",
+    "cast", "coalesce", "if", "date", "year", "month", "day", "true", "false", "interval",
+}
 
 
 def _extract_select_clause(sql_low: str) -> str:
@@ -101,17 +119,68 @@ def _is_agg_expression(expr: str) -> bool:
     return _AGG_EXPR_RE.search(expr) is not None
 
 
-def _tables_in_query(sql_low: str) -> set[str]:
+def _query_tables_and_aliases(sql_low: str) -> tuple[set[str], dict[str, str], set[str]]:
     tables: set[str] = set()
-    if not sql_low:
-        return tables
-    for m in re.finditer(r"(?is)\b(from|join)\s+([a-zA-Z_][\w$]*)", sql_low):
-        table = m.group(2)
-        after = sql_low[m.end() : m.end() + 1]
-        if after == "(":
+    alias_map: dict[str, str] = {}
+    output_aliases: set[str] = set()
+    for m in _TABLE_ALIAS_RE.finditer(sql_low or ""):
+        table = (m.group(1) or "").lower()
+        alias = (m.group(2) or "").lower()
+        if table:
+            tables.add(table)
+        if alias and alias not in _SQL_KEYWORDS:
+            alias_map[alias] = table
+    for m in _OUTPUT_ALIAS_RE.finditer(sql_low or ""):
+        alias = (m.group(1) or "").lower()
+        if alias and alias not in _SQL_KEYWORDS:
+            output_aliases.add(alias)
+    return tables, alias_map, output_aliases
+
+
+def _allows_select_star(nlq: Optional[str]) -> bool:
+    return bool(_SELECT_STAR_ALLOW_RE.search(nlq or ""))
+
+
+def _is_function_identifier(scrubbed_sql: str, end_pos: int) -> bool:
+    tail = scrubbed_sql[end_pos:]
+    m = re.match(r"\s*\(", tail)
+    return m is not None
+
+
+def _visible_column_matches(column: str, query_tables: set[str], table_cols: dict[str, set[str]]) -> set[str]:
+    if not query_tables:
+        return set()
+    return {table for table in query_tables if column in table_cols.get(table, set())}
+
+
+def _unknown_or_ambiguous_column(
+    sql_low: str,
+    *,
+    query_tables: set[str],
+    alias_map: dict[str, str],
+    output_aliases: set[str],
+    table_cols: dict[str, set[str]],
+) -> Optional[str]:
+    scrubbed = _STRING_LITERAL_RE.sub(" ", sql_low or "")
+    for match in _IDENT_RE.finditer(scrubbed):
+        tok = (match.group(1) or "").lower()
+        if (
+            tok in output_aliases
+            or tok in alias_map
+            or tok in query_tables
+            or tok in _SQL_KEYWORDS
+        ):
             continue
-        tables.add(table)
-    return tables
+        if tok.isdigit():
+            continue
+        if _is_function_identifier(scrubbed, match.end()):
+            continue
+        matched_tables = _visible_column_matches(tok, query_tables, table_cols)
+        if not matched_tables:
+            return f"unknown_column:{tok}"
+        if len(matched_tables) > 1:
+            return f"ambiguous_column:{tok}"
+    return None
 
 
 def schema_validate(
@@ -125,6 +194,7 @@ def schema_validate(
         return True, "no_schema", {}
 
     sql_low = (sql or "").lower()
+    query_tables, alias_map, output_aliases = _query_tables_and_aliases(sql_low)
 
     # validate explicit table names in from/join (skip subqueries).
     for m in re.finditer(r"(?is)\b(from|join)\s+([a-zA-Z_][\w$]*)", sql_low):
@@ -137,20 +207,32 @@ def schema_validate(
 
     # validate qualified columns table.column when table is known.
     for m in re.finditer(r"(?is)\b([a-zA-Z_][\w$]*)\.([a-zA-Z_][\w$]*)\b", sql_low):
-        table = m.group(1)
+        qualifier = m.group(1)
         col = m.group(2)
+        table = alias_map.get(qualifier, qualifier)
         if table in table_cols and col not in table_cols[table]:
-            return False, f"unknown_column:{table}.{col}", {}
+            return False, f"unknown_column:{qualifier}.{col}", {}
 
-    if enforce_join_hints:
-        ok_join, why_join, detail = validate_join_hints(sql)
-        if not ok_join:
-            return False, why_join, detail
+    col_issue = _unknown_or_ambiguous_column(
+        sql_low,
+        query_tables=query_tables,
+        alias_map=alias_map,
+        output_aliases=output_aliases,
+        table_cols=table_cols,
+    )
+    if col_issue:
+        return False, col_issue, {}
 
     return True, "ok", {}
 
 
-def validate_sql(sql: str, schema_text: Optional[str] = None, *, enforce_join_hints: bool = True) -> dict:
+def validate_sql(
+    sql: str,
+    schema_text: Optional[str] = None,
+    *,
+    enforce_join_hints: bool = True,
+    nlq: Optional[str] = None,
+) -> dict:
     """Validate SQL formatting + schema references without executing."""
     # rationale: catch obvious formatting/schema errors before hitting the database.
     if not sql or not sql.strip():
@@ -159,6 +241,9 @@ def validate_sql(sql: str, schema_text: Optional[str] = None, *, enforce_join_hi
     cleaned, reason = clean_candidate_with_reason(sql)
     if not cleaned:
         return {"valid": False, "reason": f"clean_reject:{reason}"}
+
+    if _SELECT_STAR_RE.search(cleaned) and not _allows_select_star(nlq):
+        return {"valid": False, "reason": "select_star_forbidden"}
 
     if not schema_text:
         return {"valid": False, "reason": "schema_missing"}
@@ -182,8 +267,7 @@ def validate_sql(sql: str, schema_text: Optional[str] = None, *, enforce_join_hi
 
 
 def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: Optional[str] = None) -> dict:
-    """Validate SQL structure against extracted constraints."""
-    # rationale: prevents "runs but wrong shape" (e.g., missing group by or limit).
+    """Validate SQL against a very small set of optional shape hints."""
     if not constraints:
         return {"valid": True, "reason": "no_constraints"}
     if not isinstance(constraints, dict):
@@ -236,89 +320,5 @@ def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: 
                 "reason": "missing_required_output_field",
                 "missing_fields": missing_required,
             }
-
-    # entity identifiers are treated as soft hints at generation/rerank time.
-    # strict projection checks are handled via required_output_fields above.
-
-    if constraints.get("needs_location"):
-        tables_in_query = _tables_in_query(sql_low)
-        location_tables = set(constraints.get("location_tables") or [])
-        if location_tables and not (tables_in_query & location_tables):
-            return {
-                "valid": False,
-                "reason": "missing_location_table",
-                "location_tables": sorted(location_tables),
-            }
-        if re.search(r"\b(city|country|state|territory|region)\b", sql_low) is None:
-            return {"valid": False, "reason": "missing_location_column"}
-
-    value_columns = constraints.get("value_columns") or []
-    if constraints.get("needs_location") and value_columns:
-        location_cols = {"city", "country", "state", "territory", "region"}
-        if all(str(c).lower() in location_cols for c in value_columns):
-            value_columns = []
-    if schema_text and value_columns:
-        _, table_cols = parse_schema_text(schema_text)
-        tables_in_query = _tables_in_query(sql_low)
-        present_value_cols: list[str] = []
-        value_col_tables: dict[str, list[str]] = {}
-        for col in value_columns:
-            col_low = str(col).lower()
-            if not col_low:
-                continue
-            tables_with_col = [t for t in tables_in_query if col_low in (table_cols.get(t) or set())]
-            if tables_with_col:
-                present_value_cols.append(col)
-                value_col_tables[col] = tables_with_col
-        if not present_value_cols:
-            return {
-                "valid": False,
-                "reason": "missing_value_column_table",
-                "missing_value_columns": value_columns,
-            }
-        # if present value columns span multiple tables, require a connected join path.
-        tables_for_values = set()
-        for tables in value_col_tables.values():
-            tables_for_values.update(tables)
-        if len(tables_for_values) > 1:
-            if not _tables_connected(schema_text, tables_for_values):
-                return {
-                    "valid": False,
-                    "reason": "missing_join_path",
-                    "tables": sorted(tables_for_values),
-                }
-
-    required_tables = constraints.get("required_tables") or []
-    if required_tables:
-        tables_in_query = _tables_in_query(sql_low)
-        require_all = bool(constraints.get("required_tables_all"))
-        if require_all:
-            missing = [t for t in required_tables if t not in tables_in_query]
-            if missing:
-                return {
-                    "valid": False,
-                    "reason": "missing_required_table",
-                    "missing_tables": missing,
-                }
-        else:
-            if not any(t in tables_in_query for t in required_tables):
-                return {
-                    "valid": False,
-                    "reason": "missing_required_table",
-                    "missing_tables": required_tables,
-                }
-
-    if constraints.get("needs_self_join") and constraints.get("self_join_table"):
-        table = str(constraints.get("self_join_table") or "").lower()
-        if table:
-            # require a self-join pattern: table appears in from and join.
-            has_from = re.search(rf"\bfrom\s+{re.escape(table)}\b", sql_low) is not None
-            has_join = re.search(rf"\bjoin\s+{re.escape(table)}\b", sql_low) is not None
-            if not (has_from and has_join):
-                return {
-                    "valid": False,
-                    "reason": "missing_self_join",
-                    "table": table,
-                }
 
     return {"valid": True, "reason": "ok"}

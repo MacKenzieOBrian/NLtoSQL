@@ -1,9 +1,9 @@
 """
-Lightweight ReAct loop for notebook-driven NL->SQL experiments.
+Bare-bones ReAct-style loop for notebook-driven NL->SQL experiments.
 
 Design goals:
-1) Keep a clear, inspectable action loop for dissertation extension runs.
-2) Reuse existing project validators/executors for consistency.
+1) Keep the live loop short enough to explain clearly in a dissertation.
+2) Favor execution-guided repair over hand-built semantic control logic.
 3) Keep outputs compatible with existing notebook result handling.
 
 References (project anchors):
@@ -17,38 +17,27 @@ References (project anchors):
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
+import re
 
 from sqlalchemy.engine import Engine
 
 from ..core.llm import extract_first_select, generate_sql_from_messages
-from ..core.postprocess import normalize_sql
-from ..core.validation import validate_constraints, validate_sql
+from ..core.postprocess import guarded_postprocess, normalize_sql
+from ..core.validation import parse_schema_text, validate_sql
 from ..evaluation.eval import execution_accuracy, test_suite_accuracy_for_item
-from .agent_schema_linking import build_schema_subset
 from .agent_tools import ensure_schema_text, get_agent_context
-from .constraint_policy import build_constraints
-from .intent_rules import intent_constraints
-from .prompts import (
-    REACT_SYSTEM_PROMPT,
-    SQL_GENERATOR_SYSTEM_PROMPT,
-    SQL_REPAIR_SYSTEM_PROMPT,
-)
+from .prompts import SQL_GENERATOR_SYSTEM_PROMPT, SQL_REPAIR_SYSTEM_PROMPT
 
 
 @dataclass(frozen=True)
 class ReactAblationConfig:
     name: str = "react_core"
-    use_schema_link: bool = True
-    use_constraint_policy: bool = True
     use_repair_policy: bool = True
-    use_intent_gate: bool = False
     max_repairs: int = 1
-    link_max_tables: int = 6
     max_steps: int = 8
     max_new_tokens: int = 256
     do_sample: bool = False
@@ -60,7 +49,6 @@ def core_react_config(name: str = "react_core") -> ReactAblationConfig:
     return ReactAblationConfig(name=name)
 
 
-_ACTION_RE = re.compile(r"(?is)action\s*:\s*([a-z_]+)\s*(?:\[(.*)\])?")
 _ACTIVE_CONFIG: ReactAblationConfig | None = None
 
 
@@ -68,84 +56,119 @@ def _now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _parse_action(text: str) -> tuple[str | None, dict[str, Any]]:
-    s = (text or "").strip()
-    m = _ACTION_RE.search(s)
-    if not m:
-        return None, {}
-
-    action = (m.group(1) or "").strip().lower()
-    payload_raw = (m.group(2) or "").strip()
-    if not payload_raw:
-        return action, {}
-    try:
-        payload = json.loads(payload_raw)
-        if not isinstance(payload, dict):
-            return action, {}
-        return action, payload
-    except Exception:
-        return action, {}
-
-
-def _history_text(nlq: str, trace: list[dict[str, Any]]) -> str:
-    lines = [f"Question: {nlq}"]
-    for t in trace[-8:]:
-        action = t.get("action")
-        obs = t.get("observation")
-        lines.append(f"Step {t.get('step')}: Action={action}")
-        if isinstance(obs, dict):
-            if "error" in obs and obs["error"]:
-                lines.append(f"Observation: error={obs['error']}")
-            elif "sql" in obs and obs["sql"]:
-                lines.append(f"Observation: sql={obs['sql']}")
-            elif "success" in obs:
-                lines.append(f"Observation: success={obs['success']}")
-            elif "reason" in obs and obs["reason"]:
-                lines.append(f"Observation: reason={obs['reason']}")
-    return "\n".join(lines)
-
-
-def _call_react_llm(history: str, *, config: ReactAblationConfig) -> str:
-    """
-    Planner call that emits one action.
-    Kept small and deterministic to make traces auditable.
-    """
-    ctx = get_agent_context()
-    if ctx.model is None or ctx.tok is None:
-        raise RuntimeError("Agent context model/tokenizer not set for ReAct planner calls.")
-
-    messages = [
-        {"role": "system", "content": REACT_SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": (
-                history
-                + "\n\nReturn one action in this exact format:\n"
-                + "Action: <name>[<json>]\n"
-                + "Use {} when there are no arguments."
-            ),
-        },
-    ]
-    out = generate_sql_from_messages(
-        model=ctx.model,
-        tokenizer=ctx.tok,
-        messages=messages,
-        max_new_tokens=min(config.max_new_tokens, 128),
-        do_sample=config.do_sample,
-        temperature=config.temperature,
-        top_p=config.top_p,
-        constrained=False,
-        extract_select=False,
-        stop_on_semicolon=False,
-    )
-    return str(out or "").strip()
-
-
 def _effective_config() -> ReactAblationConfig:
     return _ACTIVE_CONFIG or core_react_config()
 
 
-def generate_sql(nlq: str, schema_text: str, constraints: dict[str, Any]) -> str:
+def _clean_sql_candidate(sql: str) -> str:
+    sql = extract_first_select(str(sql)) or str(sql or "").strip()
+    if sql and not sql.endswith(";"):
+        sql += ";"
+    return sql
+
+
+_PROJECTION_CUE_RE = re.compile(
+    r"^\s*(list|show|display|give|return|provide|which|what|names?|codes?)\b",
+    re.IGNORECASE,
+)
+_CAMEL_RE = re.compile(r"(?<!^)(?=[A-Z])")
+_TAIL_ALIAS_ALLOW = {"name", "code", "msrp", "city", "country", "vendor", "line", "date", "amount"}
+
+
+def _normalize_text(text: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", (text or "").lower()))
+
+
+def _relevant_tables(nlq: str, tables: set[str]) -> set[str]:
+    nlq_norm = _normalize_text(nlq)
+    out: set[str] = set()
+    for table in tables:
+        variants = {table.lower()}
+        if table.lower().endswith("s") and len(table) > 1:
+            variants.add(table.lower()[:-1])
+        for variant in variants:
+            if re.search(rf"\b{re.escape(variant)}\b", nlq_norm):
+                out.add(table)
+                break
+    return out
+
+
+def _column_aliases(column: str) -> list[str]:
+    spaced = _CAMEL_RE.sub(" ", column.replace("_", " ")).lower()
+    parts = [p for p in spaced.split() if p]
+    aliases = {" ".join(parts)}
+    if len(parts) == 1:
+        col_low = parts[0]
+        for tail in sorted(_TAIL_ALIAS_ALLOW, key=len, reverse=True):
+            if col_low == tail:
+                continue
+            if col_low.endswith(tail) and len(col_low) > len(tail):
+                prefix = col_low[: -len(tail)]
+                aliases.add(f"{prefix} {tail}")
+                if tail in _TAIL_ALIAS_ALLOW:
+                    aliases.add(tail)
+                break
+    elif parts[-1] in _TAIL_ALIAS_ALLOW:
+        aliases.add(parts[-1])
+        aliases.add(" ".join(parts[1:]))
+    pluralized: set[str] = set()
+    for alias in aliases:
+        if alias.endswith("y"):
+            pluralized.add(alias[:-1] + "ies")
+        elif not alias.endswith("s"):
+            pluralized.add(alias + "s")
+    aliases.update(pluralized)
+    return [a for a in aliases if a]
+
+
+def _explicit_fields_from_nlq(nlq: str, schema_text: str) -> list[str]:
+    if not _PROJECTION_CUE_RE.search(nlq or "") and not ("," in (nlq or "") or " and " in (nlq or "").lower()):
+        return []
+
+    tables, table_cols = parse_schema_text(schema_text)
+    if not tables:
+        return []
+
+    relevant = _relevant_tables(nlq, tables)
+    search_tables = list(relevant) if relevant else list(table_cols.keys())
+    nlq_norm = _normalize_text(nlq)
+    cutoff_candidates = []
+    for marker in (" in ", " where "):
+        idx = nlq_norm.find(marker)
+        if idx >= 0:
+            cutoff_candidates.append(idx)
+    cutoff = min(cutoff_candidates) if cutoff_candidates else None
+    found: list[tuple[int, str]] = []
+    seen: set[str] = set()
+
+    for table in search_tables:
+        for col in sorted(table_cols.get(table, set())):
+            for alias in _column_aliases(col):
+                pos = nlq_norm.find(alias)
+                if pos >= 0 and col not in seen:
+                    found.append((pos, col))
+                    seen.add(col)
+                    break
+
+    found.sort(key=lambda item: item[0])
+    ordered = [col for _, col in found]
+    if cutoff is not None:
+        before_cutoff = [col for pos, col in found if pos < cutoff]
+        if len(before_cutoff) >= 2:
+            return before_cutoff
+    return ordered
+
+
+def _postprocess_sql(sql: str, nlq: str, schema_text: str) -> str:
+    explicit_fields = _explicit_fields_from_nlq(nlq, schema_text)
+    return guarded_postprocess(
+        sql,
+        nlq,
+        explicit_fields=explicit_fields or None,
+    )
+
+
+def generate_sql(nlq: str, schema_text: str, constraints: Optional[dict[str, Any]] = None) -> str:
     """
     Generate one SQL candidate for the NLQ.
     Signature is intentionally stable for notebook monkeypatch demos.
@@ -155,14 +178,12 @@ def generate_sql(nlq: str, schema_text: str, constraints: dict[str, Any]) -> str
     if ctx.model is None or ctx.tok is None:
         raise RuntimeError("Agent context model/tokenizer not set for SQL generation.")
 
-    constraint_text = json.dumps(constraints or {}, ensure_ascii=True)
     messages = [
         {"role": "system", "content": SQL_GENERATOR_SYSTEM_PROMPT},
         {
             "role": "user",
             "content": (
                 f"Schema Details:\n{schema_text}\n\n"
-                f"Constraint Hints (JSON):\n{constraint_text}\n\n"
                 f"Natural Language Question: {nlq}"
             ),
         },
@@ -179,10 +200,7 @@ def generate_sql(nlq: str, schema_text: str, constraints: dict[str, Any]) -> str
         extract_select=True,
         stop_on_semicolon=True,
     )
-    sql = extract_first_select(str(out)) or str(out or "").strip()
-    if sql and not sql.endswith(";"):
-        sql += ";"
-    return sql
+    return _postprocess_sql(_clean_sql_candidate(str(out)), nlq, schema_text)
 
 
 def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str) -> str:
@@ -220,10 +238,7 @@ def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str) -> str:
         extract_select=True,
         stop_on_semicolon=True,
     )
-    sql = extract_first_select(str(out)) or str(out or "").strip()
-    if sql and not sql.endswith(";"):
-        sql += ";"
-    return sql
+    return _postprocess_sql(_clean_sql_candidate(str(out)), nlq, schema_text)
 
 
 def run_react_pipeline(
@@ -240,253 +255,159 @@ def run_react_pipeline(
     ctx = get_agent_context()
 
     trace: list[dict[str, Any]] = []
-    schema_full = ensure_schema_text(ctx)
-    schema_working: str | None = None
-    constraints: dict[str, Any] | None = None
+    schema_text = ensure_schema_text(ctx)
     current_sql: str | None = None
     last_error: str | None = None
     repairs_used = 0
-    sql_validated = False
-    constraints_validated = False
-    intent_validated = False
+    step = 0
+
+    def next_step() -> int:
+        nonlocal step
+        step += 1
+        return step
+
+    def add_trace(
+        action: str,
+        *,
+        observation: dict[str, Any],
+        reason: str | None = None,
+        blocked: bool = False,
+        payload: Optional[dict[str, Any]] = None,
+    ) -> None:
+        trace.append(
+            {
+                "step": step,
+                "action": action,
+                "planned_action": action,
+                "planner_text": f"Action: {action}[{json.dumps(payload or {}, ensure_ascii=True)}]",
+                "payload": payload or {},
+                "blocked": blocked,
+                "reason": reason,
+                "observation": observation,
+            }
+        )
 
     try:
-        for step in range(1, cfg.max_steps + 1):
-            history = _history_text(nlq, trace)
-            planner_text = ""
-            planned_action = None
-            payload: dict[str, Any] = {}
-            try:
-                planner_text = _call_react_llm(history, config=cfg)
-                planned_action, payload = _parse_action(planner_text)
-            except Exception as e:
-                trace.append(
-                    {
-                        "step": step,
-                        "action": "stop",
-                        "planned_action": None,
-                        "planner_text": planner_text,
-                        "blocked": False,
-                        "reason": "planner_error",
-                        "observation": {"error": str(e)},
-                    }
+        next_step()
+        add_trace(
+            "get_schema",
+            observation={
+                "schema_lines": len((schema_text or "").splitlines()),
+                "tables": [
+                    ln.split("(")[0].strip()
+                    for ln in (schema_text or "").splitlines()
+                    if "(" in ln
+                ][:10],
+            },
+        )
+
+        next_step()
+        current_sql = generate_sql(nlq, schema_text)
+        add_trace("generate_sql", observation={"sql": current_sql})
+
+        while step < cfg.max_steps:
+            next_step()
+            sql_check = validate_sql(
+                current_sql or "",
+                schema_text,
+                enforce_join_hints=False,
+                nlq=nlq,
+            )
+            add_trace("validate_sql", observation=sql_check, reason=None if sql_check.get("valid") else sql_check.get("reason"))
+            if not sql_check.get("valid"):
+                last_error = f"validate_sql:{sql_check.get('reason')}"
+            else:
+                last_error = None
+
+            if not sql_check.get("valid"):
+                if not cfg.use_repair_policy or repairs_used >= cfg.max_repairs or step >= cfg.max_steps:
+                    trace.append(
+                        {
+                            "step": step,
+                            "action": "stop",
+                            "planned_action": "validate_sql",
+                            "planner_text": "Action: validate_sql[{}]",
+                            "blocked": False,
+                            "reason": "validation_failed",
+                            "observation": {"sql": current_sql, "error": last_error},
+                        }
+                    )
+                    return current_sql or "", trace
+                next_step()
+                current_sql = repair_sql(
+                    nlq,
+                    current_sql or "",
+                    last_error or "validate_sql_failed",
+                    schema_text,
                 )
-                break
-
-            # ReAct-faithful mode: planner action is mandatory.
-            # If planner output is malformed, stop and record the failure.
-            if not planned_action:
-                trace.append(
-                    {
-                        "step": step,
-                        "action": "stop",
-                        "planned_action": None,
-                        "planner_text": planner_text,
-                        "blocked": False,
-                        "reason": "invalid_action_format",
-                        "observation": {"expected_format": "Action: <name>[<json>]"},
-                    }
+                repairs_used += 1
+                add_trace(
+                    "repair_sql",
+                    observation={"sql": current_sql, "repairs_used": repairs_used},
+                    payload={"error": last_error or "validate_sql_failed"},
                 )
-                break
+                continue
 
-            action = planned_action
-
-            blocked = False
-            reason: str | None = None
-            obs: dict[str, Any] = {}
-
-            if action == "finish":
+            next_step()
+            meta = ctx.runner.run(current_sql or "", capture_df=False)
+            run_obs = {
+                "success": bool(meta.success),
+                "rowcount": int(meta.rowcount),
+                "error": meta.error,
+                "sql": current_sql,
+            }
+            add_trace("run_sql", observation=run_obs, reason=None if meta.success else (meta.error or "run_sql_failed"))
+            if meta.success:
                 trace.append(
                     {
                         "step": step,
                         "action": "stop",
-                        "planned_action": planned_action,
-                        "planner_text": planner_text,
+                        "planned_action": "run_sql",
+                        "planner_text": "Action: run_sql[{}]",
                         "blocked": False,
-                        "reason": "finish_action",
+                        "reason": "success",
                         "observation": {"sql": current_sql},
                     }
                 )
-                break
+                return current_sql or "", trace
 
-            if action == "get_schema":
-                if cfg.use_schema_link:
-                    schema_working = build_schema_subset(
-                        schema_summary=schema_full,
-                        nlq=nlq,
-                        max_tables=cfg.link_max_tables,
-                        max_cols_per_table=8,
-                    )
-                else:
-                    schema_working = schema_full
-                obs = {
-                    "schema_lines": len((schema_working or "").splitlines()),
-                    "tables": [ln.split("(")[0].strip() for ln in (schema_working or "").splitlines() if "(" in ln][:10],
-                }
-
-            elif action == "extract_constraints":
-                if cfg.use_constraint_policy:
-                    constraints = build_constraints(nlq, schema_working or schema_full)
-                else:
-                    constraints = {}
-                obs = {
-                    "rule_tags": (constraints or {}).get("rule_tags", []),
-                    "explicit_fields": (constraints or {}).get("explicit_fields", []),
-                }
-
-            elif action == "generate_sql":
-                constraints = constraints if constraints is not None else {}
-                current_sql = generate_sql(nlq, schema_working or schema_full, constraints)
-                last_error = None
-                sql_validated = False
-                constraints_validated = False
-                intent_validated = False
-                obs = {"sql": current_sql}
-
-            elif action == "repair_sql":
-                if not cfg.use_repair_policy:
-                    blocked = True
-                    reason = "repair_policy_disabled"
-                elif not current_sql:
-                    blocked = True
-                    reason = "no_sql_to_repair"
-                elif repairs_used >= cfg.max_repairs:
-                    blocked = True
-                    reason = "repair_budget_exhausted"
-                else:
-                    current_sql = repair_sql(
-                        nlq,
-                        current_sql,
-                        payload.get("error") or last_error or "unknown_error",
-                        schema_working or schema_full,
-                    )
-                    repairs_used += 1
-                    last_error = None
-                    sql_validated = False
-                    constraints_validated = False
-                    intent_validated = False
-                    obs = {"sql": current_sql, "repairs_used": repairs_used}
-
-            elif action == "validate_sql":
-                if not current_sql:
-                    blocked = True
-                    reason = "no_sql_to_validate"
-                else:
-                    v = validate_sql(current_sql, schema_working or schema_full)
-                    obs = v
-                    sql_validated = bool(v.get("valid"))
-                    if not sql_validated:
-                        last_error = f"validate_sql:{v.get('reason')}"
-
-            elif action == "validate_constraints":
-                if not current_sql:
-                    blocked = True
-                    reason = "no_sql_for_constraints"
-                else:
-                    v = validate_constraints(
-                        current_sql,
-                        constraints or {},
-                        schema_text=schema_working or schema_full,
-                    )
-                    obs = v
-                    constraints_validated = bool(v.get("valid"))
-                    if not constraints_validated:
-                        last_error = f"validate_constraints:{v.get('reason')}"
-
-            elif action == "intent_check":
-                if not current_sql:
-                    blocked = True
-                    reason = "no_sql_for_intent_check"
-                elif not cfg.use_intent_gate:
-                    intent_validated = True
-                    obs = {"valid": True, "reason": "intent_gate_disabled"}
-                else:
-                    ok, why = intent_constraints(nlq, current_sql)
-                    obs = {"valid": bool(ok), "reason": why}
-                    intent_validated = bool(ok)
-                    if not ok:
-                        last_error = f"intent_mismatch:{why}"
-
-            elif action == "run_sql":
-                if not current_sql:
-                    blocked = True
-                    reason = "no_sql_to_run"
-                else:
-                    meta = ctx.runner.run(current_sql, capture_df=False)
-                    obs = {
-                        "success": bool(meta.success),
-                        "rowcount": int(meta.rowcount),
-                        "error": meta.error,
-                        "sql": current_sql,
-                    }
-                    if meta.success:
-                        trace.append(
-                            {
-                                "step": step,
-                                "action": action,
-                                "planned_action": planned_action,
-                                "planner_text": planner_text,
-                                "payload": payload,
-                                "blocked": False,
-                                "reason": None,
-                                "observation": obs,
-                            }
-                        )
-                        trace.append(
-                            {
-                                "step": step,
-                                "action": "stop",
-                                "planned_action": planned_action,
-                                "planner_text": planner_text,
-                                "blocked": False,
-                                "reason": "success",
-                                "observation": {"sql": current_sql},
-                            }
-                        )
-                        return current_sql, trace
-                    last_error = meta.error or "run_sql_failed"
-
-            else:
+            last_error = meta.error or "run_sql_failed"
+            if not cfg.use_repair_policy or repairs_used >= cfg.max_repairs or step >= cfg.max_steps:
                 trace.append(
                     {
                         "step": step,
                         "action": "stop",
-                        "planned_action": planned_action,
-                        "planner_text": planner_text,
-                        "payload": payload,
+                        "planned_action": "run_sql",
+                        "planner_text": "Action: run_sql[{}]",
                         "blocked": False,
-                        "reason": f"unknown_action:{action}",
-                        "observation": {},
+                        "reason": "execution_failed",
+                        "observation": {"sql": current_sql, "error": last_error},
                     }
                 )
-                break
+                return current_sql or "", trace
 
-            if blocked and not reason:
-                reason = "blocked"
-            trace.append(
-                {
-                    "step": step,
-                    "action": action,
-                    "planned_action": planned_action,
-                    "planner_text": planner_text,
-                    "payload": payload,
-                    "blocked": bool(blocked),
-                    "reason": reason,
-                    "observation": obs,
-                }
+            next_step()
+            current_sql = repair_sql(
+                nlq,
+                current_sql or "",
+                last_error,
+                schema_text,
             )
-
-        if trace and trace[-1].get("action") == "stop":
-            return current_sql or "", trace
+            repairs_used += 1
+            add_trace(
+                "repair_sql",
+                observation={"sql": current_sql, "repairs_used": repairs_used},
+                payload={"error": last_error},
+            )
 
         trace.append(
             {
-                "step": cfg.max_steps,
+                "step": step,
                 "action": "stop",
                 "planned_action": None,
                 "planner_text": "",
                 "blocked": False,
-                "reason": "max_steps_exhausted",
+                "reason": "max_steps_exhausted" if step >= cfg.max_steps else "repair_budget_exhausted",
                 "observation": {"sql": current_sql},
             }
         )
@@ -618,5 +539,4 @@ __all__ = [
     "repair_sql",
     "run_react_pipeline",
     "evaluate_react_ablation",
-    "_call_react_llm",
 ]

@@ -25,5 +25,12 @@ pip install -q --no-cache-dir --force-reinstall \
   bitsandbytes==0.43.3 triton==2.3.1 \
   transformers==4.44.2 accelerate==0.33.0 peft==0.17.0 trl==0.9.6 datasets==2.20.0
 
-echo "Setup complete. Restart runtime once, then run the rest of the notebook."
+# database + connector deps used by the evaluation notebooks
+pip install -q --no-cache-dir --force-reinstall \
+  google-api-core==2.11.1 \
+  cloud-sql-python-connector[pymysql]==1.18.5 \
+  SQLAlchemy==2.0.7 \
+  pymysql==1.1.0 \
+  cryptography==42.0.5
 
+echo "Setup complete. Restart runtime once, then run the rest of the notebook."

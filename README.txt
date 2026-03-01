@@ -26,7 +26,6 @@ Top-level layout:
   - canonical runtime/evaluation code (`core/`, `evaluation/`).
   - compatibility wrappers at package root preserve legacy import paths.
 - `notebooks/`
-  - `01_no_model_dataflow_demo.ipynb`: pipeline walkthrough/demo.
   - `02_baseline_prompting_eval.ipynb`: baseline experiments.
   - `03_agentic_eval.ipynb`: extension path (agentic/reliability).
   - `04_build_training_set.ipynb`: train-set validation/build workflow.
@@ -165,8 +164,8 @@ B) Colab setup (recommended for QLoRA)
 2. Restart runtime once when prompted by the script output.
 
 C) Notebook execution order
-1. `notebooks/01_no_model_dataflow_demo.ipynb` (optional demo/traceability)
-2. `notebooks/02_baseline_prompting_eval.ipynb` (base-model experiments)
+1. `notebooks/02_baseline_prompting_eval.ipynb` (base-model experiments)
+2. `notebooks/03_agentic_eval.ipynb` (agentic evaluation)
 3. `notebooks/04_build_training_set.ipynb` (if rebuilding training data)
 4. `notebooks/05_qlora_train_eval.ipynb` (QLoRA train/eval)
 5. `notebooks/06_research_comparison.ipynb` (analysis wrapper)
