@@ -85,7 +85,7 @@ Scope boundary:
 File-level disclosure:
 - `scripts/generate_research_comparison.py`
   - What the script does:
-    - discovers run JSON files under `results/baseline/runs/**/results_k*_seed*.json`.
+    - discovers run JSON files under `results/**/results_k*_seed*.json`.
     - normalizes run metadata into `condition_id` (`llama|qwen` x `base|qlora` x `k=0|3`).
     - builds per-item analysis rows and run manifest rows.
     - computes mean/median, Shapiro-Wilk checks, and paired t-tests on predefined contrasts.

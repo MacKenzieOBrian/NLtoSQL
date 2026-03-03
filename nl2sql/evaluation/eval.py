@@ -10,11 +10,8 @@ Optional mode:
 - Enable constrained decoding and reliability cleanup layers
   (guardrails/postprocess) for extension runs.
 
-References (project anchors):
-- `REFERENCES.md#ref-yu2018-spider`
-- `REFERENCES.md#ref-zhong2020-ts`
-- `REFERENCES.md#ref-li2023-bigbench`
-- `REFERENCES.md#ref-gao2025-llm-sql`
+Related benchmarks and metrics: Spider [22], distilled test suites [21], and
+LLM text-to-SQL benchmark studies [3, 23].
 """
 
 from __future__ import annotations

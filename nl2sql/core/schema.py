@@ -6,10 +6,8 @@ How to read this file:
 2) `get_table_columns()` reads ordered column metadata from INFORMATION_SCHEMA.
 3) `build_schema_summary()` builds the compact table(column,...) text used in prompts.
 
-References (project anchors):
-- `REFERENCES.md#ref-wang2020-ratsql`
-- `REFERENCES.md#ref-li2023-resdsql`
-- `REFERENCES.md#ref-zhu2024-survey`
+Related literature: schema-aware text-to-SQL in RAT-SQL [18], RESDSQL [20],
+and recent LLM survey context [9, 12].
 
 Implementation docs:
 - SQLAlchemy metadata/inspection docs: https://docs.sqlalchemy.org/en/20/core/metadata.html

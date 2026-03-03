@@ -5,7 +5,7 @@ How to read this file:
 1) `create_engine_with_connector()` builds a SQLAlchemy engine via Cloud SQL Connector.
 2) `safe_connection()` gives a short-lived connection context.
 
-References:
+Implementation docs:
 - Cloud SQL connector docs: https://cloud.google.com/sql/docs/mysql/connect-run
 - SQLAlchemy engine creator docs: https://docs.sqlalchemy.org/en/20/core/engines.html# custom-dbapi-connect
 """

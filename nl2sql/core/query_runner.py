@@ -6,9 +6,8 @@ How to read this file:
 2) It blocks destructive keywords and caps returned rows.
 3) Results are stored as `QueryResult` records for traceability.
 
-References (project anchors):
-- `REFERENCES.md#ref-zhong2020-ts`
-- `REFERENCES.md#ref-gao2025-llm-sql`
+Related evaluation context: test-suite style execution checks [21] and
+LLM text-to-SQL benchmark reporting [23].
 
 Implementation docs:
 - SQLAlchemy execute docs: https://docs.sqlalchemy.org/en/20/core/connections.html

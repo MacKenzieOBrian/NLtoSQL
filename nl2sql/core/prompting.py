@@ -9,14 +9,9 @@ Reliability-extension rationale:
 - Prompt engineering + schema grounding are used to reduce hallucinated SQL.
 - Few-shot examples are used as structured in-context support.
 
-References (project anchors):
-- `REFERENCES.md#ref-brown2020-gpt3`
-- `REFERENCES.md#ref-mosbach2023-icl`
-- `REFERENCES.md#ref-velasquez2023-prompteng`
-- `REFERENCES.md#ref-wang2020-ratsql`
-- `REFERENCES.md#ref-lin2020-bridge`
-- `REFERENCES.md#ref-li2023-resdsql`
-- `REFERENCES.md#ref-zhu2024-survey`
+Related literature: few-shot prompting [8], fair ICL vs fine-tuning
+comparisons [7], ICL behavior without weight updates [4], and schema-grounded
+text-to-SQL methods [2, 18, 20, 9].
 """
 
 from __future__ import annotations

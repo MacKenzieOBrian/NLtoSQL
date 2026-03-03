@@ -6,11 +6,8 @@ How to read this file:
 2) `generate_sql_from_messages()` runs chat-template generation with safe defaults.
 3) Optional lightweight constraints block non-SELECT DDL/DML tokens.
 
-References (project anchors):
-- `REFERENCES.md#ref-wolf2020-transformers`
-- `REFERENCES.md#ref-scholak2021-picard`
-- `REFERENCES.md#ref-wang2018-eg-decoding`
-- `REFERENCES.md#ref-pourreza2023-dinsql`
+Related methods: Transformers generation stack [27], constrained decoding with
+PICARD [15], and self-correction patterns in text-to-SQL [5].
 
 Implementation docs:
 - Transformers generation docs: https://huggingface.co/docs/transformers/main_classes/text_generation

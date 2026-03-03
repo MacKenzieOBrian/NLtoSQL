@@ -6,10 +6,8 @@ How to read this file:
 2) Validate SQL against basic schema references.
 3) Optionally validate a small set of simple SQL-shape hints.
 
-References (project anchors):
-- `REFERENCES.md#ref-wang2020-ratsql`
-- `REFERENCES.md#ref-lin2020-bridge`
-- `REFERENCES.md#ref-li2023-resdsql`
+Related literature: schema linking and structure in RAT-SQL [18], BRIDGE [2],
+and RESDSQL [20].
 
 Implementation docs:
 - Python regex docs: https://docs.python.org/3/library/re.html

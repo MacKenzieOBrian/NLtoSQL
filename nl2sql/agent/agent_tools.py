@@ -1,9 +1,8 @@
 """
 Shared runtime context for ReAct-style notebook workflows.
 
-References (project anchors):
-- `REFERENCES.md#ref-yao2023-react`
-- `REFERENCES.md#ref-zhu2024-survey`
+Related literature: ReAct-style reasoning and acting [19] and LLM text-to-SQL
+survey coverage [9, 12].
 """
 
 from __future__ import annotations
@@ -116,4 +115,3 @@ __all__ = [
     "schema_to_text",
     "ensure_schema_text",
 ]
-

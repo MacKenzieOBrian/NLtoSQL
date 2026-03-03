@@ -6,12 +6,9 @@ Design goals:
 2) Favor execution-guided repair over hand-built semantic control logic.
 3) Keep outputs compatible with existing notebook result handling.
 
-References (project anchors):
-- `REFERENCES.md#ref-yao2023-react`
-- `REFERENCES.md#ref-pourreza2023-dinsql`
-- `REFERENCES.md#ref-zhai2025-excot`
-- `REFERENCES.md#ref-yu2018-spider`
-- `REFERENCES.md#ref-zhong2020-ts`
+Related methods and evaluation context: ReAct [19], DIN-SQL self-correction
+[5], execution feedback optimization [6], Spider [22], and test-suite accuracy
+[21].
 """
 
 from __future__ import annotations

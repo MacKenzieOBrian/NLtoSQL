@@ -1,9 +1,7 @@
 """
 Prompt constants for the SQL generation and repair loop.
 
-References (project anchors):
-- `REFERENCES.md#ref-yao2023-react`
-- `REFERENCES.md#ref-xi2025-agents`
+Related work: ReAct prompting [19] and LLM-agent survey context [26].
 """
 
 from __future__ import annotations

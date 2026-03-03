@@ -3,7 +3,7 @@
 Research stats generator for dissertation reporting.
 
 Single source of truth:
-- reads run JSON files from `results/baseline/runs/**/results_k*_seed*.json`
+- reads run JSON files from `results/**/results_k*_seed*.json`
 
 Supported matrix:
 - model tags: llama, qwen
@@ -90,7 +90,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--runs-root",
         type=Path,
-        default=Path("results/baseline/runs"),
+        default=Path("results"),
         help="Folder containing run JSON files.",
     )
     parser.add_argument(
@@ -534,7 +534,7 @@ def compute_paired_ttests(per_item: pd.DataFrame, comparisons: list[tuple[str, s
 
 def generate(
     *,
-    runs_root: Path = Path("results/baseline/runs"),
+    runs_root: Path = Path("results"),
     per_item_csv: Path = Path("results/analysis/per_item_metrics_primary_raw.csv"),
     out_dir: Path = Path("results/analysis"),
     project_root: Path | None = None,
@@ -591,7 +591,7 @@ def generate(
     paired_tests.to_csv(ttests_out, index=False)
 
     return {
-        "design": "multi_model_multi_method_from_baseline_runs",
+        "design": "multi_model_multi_method_from_results_tree",
         "runs_root": str(runs_root),
         "run_files_found": int(len(list(runs_root.rglob('results_k*_seed*.json')))),
         "runs_included": int(len(specs)),
