@@ -1,17 +1,8 @@
 """
-Prompt builders.
+Prompt builders for the baseline few-shot evaluation.
 
-How to read this file:
-1) `SYSTEM_INSTRUCTIONS` is intentionally minimal for easy explanation.
-2) `make_few_shot_messages()` assembles schema context + few-shot examples + NLQ.
-
-Reliability-extension rationale:
-- Prompt engineering + schema grounding are used to reduce hallucinated SQL.
-- Few-shot examples are used as structured in-context support.
-
-Related literature: few-shot prompting [8], fair ICL vs fine-tuning
-comparisons [7], ICL behavior without weight updates [4], and schema-grounded
-text-to-SQL methods [2, 18, 20, 9].
+Assembles schema context, few-shot NLQ→SQL examples, and the target
+question into a chat message list for the model.
 """
 
 from __future__ import annotations

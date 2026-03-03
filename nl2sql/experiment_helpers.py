@@ -1,11 +1,8 @@
 """
 Shared helpers for notebook experiment orchestration.
 
-These helpers keep baseline and QLoRA notebooks aligned so behavior does not
-drift when one notebook is edited.
-
-Related literature: few-shot prompting [8], in-context vs fine-tuning
-comparisons [7], and significance testing practice [24].
+Keeps baseline and QLoRA notebooks consistent so run configurations
+don't drift when one notebook is edited.
 """
 
 from __future__ import annotations

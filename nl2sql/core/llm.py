@@ -1,17 +1,8 @@
 """
-Model-generation helpers for chat LLMs.
+Model generation helpers for chat LLMs.
 
-How to read this file:
-1) `extract_first_select()` cleans raw model text to one SQL statement.
-2) `generate_sql_from_messages()` runs chat-template generation with safe defaults.
-3) Optional lightweight constraints block non-SELECT DDL/DML tokens.
-
-Related methods: Transformers generation stack [27], constrained decoding with
-PICARD [15], and self-correction patterns in text-to-SQL [5].
-
-Implementation docs:
-- Transformers generation docs: https://huggingface.co/docs/transformers/main_classes/text_generation
-- Transformers quantization docs: https://huggingface.co/docs/transformers/main_classes/quantization
+Wraps the transformers generation pipeline for chat-template models.
+Handles SQL extraction from raw output and optional DDL keyword blocking.
 """
 
 from __future__ import annotations
@@ -20,16 +11,8 @@ import re
 from typing import Any, Iterable
 
 
-# regex reference: https://docs.python.org/3/library/re.html
-# 
-# rationale: try to extract a single executable select from model output while
-# tolerating explanatory text before/after.
-# 
-# we bias toward "sql-ish" statements:
-# the select should start a line (or be prefixed by "sql:")
-# the statement should contain a from clause
-# 
-# this avoids common false positives like "please select ... from ..." in prose.
+# matches SELECT at the start of a line, or prefixed by "sql:".
+# biased toward sql-ish statements so prose like "please select ... from ..." is skipped.
 SQL_START_RE = re.compile(r"(?im)^\s*(?:sql\s*:\s*)?select\b")
 
 # tiny stopword list to filter obvious prose like "from the ...".
@@ -210,8 +193,7 @@ def generate_sql_from_messages(
         return out
 
     def _build_bad_words_ids(tok: Any) -> list[list[int]]:
-        # conservative ddl/dml/transaction keywords to prevent non-select output.
-        # this is a light picard-style constraint that should not over-block selects.
+        # block DDL/DML keywords so the model can't output destructive statements.
         bad_words = [
             "insert",
             "update",
@@ -253,8 +235,7 @@ def generate_sql_from_messages(
     if num_return_sequences and num_return_sequences > 1 and not do_sample:
         do_sample = True
 
-    # transformers generation docs: temperature/top_p/top_k are sampling controls.
-    # deterministic eval policy: when do_sample=false, neutralize to warning-free values.
+    # when do_sample=False, set temperature/top_p to neutral values to avoid warnings.
     effective_temperature = float(temperature) if do_sample else 1.0
     effective_top_p = float(top_p) if do_sample else 1.0
     effective_top_k = None if do_sample else 50

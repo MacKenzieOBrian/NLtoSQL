@@ -1,13 +1,8 @@
 """
-Lightweight SQL text guardrails for candidate cleanup.
+SQL text cleanup helpers.
 
-Goal: turn raw model text into one executable SELECT statement.
-
-Related methods: constrained decoding via PICARD [15] and self-correction /
-execution-feedback patterns [5, 6].
-
-Implementation docs:
-- Python regex docs: https://docs.python.org/3/library/re.html
+Turns raw model output into one executable SELECT statement by stripping
+markdown fences, normalising spaced keywords, and rejecting non-SELECT output.
 """
 
 from __future__ import annotations

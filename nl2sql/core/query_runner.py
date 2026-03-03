@@ -1,17 +1,8 @@
 """
 Safe query executor.
 
-How to read this file:
-1) `QueryRunner` executes model SQL in read-only mode.
-2) It blocks destructive keywords and caps returned rows.
-3) Results are stored as `QueryResult` records for traceability.
-
-Related evaluation context: test-suite style execution checks [21] and
-LLM text-to-SQL benchmark reporting [23].
-
-Implementation docs:
-- SQLAlchemy execute docs: https://docs.sqlalchemy.org/en/20/core/connections.html
-- Python dataclasses docs: https://docs.python.org/3/library/dataclasses.html
+Executes model-generated SQL in read-only mode. Blocks destructive keywords,
+caps returned rows, and stores results as QueryResult records for traceability.
 """
 
 from __future__ import annotations
@@ -45,7 +36,7 @@ DEFAULT_FORBIDDEN_TOKENS = [
     "update ",
     "insert ",
 ]
-# rationale: simple select-only guard to keep evaluation safe and reproducible.
+# simple blocklist to keep evaluation runs safe — blocks destructive statements.
 
 
 @dataclass(frozen=True)
@@ -87,8 +78,7 @@ class QueryRunner:
         lowered = (sql or "").strip().lower()
         if not lowered:
             raise QueryExecutionError("Empty SQL string")
-        # motivation: this project executes model-generated sql against a real db.
-        # A simple token blocklist is a pragmatic safety layer for evaluation runs.
+        # model-generated sql runs against a real db, so check for destructive tokens first.
         for token in self.forbidden_tokens:
             if token in lowered:
                 raise QueryExecutionError(f"Destructive SQL token detected: {token.strip()}")

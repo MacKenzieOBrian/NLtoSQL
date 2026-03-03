@@ -1,17 +1,8 @@
 """
-Shared validation utilities used by both the tool-driven and class-based agents.
+Validation helpers for generated SQL.
 
-How to read this file:
-1) Parse schema text into tables/columns.
-2) Validate SQL against basic schema references.
-3) Optionally validate a small set of simple SQL-shape hints.
-
-Related literature: schema linking and structure in RAT-SQL [18], BRIDGE [2],
-and RESDSQL [20].
-
-Implementation docs:
-- Python regex docs: https://docs.python.org/3/library/re.html
-- SQL SELECT syntax (GROUP BY / ORDER BY / LIMIT): https://dev.mysql.com/doc/refman/8.0/en/select.html
+Parses schema text from the prompt context and checks that table names,
+column names, and basic SQL shape constraints are satisfied before execution.
 """
 
 from __future__ import annotations
@@ -232,7 +223,7 @@ def validate_sql(
     nlq: Optional[str] = None,
 ) -> dict:
     """Validate SQL formatting + schema references without executing."""
-    # rationale: catch obvious formatting/schema errors before hitting the database.
+    # catch obvious formatting/schema errors before hitting the database.
     if not sql or not sql.strip():
         return {"valid": False, "reason": "empty_sql"}
 

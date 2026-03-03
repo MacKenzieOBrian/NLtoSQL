@@ -1,13 +1,8 @@
 """
-Database connection helpers.
+Database connection helpers for Cloud SQL.
 
-How to read this file:
-1) `create_engine_with_connector()` builds a SQLAlchemy engine via Cloud SQL Connector.
-2) `safe_connection()` gives a short-lived connection context.
-
-Implementation docs:
-- Cloud SQL connector docs: https://cloud.google.com/sql/docs/mysql/connect-run
-- SQLAlchemy engine creator docs: https://docs.sqlalchemy.org/en/20/core/engines.html# custom-dbapi-connect
+Builds a SQLAlchemy engine using the Cloud SQL Python Connector and provides
+a simple context manager for short-lived connections.
 """
 
 from __future__ import annotations

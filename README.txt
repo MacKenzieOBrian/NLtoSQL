@@ -1,8 +1,7 @@
 NLtoSQL Dissertation Project - Handover README
 ==============================================
 
-This README is written as a handover document for another developer.
-It explains project structure, code ownership/provenance, build/run steps,
+This covers project structure, code ownership, build/run steps,
 and where AI use is documented.
 
 
@@ -24,7 +23,7 @@ Top-level layout:
   - `README.txt`, `REFERENCES.md`, `documentation.md`.
 - `nl2sql/`
   - canonical runtime/evaluation code (`core/`, `evaluation/`).
-  - compatibility wrappers at package root preserve legacy import paths.
+  - thin wrappers at package root re-export core modules for backwards compatibility.
 - `notebooks/`
   - `02_baseline_prompting_eval.ipynb`: baseline experiments.
   - `03_agentic_eval.ipynb`: extension path (agentic/reliability).
@@ -39,10 +38,10 @@ Top-level layout:
   - see `results/README.txt` for the kept primary-result subset.
 
 Primary evidence folders:
-- `results/baseline/runs`
-- `results/analysis`
-- `results/qlora/runs` (staging area only; selected QLoRA runs are copied into
-  `results/baseline/runs` for unified analysis)
+- `results/baseline/runs` (base model runs, Llama and Qwen)
+- `results/qlora/runs` (QLoRA runs, Llama and Qwen)
+- `results/agent/runs` (ReAct extension runs)
+- `results/analysis` (computed CSVs from generate_research_comparison.py)
 
 
 3) Code ownership and provenance
@@ -72,15 +71,11 @@ Compatibility wrappers:
 - These wrappers are project-maintained glue code, not external dependencies.
 
 
-4) AI use documentation (policy record)
----------------------------------------
-This section is the official AI-use record for this repository.
-
-Scope boundary:
-- AI was used for implementation scaffolding, boilerplate, refactoring support,
-  and documentation drafting.
-- Human-owned decisions: research question, hypothesis design, experiment scope,
-  run selection, acceptance criteria, interpretation, and final dissertation claims.
+4) AI use documentation
+-----------------------
+AI was used for implementation scaffolding, boilerplate, and documentation
+drafting. Research decisions — hypothesis design, experiment scope, run
+selection, result interpretation, and dissertation conclusions — are my own.
 
 File-level disclosure:
 - `scripts/generate_research_comparison.py`
@@ -198,9 +193,9 @@ Outputs:
 - SQL execution includes safety controls in runtime code; still use least-privilege DB users.
 
 
-9) Contact surface for maintainers
-----------------------------------
-If handing over to another developer, first review:
+9) Where to start
+-----------------
+If picking this up fresh, read:
 - this file (`README.txt`)
 - `results/README.txt` (artifact folder policy)
 - `REFERENCES.md` (literature and method anchors)
