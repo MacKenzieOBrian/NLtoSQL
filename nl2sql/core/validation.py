@@ -36,40 +36,20 @@ def parse_schema_text(schema_text: str) -> tuple[set[str], dict[str, set[str]]]:
 
 _SELECT_CLAUSE_RE = re.compile(r"(?is)\bselect\b(.*?)\bfrom\b")
 _AGG_EXPR_RE = re.compile(r"(?is)\b(count|sum|avg|min|max)\s*\(")
-_STRING_LITERAL_RE = re.compile(r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"")
-_TABLE_ALIAS_RE = re.compile(
-    r"(?is)\b(?:from|join)\s+([a-zA-Z_][\w$]*)"
-    r"(?:\s+(?:as\s+)?(?!(?:on|where|group|order|having|limit|join|left|right|inner|outer|using)\b)([a-zA-Z_][\w$]*))?"
-)
-_OUTPUT_ALIAS_RE = re.compile(r"(?is)\bas\s+([a-zA-Z_][\w$]*)\b")
-_IDENT_RE = re.compile(r"(?<!\.)\b([a-zA-Z_][\w$]*)\b")
 _SELECT_STAR_RE = re.compile(r"(?is)\bselect\s+([a-zA-Z_][\w$]*\.)?\*")
 _SELECT_STAR_ALLOW_RE = re.compile(
     r"\b(all columns|all fields|full details|full row|entire row|all details|every column)\b",
     re.IGNORECASE,
 )
-_SQL_KEYWORDS = {
-    "select", "from", "where", "join", "left", "right", "inner", "outer", "on", "as",
-    "group", "by", "order", "having", "limit", "distinct", "and", "or", "not", "in",
-    "is", "null", "like", "between", "case", "when", "then", "else", "end", "desc", "asc",
-    "using", "union", "all", "exists", "count", "sum", "avg", "min", "max", "round",
-    "cast", "coalesce", "if", "date", "year", "month", "day", "true", "false", "interval",
-}
 
 
 def _extract_select_clause(sql_low: str) -> str:
-    if not sql_low:
-        return ""
-    m = _SELECT_CLAUSE_RE.search(sql_low)
-    if not m:
-        return ""
-    return m.group(1)
+    m = _SELECT_CLAUSE_RE.search(sql_low or "")
+    return m.group(1) if m else ""
 
 
 def _select_has_star(sql_low: str) -> bool:
-    if not sql_low:
-        return False
-    return re.search(r"\bselect\s+([a-zA-Z_][\w$]*\.)?\*\b", sql_low) is not None
+    return re.search(r"\bselect\s+([a-zA-Z_][\w$]*\.)?\*\b", sql_low or "") is not None
 
 
 def _select_has_field(select_clause: str, field: str) -> bool:
@@ -79,12 +59,9 @@ def _select_has_field(select_clause: str, field: str) -> bool:
 
 
 def _split_select_expressions(select_clause: str) -> list[str]:
-    if not select_clause:
-        return []
-    parts: list[str] = []
-    curr: list[str] = []
-    depth = 0
-    for ch in select_clause:
+    """Split a SELECT clause on commas, respecting parentheses depth."""
+    parts, curr, depth = [], [], 0
+    for ch in (select_clause or ""):
         if ch == "(":
             depth += 1
         elif ch == ")" and depth > 0:
@@ -94,8 +71,8 @@ def _split_select_expressions(select_clause: str) -> list[str]:
             if piece:
                 parts.append(piece)
             curr = []
-            continue
-        curr.append(ch)
+        else:
+            curr.append(ch)
     tail = "".join(curr).strip()
     if tail:
         parts.append(tail)
@@ -103,114 +80,26 @@ def _split_select_expressions(select_clause: str) -> list[str]:
 
 
 def _is_agg_expression(expr: str) -> bool:
-    if not expr:
-        return False
-    return _AGG_EXPR_RE.search(expr) is not None
-
-
-def _query_tables_and_aliases(sql_low: str) -> tuple[set[str], dict[str, str], set[str]]:
-    tables: set[str] = set()
-    alias_map: dict[str, str] = {}
-    output_aliases: set[str] = set()
-    for m in _TABLE_ALIAS_RE.finditer(sql_low or ""):
-        table = (m.group(1) or "").lower()
-        alias = (m.group(2) or "").lower()
-        if table:
-            tables.add(table)
-        if alias and alias not in _SQL_KEYWORDS:
-            alias_map[alias] = table
-    for m in _OUTPUT_ALIAS_RE.finditer(sql_low or ""):
-        alias = (m.group(1) or "").lower()
-        if alias and alias not in _SQL_KEYWORDS:
-            output_aliases.add(alias)
-    return tables, alias_map, output_aliases
-
-
-def _allows_select_star(nlq: Optional[str]) -> bool:
-    return bool(_SELECT_STAR_ALLOW_RE.search(nlq or ""))
-
-
-def _is_function_identifier(scrubbed_sql: str, end_pos: int) -> bool:
-    tail = scrubbed_sql[end_pos:]
-    m = re.match(r"\s*\(", tail)
-    return m is not None
-
-
-def _visible_column_matches(column: str, query_tables: set[str], table_cols: dict[str, set[str]]) -> set[str]:
-    if not query_tables:
-        return set()
-    return {table for table in query_tables if column in table_cols.get(table, set())}
-
-
-def _unknown_or_ambiguous_column(
-    sql_low: str,
-    *,
-    query_tables: set[str],
-    alias_map: dict[str, str],
-    output_aliases: set[str],
-    table_cols: dict[str, set[str]],
-) -> Optional[str]:
-    scrubbed = _STRING_LITERAL_RE.sub(" ", sql_low or "")
-    for match in _IDENT_RE.finditer(scrubbed):
-        tok = (match.group(1) or "").lower()
-        if (
-            tok in output_aliases
-            or tok in alias_map
-            or tok in query_tables
-            or tok in _SQL_KEYWORDS
-        ):
-            continue
-        if tok.isdigit():
-            continue
-        if _is_function_identifier(scrubbed, match.end()):
-            continue
-        matched_tables = _visible_column_matches(tok, query_tables, table_cols)
-        if not matched_tables:
-            return f"unknown_column:{tok}"
-        if len(matched_tables) > 1:
-            return f"ambiguous_column:{tok}"
-    return None
+    return bool(_AGG_EXPR_RE.search(expr or ""))
 
 
 def schema_validate(
     *,
     sql: str,
     schema_index: tuple[set[str], dict[str, set[str]]],
-    enforce_join_hints: bool = True,
 ) -> tuple[bool, str, dict]:
-    tables, table_cols = schema_index
+    """Check that every table name in FROM/JOIN exists in the schema."""
+    tables, _ = schema_index
     if not tables:
         return True, "no_schema", {}
 
     sql_low = (sql or "").lower()
-    query_tables, alias_map, output_aliases = _query_tables_and_aliases(sql_low)
-
-    # validate explicit table names in from/join (skip subqueries).
     for m in re.finditer(r"(?is)\b(from|join)\s+([a-zA-Z_][\w$]*)", sql_low):
         table = m.group(2)
-        after = sql_low[m.end() : m.end() + 1]
-        if after == "(":
+        after = sql_low[m.end(): m.end() + 1]
+        if after == "(" or table in tables:
             continue
-        if table not in tables:
-            return False, f"unknown_table:{table}", {}
-
-    # validate qualified columns table.column when table is known.
-    for m in re.finditer(r"(?is)\b([a-zA-Z_][\w$]*)\.([a-zA-Z_][\w$]*)\b", sql_low):
-        qualifier = m.group(1)
-        col = m.group(2)
-        table = alias_map.get(qualifier, qualifier)
-        if table in table_cols and col not in table_cols[table]:
-            return False, f"unknown_column:{qualifier}.{col}", {}
-
-    col_issue = _unknown_or_ambiguous_column(
-        sql_low,
-        query_tables=query_tables,
-        alias_map=alias_map,
-        output_aliases=output_aliases,
-        table_cols=table_cols,
-    )
-    if col_issue:
-        return False, col_issue, {}
+        return False, f"unknown_table:{table}", {}
 
     return True, "ok", {}
 
@@ -219,7 +108,6 @@ def validate_sql(
     sql: str,
     schema_text: Optional[str] = None,
     *,
-    enforce_join_hints: bool = True,
     nlq: Optional[str] = None,
 ) -> dict:
     """Validate SQL formatting + schema references without executing."""
@@ -231,7 +119,7 @@ def validate_sql(
     if not cleaned:
         return {"valid": False, "reason": f"clean_reject:{reason}"}
 
-    if _SELECT_STAR_RE.search(cleaned) and not _allows_select_star(nlq):
+    if _SELECT_STAR_RE.search(cleaned) and not _SELECT_STAR_ALLOW_RE.search(nlq or ""):
         return {"valid": False, "reason": "select_star_forbidden"}
 
     if not schema_text:
@@ -244,7 +132,6 @@ def validate_sql(
     ok, why, detail = schema_validate(
         sql=cleaned,
         schema_index=(tables, table_cols),
-        enforce_join_hints=enforce_join_hints,
     )
     if not ok:
         out = {"valid": False, "reason": why}

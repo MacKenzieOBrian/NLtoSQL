@@ -80,17 +80,23 @@ selection, result interpretation, and dissertation conclusions — are my own.
 File-level disclosure:
 - `scripts/generate_research_comparison.py`
   - What the script does:
-    - discovers run JSON files under `results/**/results_k*_seed*.json`.
-    - normalizes run metadata into `condition_id` (`llama|qwen` x `base|qlora` x `k=0|3`).
+    - discovers run JSON files under `results/**/results_k*_seed*.json` and ReAct runs
+      under `results/agent/runs/**/results_react_200.json`.
+    - normalizes run metadata into `condition_id` (`llama|qwen` x `base|qlora|react` x `k=0|3`).
     - builds per-item analysis rows and run manifest rows.
-    - computes mean/median, Shapiro-Wilk checks, and paired t-tests on predefined contrasts.
+    - computes mean/median and Shapiro-Wilk checks per run.
+    - for each predefined comparison: Wilcoxon signed-rank test (primary), paired t-test
+      (corroborating), 95% CI on mean difference, and Cohen's d effect size.
+    - applies Benjamini-Hochberg FDR correction within each metric family (12 tests per metric).
     - writes analysis CSV outputs under `results/analysis/`.
   - AI-assisted (plumbing): CLI scaffold, JSON/file ingestion, metadata normalization,
-    deduplication, pandas joins/grouping, and CSV export wiring.
+    deduplication, pandas joins/grouping, Wilcoxon/t-test/CI/Cohen's d wrappers,
+    BH FDR implementation, and CSV export wiring.
   - Human decisions (research logic): source-of-truth run folder, supported matrix
-    (`llama`/`qwen`, `base`/`qlora`, `k in {0,3}`), inclusion policy
-    (`model_only_raw` by default), predefined hypothesis comparisons, and interpretation
-    of statistical results in the dissertation.
+    (`llama`/`qwen`, `base`/`qlora`/`react`, `k in {0,3}`), inclusion policy
+    (`model_only_raw` by default), predefined hypothesis comparisons, choice of primary
+    test (Wilcoxon) and FDR family scope, and interpretation of statistical results in
+    the dissertation.
 
 - `scripts/colab_setup.sh`
   - AI-assisted: shell script boilerplate and install block structure.
@@ -118,8 +124,9 @@ File-level disclosure:
 
 Concrete examples of boilerplate-style AI assistance:
 - `generate_research_comparison.py`:
-  `parse_args`, `discover_runs`, `build_tables_from_runs`, `_join_for_pair`,
-  `compute_mean_median_shapiro`, `compute_paired_ttests`, `generate`, `main`.
+  `parse_args`, `discover_runs`, `discover_react_runs`, `build_tables_from_runs`,
+  `_join_for_pair`, `compute_mean_median_shapiro`, `_bh_fdr_adjust`,
+  `compute_paired_ttests`, `generate`, `main`.
 - notebook run-plan and grid-loop cells in baseline/QLoRA notebooks.
 - simple compatibility wrappers (`from ... import *`) for legacy import paths.
 
@@ -174,7 +181,6 @@ Outputs:
 - `results/analysis/per_item_metrics_primary_raw.csv`
 - `results/analysis/run_manifest.csv`
 - `results/analysis/stats_mean_median_shapiro.csv`
-- `results/analysis/stats_paired_shapiro.csv`
 - `results/analysis/stats_paired_ttests.csv`
 
 

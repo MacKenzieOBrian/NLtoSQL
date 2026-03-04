@@ -24,27 +24,18 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional
+from typing import Any, Callable, Optional
 
 import sqlalchemy
 from sqlalchemy.engine import Engine
 
 from ..core.db import safe_connection
 from ..core.llm import generate_sql_from_messages
-from ..core.postprocess import guarded_postprocess
+from ..core.postprocess import guarded_postprocess, normalize_sql as _normalize_sql
 from ..core.prompting import make_few_shot_messages
 from ..core.query_runner import DEFAULT_FORBIDDEN_TOKENS, QueryRunner
 from ..core.sql_guardrails import clean_candidate_with_reason
 
-
-def _normalize_sql(s: str) -> str:
-    """Light SQL normalization used only for EM comparison."""
-    return " ".join((s or "").strip().rstrip(";").lower().split())
-
-
-def _passthrough_sql(s: str) -> str:
-    """Keep model output unchanged except surrounding whitespace trim."""
-    return (s or "").strip()
 
 
 def _apply_optional_reliability_layer(
@@ -53,11 +44,9 @@ def _apply_optional_reliability_layer(
     nlq: str,
     apply_sql_guardrails: bool,
     apply_postprocess: bool,
-    explicit_fields: Iterable[str] | None = None,
-    required_fields: Iterable[str] | None = None,
 ) -> str:
     # extension path: keep this layer off for primary model-only claims.
-    out = _passthrough_sql(sql_text)
+    out = (sql_text or "").strip()
 
     if apply_sql_guardrails:
         cleaned, reason = clean_candidate_with_reason(out)
@@ -67,14 +56,9 @@ def _apply_optional_reliability_layer(
             out = ""
 
     if apply_postprocess and out:
-        out = guarded_postprocess(
-            out,
-            nlq,
-            explicit_fields=explicit_fields,
-            required_fields=required_fields,
-        )
+        out = guarded_postprocess(out, nlq)
 
-    return _passthrough_sql(out)
+    return out.strip()
 
 
 def now_utc_iso() -> str:
@@ -181,6 +165,10 @@ def execution_accuracy(
             idxs = [pred_map[k] for k in gold_keys]
             pred_rows = [tuple(r[i] for i in idxs) for r in pred_rows]
 
+    # Counter gives bag/multiset equality: order-insensitive result comparison.
+    # This matches the EX metric definition in the Spider benchmark:
+    # Yu et al. (2018) "Spider: A Large-Scale Human-Labeled Dataset for Complex NL to SQL"
+    # https://arxiv.org/abs/1809.08887
     return Counter(pred_rows) == Counter(gold_rows), None, None
 
 
@@ -407,8 +395,6 @@ def eval_run(
             nlq=nlq,
             apply_sql_guardrails=apply_sql_guardrails,
             apply_postprocess=apply_postprocess,
-            explicit_fields=item.get("explicit_fields"),
-            required_fields=item.get("required_output_fields") or item.get("required_fields"),
         )
 
         meta = qr.run(pred_sql, capture_df=False)

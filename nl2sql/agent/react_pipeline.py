@@ -26,7 +26,7 @@ from sqlalchemy.engine import Engine
 from ..core.llm import extract_first_select, generate_sql_from_messages
 from ..core.postprocess import guarded_postprocess, normalize_sql
 from ..core.prompting import make_few_shot_messages
-from ..core.validation import parse_schema_text, validate_constraints, validate_sql
+from ..core.validation import validate_constraints, validate_sql
 from ..evaluation.eval import execution_accuracy, test_suite_accuracy_for_item
 from .agent_tools import ensure_schema_text, get_agent_context
 from .prompts import SQL_GENERATOR_SYSTEM_PROMPT, SQL_REPAIR_SYSTEM_PROMPT
@@ -68,198 +68,20 @@ def _clean_sql_candidate(sql: str) -> str:
     return sql
 
 
-_PROJECTION_CUE_RE = re.compile(
-    r"^\s*(list|show|display|give|return|provide|which|what|names?|codes?)\b",
-    re.IGNORECASE,
-)
-_CAMEL_RE = re.compile(r"(?<!^)(?=[A-Z])")
-_TAIL_ALIAS_ALLOW = {"name", "code", "msrp", "city", "country", "vendor", "line", "date", "amount", "limit"}
 _COUNT_CUE_RE = re.compile(r"\b(how many|count|number of)\b", re.IGNORECASE)
 _AVG_CUE_RE = re.compile(r"\b(average|avg)\b", re.IGNORECASE)
 _SUM_CUE_RE = re.compile(r"\b(total|sum|sales amount|total sales|total payments|order total)\b", re.IGNORECASE)
 _GROUP_CUE_RE = re.compile(r"\b(per|each|for each|by)\b", re.IGNORECASE)
 _RANK_CUE_RE = re.compile(r"\b(top|highest|lowest|largest|smallest|most|least|rank)\b", re.IGNORECASE)
 _LIMIT_CUE_RE = re.compile(r"\b(?:top|show)\s+(\d+)\b", re.IGNORECASE)
-_RELATION_CUE_RE = re.compile(r"\b(manager|managers|sales rep|sales representative)\b", re.IGNORECASE)
-_FILTER_COMPARISON_RE = re.compile(r"\b(above|below|over|under|greater|less|more)\b", re.IGNORECASE)
-_SPECIAL_COLUMN_ALIASES: dict[str, list[str]] = {
-    "creditlimit": ["credit limit"],
-    "quantityinstock": ["quantity in stock", "in stock", "stock"],
-    "checknumber": ["check number"],
-    "paymentdate": ["payment date"],
-    "ordernumber": ["order number"],
-}
-_FILTER_VALUE_FIELDS = {"creditlimit", "msrp", "amount", "buyprice", "quantityinstock"}
-_FILTER_VALUE_FIELDS_BEFORE = {"msrp", "amount", "buyprice"}
-_IDENTITY_FIELDS_BY_TABLE: dict[str, list[str]] = {
-    "customers": ["customerName"],
-    "products": ["productCode", "productName"],
-    "offices": ["city", "country"],
-    "productlines": ["productLine"],
-}
 
 
-def _normalize_text(text: str) -> str:
-    return " ".join(re.findall(r"[a-z0-9]+", (text or "").lower()))
-
-
-def _relevant_tables(nlq: str, tables: set[str]) -> set[str]:
-    nlq_norm = _normalize_text(nlq)
-    out: set[str] = set()
-    for table in tables:
-        variants = {table.lower()}
-        if table.lower().endswith("s") and len(table) > 1:
-            variants.add(table.lower()[:-1])
-        for variant in variants:
-            if re.search(rf"\b{re.escape(variant)}\b", nlq_norm):
-                out.add(table)
-                break
-    return out
-
-
-def _starts_with_table_mention(nlq: str, tables: set[str]) -> bool:
-    nlq_norm = _normalize_text(nlq)
-    for table in tables:
-        variants = {table.lower()}
-        if table.lower().endswith("s") and len(table) > 1:
-            variants.add(table.lower()[:-1])
-        for variant in variants:
-            if nlq_norm.startswith(variant + " "):
-                return True
-    return False
-
-
-def _column_aliases(column: str) -> list[str]:
-    spaced = _CAMEL_RE.sub(" ", column.replace("_", " ")).lower()
-    parts = [p for p in spaced.split() if p]
-    aliases = set(_SPECIAL_COLUMN_ALIASES.get(column.lower(), []))
-    aliases.add(" ".join(parts))
-    if len(parts) == 1:
-        col_low = parts[0]
-        for tail in sorted(_TAIL_ALIAS_ALLOW, key=len, reverse=True):
-            if col_low == tail:
-                continue
-            if col_low.endswith(tail) and len(col_low) > len(tail):
-                prefix = col_low[: -len(tail)]
-                aliases.add(f"{prefix} {tail}")
-                if tail in _TAIL_ALIAS_ALLOW:
-                    aliases.add(tail)
-                break
-    elif parts[-1] in _TAIL_ALIAS_ALLOW:
-        aliases.add(parts[-1])
-        aliases.add(" ".join(parts[1:]))
-    pluralized: set[str] = set()
-    for alias in aliases:
-        if alias.endswith("y"):
-            pluralized.add(alias[:-1] + "ies")
-        elif not alias.endswith("s"):
-            pluralized.add(alias + "s")
-    aliases.update(pluralized)
-    return [a for a in aliases if a]
-
-
-def _looks_like_filter_value_mention(nlq_norm: str, pos: int, alias: str, column: str) -> bool:
-    col_low = column.lower()
-    if col_low not in _FILTER_VALUE_FIELDS:
-        return False
-    left = nlq_norm[max(0, pos - 24):pos]
-    right = nlq_norm[pos + len(alias):pos + len(alias) + 24]
-    if _FILTER_COMPARISON_RE.search(right):
-        return True
-    if col_low in _FILTER_VALUE_FIELDS_BEFORE and _FILTER_COMPARISON_RE.search(left):
-        return True
-    return False
-
-
-def _explicit_fields_from_nlq(nlq: str, schema_text: str) -> list[str]:
-    tables, table_cols = parse_schema_text(schema_text)
-    if not tables:
-        return []
-
-    has_projection_cue = (
-        bool(_PROJECTION_CUE_RE.search(nlq or ""))
-        or ("," in (nlq or ""))
-        or (" and " in (nlq or "").lower())
-        or _starts_with_table_mention(nlq, tables)
-    )
-    if not has_projection_cue:
-        return []
-
-    relevant = _relevant_tables(nlq, tables)
-    search_tables = list(relevant) if relevant else list(table_cols.keys())
-    nlq_norm = _normalize_text(nlq)
-    cutoff_candidates = []
-    for marker in (" in ", " where "):
-        idx = nlq_norm.find(marker)
-        if idx >= 0:
-            cutoff_candidates.append(idx)
-    cutoff = min(cutoff_candidates) if cutoff_candidates else None
-    found: list[tuple[int, str]] = []
-    seen: set[str] = set()
-
-    for table in search_tables:
-        for col in sorted(table_cols.get(table, set())):
-            for alias in _column_aliases(col):
-                pos = nlq_norm.find(alias)
-                if pos >= 0 and col not in seen:
-                    if _looks_like_filter_value_mention(nlq_norm, pos, alias, col):
-                        continue
-                    found.append((pos, col))
-                    seen.add(col)
-                    break
-
-    found.sort(key=lambda item: item[0])
-    ordered = [col for _, col in found]
-    if cutoff is not None:
-        before_cutoff = [col for pos, col in found if pos < cutoff]
-        if len(before_cutoff) >= 2:
-            return before_cutoff
-    return ordered
-
-
-def _merge_unique_fields(*field_lists: list[str]) -> list[str]:
-    merged: list[str] = []
-    for fields in field_lists:
-        for field in fields:
-            if field and field not in merged:
-                merged.append(field)
-    return merged
-
-
-def _default_projection_fields(nlq: str, schema_text: str, explicit_fields: list[str]) -> list[str]:
-    tables, _ = parse_schema_text(schema_text)
-    has_projection_cue = bool(_PROJECTION_CUE_RE.search(nlq or "")) or _starts_with_table_mention(nlq, tables)
-    if not has_projection_cue:
-        return []
-    if _COUNT_CUE_RE.search(nlq or "") or _AVG_CUE_RE.search(nlq or "") or _RANK_CUE_RE.search(nlq or ""):
-        return []
-    if _RELATION_CUE_RE.search(nlq or ""):
-        return []
-
-    relevant = _relevant_tables(nlq, tables)
-    if len(relevant) != 1:
-        return []
-
-    table = next(iter(relevant))
-    identity_fields = _IDENTITY_FIELDS_BY_TABLE.get(table, [])
-    if not identity_fields:
-        return []
-    return _merge_unique_fields(identity_fields, explicit_fields)
-
-
-def _projection_targets_from_nlq(nlq: str, schema_text: str) -> list[str]:
-    explicit_fields = _explicit_fields_from_nlq(nlq, schema_text)
-    default_fields = _default_projection_fields(nlq, schema_text, explicit_fields)
-    return default_fields or explicit_fields
-
-
-def _infer_constraints(nlq: str, schema_text: str) -> dict[str, Any]:
+def _infer_constraints(nlq: str) -> dict[str, Any]:
+    """
+    Infer structural constraints on the SQL from surface cues in the NLQ.
+    Checks for aggregate type (COUNT/AVG/SUM), GROUP BY, ORDER BY, and LIMIT.
+    """
     constraints: dict[str, Any] = {}
-    projection_targets = _projection_targets_from_nlq(nlq, schema_text)
-    if projection_targets:
-        constraints["required_output_fields"] = projection_targets
-        if not _RELATION_CUE_RE.search(nlq or "") and not _COUNT_CUE_RE.search(nlq or "") and not _AVG_CUE_RE.search(nlq or "") and not _SUM_CUE_RE.search(nlq or ""):
-            constraints["strict_required_output_fields"] = True
 
     if _COUNT_CUE_RE.search(nlq or ""):
         constraints["agg"] = "COUNT"
@@ -279,14 +101,11 @@ def _infer_constraints(nlq: str, schema_text: str) -> dict[str, Any]:
         constraints["limit"] = int(limit_match.group(1))
 
     return constraints
+    # basically we want to give the model hints about what constraints the SQL should satisfy, based on surface cues in the NLQ. This is a simple heuristic approach that looks for keywords indicative of COUNT/AVG/SUM, grouping, ranking, and limits. The repair policy can then use this information to guide corrections when constraints are not met.
 
 
 def _format_constraint_error(result: dict[str, Any]) -> str:
     reason = str(result.get("reason") or "constraint_failed")
-    if reason == "missing_required_output_field":
-        missing = ",".join(result.get("missing_fields") or [])
-        if missing:
-            return f"validate_constraints:{reason}:{missing}"
     if reason.startswith("missing_agg:"):
         _, agg = reason.split(":", 1)
         return f"validate_constraints:missing_agg:{agg}"
@@ -296,13 +115,8 @@ def _format_constraint_error(result: dict[str, Any]) -> str:
     return f"validate_constraints:{reason}"
 
 
-def _postprocess_sql(sql: str, nlq: str, schema_text: str) -> str:
-    explicit_fields = _projection_targets_from_nlq(nlq, schema_text)
-    return guarded_postprocess(
-        sql,
-        nlq,
-        explicit_fields=explicit_fields or None,
-    )
+def _postprocess_sql(sql: str, nlq: str) -> str:
+    return guarded_postprocess(sql, nlq)
 
 
 def _build_prompt_messages(
@@ -321,7 +135,10 @@ def _build_prompt_messages(
         pool = [ex for ex in pool if ex.get("nlq") != nlq]
         if pool:
             sample_n = min(config.few_shot_k, len(pool))
-            rng = random.Random(f"{config.few_shot_seed}:{_normalize_text(nlq)}")
+            # Few-shot in-context learning: sample k exemplars from the pool.
+            # Approach from Brown et al. (2020) "Language Models are Few-Shot Learners"
+            # https://arxiv.org/abs/2005.14165
+            rng = random.Random(f"{config.few_shot_seed}:{normalize_sql(nlq)}")
             exemplars = rng.sample(pool, sample_n)
 
     messages = make_few_shot_messages(
@@ -335,79 +152,40 @@ def _build_prompt_messages(
     return messages
 
 
-def _repair_hint(error: str, schema_text: str) -> str:
-    if not error.startswith("validate_sql:"):
-        if not error.startswith("validate_constraints:"):
-            return ""
-        parts = error.split(":", 2)
-        reason = parts[1] if len(parts) > 1 else "constraint_failed"
-        detail = parts[2] if len(parts) > 2 else ""
-        if reason == "missing_required_output_field":
-            fields = ", ".join(f for f in detail.split(",") if f)
-            if fields:
-                return (
-                    f"Repair hint: return the required output fields only: {fields}. "
-                    "Drop extra columns that are not needed."
-                )
-            return "Repair hint: return only the required output fields and drop extra columns."
-        if reason == "missing_agg":
-            agg = detail or "aggregate"
-            return f"Repair hint: the question requires a {agg}(...) aggregate."
-        if reason == "unexpected_output_field":
-            return "Repair hint: return only the requested output fields and drop extra columns."
-        if reason == "missing_group_by":
+def _repair_hint(error: str) -> str:
+    if error.startswith("validate_sql:"):
+        reason = error.split(":", 1)[1]
+        if reason == "select_star_forbidden":
             return (
-                "Repair hint: the question asks for grouped results. "
-                "Add GROUP BY for the entity or dimension being aggregated."
+                "Repair hint: do not use SELECT *. Return only the smallest set of columns "
+                "needed to answer the question."
             )
-        if reason == "missing_group_dimension_projection":
-            return "Repair hint: include the grouping column in SELECT alongside the aggregate."
-        if reason == "missing_order_by":
-            return "Repair hint: ranking questions require ORDER BY on the ranking expression."
-        if reason == "missing_limit":
-            limit = detail
-            return f"Repair hint: add LIMIT {limit}."
-        if reason == "missing_distinct":
-            return "Repair hint: use SELECT DISTINCT."
-        if reason == "missing_value_hint":
-            return "Repair hint: keep key filter values from the question in the SQL."
         return ""
 
-    reason = error.split(":", 1)[1]
-    tables, table_cols = parse_schema_text(schema_text)
-    if reason == "select_star_forbidden":
+    if not error.startswith("validate_constraints:"):
+        return ""
+
+    parts = error.split(":", 2)
+    reason = parts[1] if len(parts) > 1 else "constraint_failed"
+    detail = parts[2] if len(parts) > 2 else ""
+
+    if reason == "missing_agg":
+        return f"Repair hint: the question requires a {detail or 'aggregate'}(...) aggregate."
+    if reason == "missing_group_by":
         return (
-            "Repair hint: do not use SELECT *. Return only the smallest set of columns "
-            "needed to answer the question."
+            "Repair hint: the question asks for grouped results. "
+            "Add GROUP BY for the entity or dimension being aggregated."
         )
-
-    if reason.startswith("unknown_column:"):
-        raw_col = reason.split(":", 1)[1].strip().lower()
-        base_col = raw_col.split(".")[-1]
-        owners = sorted(table for table in tables if base_col in table_cols.get(table, set()))
-        if owners:
-            owner_text = ", ".join(f"{table}.{base_col}" for table in owners)
-            return (
-                f"Repair hint: the column {raw_col} is invalid in this query. "
-                f"The schema contains {owner_text}. Use only real table/column pairs."
-            )
-        return f"Repair hint: the column {raw_col} does not exist in the schema."
-
-    if reason.startswith("ambiguous_column:"):
-        col = reason.split(":", 1)[1].strip().lower()
-        owners = sorted(table for table in tables if col in table_cols.get(table, set()))
-        if owners:
-            owner_text = ", ".join(f"{table}.{col}" for table in owners)
-            return (
-                f"Repair hint: the column {col} appears in multiple tables ({owner_text}). "
-                "Qualify it with the correct table alias."
-            )
-        return f"Repair hint: qualify the ambiguous column {col} with the correct table alias."
-
+    if reason == "missing_group_dimension_projection":
+        return "Repair hint: include the grouping column in SELECT alongside the aggregate."
+    if reason == "missing_order_by":
+        return "Repair hint: ranking questions require ORDER BY on the ranking expression."
+    if reason == "missing_limit":
+        return f"Repair hint: add LIMIT {detail}."
     return ""
 
 
-def generate_sql(nlq: str, schema_text: str, constraints: Optional[dict[str, Any]] = None) -> str:
+def generate_sql(nlq: str, schema_text: str) -> str:
     """
     Generate one SQL candidate for the NLQ.
     Signature is intentionally stable for notebook monkeypatch demos.
@@ -430,24 +208,27 @@ def generate_sql(nlq: str, schema_text: str, constraints: Optional[dict[str, Any
         do_sample=config.do_sample,
         temperature=config.temperature,
         top_p=config.top_p,
-        constrained=False,
         extract_select=True,
         stop_on_semicolon=True,
     )
-    return _postprocess_sql(_clean_sql_candidate(str(out)), nlq, schema_text)
+    return _postprocess_sql(_clean_sql_candidate(str(out)), nlq)
 
 
 def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str) -> str:
     """
     Repair SQL from validator/runtime feedback.
     Signature is intentionally stable for notebook monkeypatch demos.
+
+    Execution-guided repair follows the DIN-SQL approach:
+    Pourreza & Rafiei (2023) "DIN-SQL: Decomposed In-Context Learning of Text-to-SQL"
+    https://arxiv.org/abs/2304.11015
     """
     ctx = get_agent_context()
     config = _effective_config()
     if ctx.model is None or ctx.tok is None:
         raise RuntimeError("Agent context model/tokenizer not set for SQL repair.")
 
-    hint = _repair_hint(error, schema_text)
+    hint = _repair_hint(error)
     repair_prompt = (
         f"Natural Language Question: {nlq}\n\n"
         f"Previous SQL:\n{bad_sql}\n\n"
@@ -471,11 +252,10 @@ def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str) -> str:
         do_sample=config.do_sample,
         temperature=config.temperature,
         top_p=config.top_p,
-        constrained=False,
         extract_select=True,
         stop_on_semicolon=True,
     )
-    return _postprocess_sql(_clean_sql_candidate(str(out)), nlq, schema_text)
+    return _postprocess_sql(_clean_sql_candidate(str(out)), nlq)
 
 
 def run_react_pipeline(
@@ -485,6 +265,10 @@ def run_react_pipeline(
 ) -> tuple[str, list[dict[str, Any]]]:
     """
     Execute one ReAct loop for a single NLQ and return (final_sql, trace).
+
+    Implements the Reason+Act+Observe loop from:
+    Yao et al. (2023) "ReAct: Synergizing Reasoning and Acting in Language Models", ICLR 2023
+    https://arxiv.org/abs/2210.03629
     """
     global _ACTIVE_CONFIG
     cfg = config or core_react_config()
@@ -493,7 +277,7 @@ def run_react_pipeline(
 
     trace: list[dict[str, Any]] = []
     schema_text = ensure_schema_text(ctx)
-    constraints = _infer_constraints(nlq, schema_text)
+    constraints = _infer_constraints(nlq)
     current_sql: str | None = None
     last_error: str | None = None
     repairs_used = 0
@@ -548,7 +332,6 @@ def run_react_pipeline(
             sql_check = validate_sql(
                 current_sql or "",
                 schema_text,
-                enforce_join_hints=False,
                 nlq=nlq,
             )
             add_trace("validate_sql", observation=sql_check, reason=None if sql_check.get("valid") else sql_check.get("reason"))
