@@ -41,7 +41,11 @@ def first_select_only(text: str) -> str:
 
 
 def _strip_order_by_limit(sql: str, nlq: str) -> str:
-    """Remove ORDER BY/LIMIT unless the question asks for ranking."""
+    """Remove ORDER BY/LIMIT unless the question asks for ranking.
+
+    Most Spider [22] questions do not specify row ordering; spurious ORDER BY
+    causes EX failures when the DB returns the same rows in a different order.
+    """
     if RANKING_HINT_RE.search(nlq or ""):
         return sql
     out = re.sub(r"(?is)\sorder\s+by\s+[^;]+", "", sql)

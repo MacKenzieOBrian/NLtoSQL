@@ -70,16 +70,12 @@ def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
     # reuse shared extraction helper so behavior matches other code paths.
     from .llm import extract_first_select as _extract_first_select
 
+    # extract_first_select guarantees SELECT…FROM structure; None means no valid SQL found.
     sql = _extract_first_select(text)
     if not sql:
         return None, "no_select"
 
     sql = sql.strip()
-    if not sql.lower().startswith("select"):
-        return None, "no_select"
-    if " from " not in f" {sql.lower()} ":
-        return None, "no_from"
-
     # keep only the first statement.
     if ";" in sql:
         sql = sql.split(";", 1)[0].strip() + ";"

@@ -47,6 +47,11 @@ def get_table_columns(engine: Engine, *, db_name: str, table_name: str) -> pd.Da
 
 
 def build_schema_summary(engine: Engine, *, db_name: str, max_cols_per_table: int = 50) -> str:
+    """Build compact schema text for model prompts: table(col1, col2, ...).
+
+    Primary-key and name-like columns are listed first to surface join-relevant
+    identifiers early in the token stream. Schema-linking motivation: Lin et al. [2].
+    """
     chunks: list[str] = []
     for table in list_tables(engine):
         cols_df = get_table_columns(engine, db_name=db_name, table_name=table)

@@ -96,7 +96,7 @@ def generate_sql_from_messages(
                 return False
             return input_ids[0, -1].item() == self._semi_id
 
-    # Build model-native chat tokens and prepare a matching attention mask.
+    # Build model-native chat tokens using the HuggingFace chat template API [27].
     input_ids = tokenizer.apply_chat_template(
         messages,
         tokenize=True,

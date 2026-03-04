@@ -21,6 +21,7 @@ Rules:
 """
 
 
+# Zero-shot repair aligned with DIN-SQL self-correction [5].
 SQL_REPAIR_SYSTEM_PROMPT = """You fix faulty MySQL SELECT statements.
 Return exactly one corrected SQL SELECT statement.
 
