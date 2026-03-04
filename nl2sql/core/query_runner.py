@@ -80,6 +80,31 @@ class QueryRunner:
             if token in lowered:
                 raise QueryExecutionError(f"Destructive SQL token detected: {token.strip()}")
 
+    def _make_result(
+        self,
+        sql: str,
+        params: Optional[dict[str, Any]],
+        timestamp: str,
+        *,
+        success: bool,
+        rowcount: int = 0,
+        truncated: bool = False,
+        exec_time_s: Optional[float] = None,
+        error: Optional[str] = None,
+        columns: Optional[list[str]] = None,
+    ) -> QueryResult:
+        return QueryResult(
+            sql=sql,
+            params=params,
+            timestamp=timestamp,
+            success=success,
+            rowcount=rowcount,
+            truncated=truncated,
+            exec_time_s=exec_time_s,
+            error=error,
+            columns=columns,
+        )
+
     def run(self, sql: str, *, params: Optional[dict[str, Any]] = None) -> QueryResult:
         timestamp = now_utc_iso()
         try:
@@ -98,28 +123,19 @@ class QueryRunner:
             end = datetime.now(timezone.utc)
             exec_time_s = (end - start).total_seconds()
 
-            out = QueryResult(
-                sql=sql,
-                params=params,
-                timestamp=timestamp,
+            out = self._make_result(
+                sql, params, timestamp,
                 success=True,
                 rowcount=min(len(rows), self.max_rows),
                 truncated=bool(truncated),
                 exec_time_s=exec_time_s,
-                error=None,
                 columns=cols,
             )
         except Exception as e:
-            out = QueryResult(
-                sql=sql,
-                params=params,
-                timestamp=timestamp,
+            out = self._make_result(
+                sql, params, timestamp,
                 success=False,
-                rowcount=0,
-                truncated=False,
-                exec_time_s=None,
                 error=str(e),
-                columns=None,
             )
 
         self.history.append(out)

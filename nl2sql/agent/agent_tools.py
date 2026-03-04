@@ -15,6 +15,11 @@ from sqlalchemy.engine import Engine
 from ..core.schema import build_schema_summary
 
 
+def _safe_str(obj: Any, key: str) -> str:
+    """Get a stripped string field from a dict; returns '' for missing/non-dict input."""
+    return str(obj.get(key) or "").strip() if isinstance(obj, dict) else ""
+
+
 @dataclass
 class AgentContext:
     engine: Engine
@@ -54,32 +59,21 @@ def schema_to_text(schema_cache: dict[str, Any] | None) -> str:
         return ""
 
     lines: list[str] = []
-    tables = schema_cache.get("tables") or []
-    for t in tables:
-        if not isinstance(t, dict):
-            continue
-        table_name = str(t.get("name") or "").strip()
+    for t in schema_cache.get("tables") or []:
+        table_name = _safe_str(t, "name")
         if not table_name:
             continue
-        cols = t.get("columns") or []
         col_names: list[str] = []
-        for c in cols:
-            if isinstance(c, dict):
-                n = str(c.get("name") or "").strip()
-            else:
-                n = str(c or "").strip()
+        for c in (t.get("columns") or []):
+            n = _safe_str(c, "name") if isinstance(c, dict) else str(c or "").strip()
             if n:
                 col_names.append(n)
         lines.append(f"{table_name}({', '.join(col_names)})")
 
     hints: list[str] = []
     for fk in schema_cache.get("foreign_keys") or []:
-        if not isinstance(fk, dict):
-            continue
-        t = str(fk.get("table") or "").strip()
-        c = str(fk.get("column") or "").strip()
-        rt = str(fk.get("ref_table") or "").strip()
-        rc = str(fk.get("ref_column") or "").strip()
+        t, c = _safe_str(fk, "table"), _safe_str(fk, "column")
+        rt, rc = _safe_str(fk, "ref_table"), _safe_str(fk, "ref_column")
         if t and c and rt and rc:
             hints.append(f"{t}.{c} = {rt}.{rc}")
 

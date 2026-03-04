@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import random
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -187,6 +187,94 @@ def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str) -> str:
     return guarded_postprocess(_clean_sql_candidate(str(out)), nlq)
 
 
+# ---------------------------------------------------------------------------
+# ReAct loop helpers — module-level so each function has a single, testable
+# responsibility.  _ReactState carries mutable loop state explicitly instead
+# of relying on closures with nonlocal variables.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _ReactState:
+    step: int = 0
+    trace: list[dict[str, Any]] = field(default_factory=list)
+    current_sql: str | None = None
+    repairs_used: int = 0
+
+
+def _add_trace(
+    state: _ReactState,
+    action: str,
+    *,
+    observation: dict[str, Any],
+    reason: str | None = None,
+    payload: Optional[dict[str, Any]] = None,
+) -> None:
+    state.trace.append(
+        {
+            "step": state.step,
+            "action": action,
+            "planned_action": action,
+            "planner_text": f"Action: {action}[{json.dumps(payload or {}, ensure_ascii=True)}]",
+            "payload": payload or {},
+            "blocked": False,
+            "reason": reason,
+            "observation": observation,
+        }
+    )
+
+
+def _stop_with(
+    state: _ReactState,
+    *,
+    action: str,
+    reason: str,
+    observation: dict[str, Any],
+) -> tuple[str, list[dict[str, Any]]]:
+    state.trace.append(
+        {
+            "step": state.step,
+            "action": "stop",
+            "planned_action": action,
+            "planner_text": f"Action: {action}[{{}}]",
+            "blocked": False,
+            "reason": reason,
+            "observation": observation,
+        }
+    )
+    return state.current_sql or "", state.trace
+
+
+def _try_repair(
+    state: _ReactState,
+    cfg: ReactAblationConfig,
+    *,
+    nlq: str,
+    schema_text: str,
+    error: str,
+    stop_action: str,
+    stop_reason: str,
+) -> bool:
+    if not cfg.use_repair_policy or state.repairs_used >= cfg.max_repairs or state.step >= cfg.max_steps:
+        _stop_with(
+            state,
+            action=stop_action,
+            reason=stop_reason,
+            observation={"sql": state.current_sql, "error": error},
+        )
+        return False
+
+    state.step += 1
+    state.current_sql = repair_sql(nlq, state.current_sql or "", error, schema_text)
+    state.repairs_used += 1
+    _add_trace(
+        state,
+        "repair_sql",
+        observation={"sql": state.current_sql, "repairs_used": state.repairs_used},
+        payload={"error": error},
+    )
+    return True
+
+
 def run_react_pipeline(
     *,
     nlq: str,
@@ -203,81 +291,13 @@ def run_react_pipeline(
     cfg = config or core_react_config()
     _ACTIVE_CONFIG = cfg
     ctx = get_agent_context()
-
-    trace: list[dict[str, Any]] = []
+    state = _ReactState()
     schema_text = ensure_schema_text(ctx)
-    current_sql: str | None = None
-    last_error: str | None = None
-    repairs_used = 0
-    step = 0
-
-    def next_step() -> int:
-        nonlocal step
-        step += 1
-        return step
-
-    def add_trace(
-        action: str,
-        *,
-        observation: dict[str, Any],
-        reason: str | None = None,
-        payload: Optional[dict[str, Any]] = None,
-    ) -> None:
-        trace.append(
-            {
-                "step": step,
-                "action": action,
-                "planned_action": action,
-                "planner_text": f"Action: {action}[{json.dumps(payload or {}, ensure_ascii=True)}]",
-                "payload": payload or {},
-                "blocked": False,
-                "reason": reason,
-                "observation": observation,
-            }
-        )
-
-    def stop_with(*, action: str, reason: str, observation: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
-        trace.append(
-            {
-                "step": step,
-                "action": "stop",
-                "planned_action": action,
-                "planner_text": f"Action: {action}[{{}}]",
-                "blocked": False,
-                "reason": reason,
-                "observation": observation,
-            }
-        )
-        return current_sql or "", trace
-
-    def try_repair(*, error: str, stop_action: str, stop_reason: str) -> bool:
-        nonlocal current_sql, repairs_used
-        if not cfg.use_repair_policy or repairs_used >= cfg.max_repairs or step >= cfg.max_steps:
-            stop_with(
-                action=stop_action,
-                reason=stop_reason,
-                observation={"sql": current_sql, "error": error},
-            )
-            return False
-
-        next_step()
-        current_sql = repair_sql(
-            nlq,
-            current_sql or "",
-            error,
-            schema_text,
-        )
-        repairs_used += 1
-        add_trace(
-            "repair_sql",
-            observation={"sql": current_sql, "repairs_used": repairs_used},
-            payload={"error": error},
-        )
-        return True
 
     try:
-        next_step()
-        add_trace(
+        state.step += 1
+        _add_trace(
+            state,
             "get_schema",
             observation={
                 "schema_lines": len((schema_text or "").splitlines()),
@@ -289,65 +309,75 @@ def run_react_pipeline(
             },
         )
 
-        next_step()
-        current_sql = generate_sql(nlq, schema_text)
-        add_trace("generate_sql", observation={"sql": current_sql})
+        state.step += 1
+        state.current_sql = generate_sql(nlq, schema_text)
+        _add_trace(state, "generate_sql", observation={"sql": state.current_sql})
 
-        while step < cfg.max_steps:
-            next_step()
-            sql_check = validate_sql(
-                current_sql or "",
-                schema_text,
-                nlq=nlq,
+        while state.step < cfg.max_steps:
+            state.step += 1
+            sql_check = validate_sql(state.current_sql or "", schema_text, nlq=nlq)
+            _add_trace(
+                state,
+                "validate_sql",
+                observation=sql_check,
+                reason=None if sql_check.get("valid") else sql_check.get("reason"),
             )
-            add_trace("validate_sql", observation=sql_check, reason=None if sql_check.get("valid") else sql_check.get("reason"))
             if not sql_check.get("valid"):
-                last_error = f"validate_sql:{sql_check.get('reason')}"
-                if not try_repair(
-                    error=last_error,
+                if not _try_repair(
+                    state, cfg,
+                    nlq=nlq,
+                    schema_text=schema_text,
+                    error=f"validate_sql:{sql_check.get('reason')}",
                     stop_action="validate_sql",
                     stop_reason="validation_failed",
                 ):
-                    return current_sql or "", trace
+                    return state.current_sql or "", state.trace
                 continue
 
-            last_error = None
-            next_step()
-            meta = ctx.runner.run(current_sql or "")
+            state.step += 1
+            meta = ctx.runner.run(state.current_sql or "")
             run_obs = {
                 "success": bool(meta.success),
                 "rowcount": int(meta.rowcount),
                 "error": meta.error,
-                "sql": current_sql,
+                "sql": state.current_sql,
             }
-            add_trace("run_sql", observation=run_obs, reason=None if meta.success else (meta.error or "run_sql_failed"))
+            _add_trace(
+                state,
+                "run_sql",
+                observation=run_obs,
+                reason=None if meta.success else (meta.error or "run_sql_failed"),
+            )
             if meta.success:
-                return stop_with(
+                return _stop_with(
+                    state,
                     action="run_sql",
                     reason="success",
-                    observation={"sql": current_sql},
+                    observation={"sql": state.current_sql},
                 )
 
-            last_error = meta.error or "run_sql_failed"
-            if not try_repair(
-                error=last_error,
+            if not _try_repair(
+                state, cfg,
+                nlq=nlq,
+                schema_text=schema_text,
+                error=meta.error or "run_sql_failed",
                 stop_action="run_sql",
                 stop_reason="execution_failed",
             ):
-                return current_sql or "", trace
+                return state.current_sql or "", state.trace
 
-        trace.append(
+        state.trace.append(
             {
-                "step": step,
+                "step": state.step,
                 "action": "stop",
                 "planned_action": None,
                 "planner_text": "",
                 "blocked": False,
-                "reason": "max_steps_exhausted" if step >= cfg.max_steps else "repair_budget_exhausted",
-                "observation": {"sql": current_sql},
+                "reason": "max_steps_exhausted" if state.step >= cfg.max_steps else "repair_budget_exhausted",
+                "observation": {"sql": state.current_sql},
             }
         )
-        return current_sql or "", trace
+        return state.current_sql or "", state.trace
     finally:
         _ACTIVE_CONFIG = None
 
