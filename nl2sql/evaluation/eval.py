@@ -24,7 +24,7 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 import sqlalchemy
 from sqlalchemy.engine import Engine
@@ -35,7 +35,6 @@ from ..core.postprocess import guarded_postprocess, normalize_sql as _normalize_
 from ..core.prompting import make_few_shot_messages
 from ..core.query_runner import DEFAULT_FORBIDDEN_TOKENS, QueryRunner
 from ..core.sql_guardrails import clean_candidate_with_reason
-
 
 
 def _apply_optional_reliability_layer(
@@ -445,15 +444,13 @@ def eval_run(
     if save_path:
         save_path = Path(save_path)
         save_path.parent.mkdir(parents=True, exist_ok=True)
-        optional_reliability_enabled = any(
-            [
-                generation_constrained,
-                generation_extract_select,
-                generation_stop_on_semicolon,
-                apply_sql_guardrails,
-                apply_postprocess,
-            ]
-        )
+        optional_reliability_enabled = any((
+            generation_constrained,
+            generation_extract_select,
+            generation_stop_on_semicolon,
+            apply_sql_guardrails,
+            apply_postprocess,
+        ))
         eval_profile = "optional_reliability_layer" if optional_reliability_enabled else "model_only_raw"
 
         payload: dict[str, Any] = {
