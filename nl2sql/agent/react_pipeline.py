@@ -19,14 +19,13 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
-import re
 
 from sqlalchemy.engine import Engine
 
 from ..core.llm import extract_first_select, generate_sql_from_messages
 from ..core.postprocess import guarded_postprocess, normalize_sql
 from ..core.prompting import make_few_shot_messages
-from ..core.validation import validate_constraints, validate_sql
+from ..core.validation import validate_sql
 from ..evaluation.eval import execution_accuracy, test_suite_accuracy_for_item
 from .agent_tools import ensure_schema_text, get_agent_context
 from .prompts import SQL_GENERATOR_SYSTEM_PROMPT, SQL_REPAIR_SYSTEM_PROMPT
@@ -36,7 +35,7 @@ from .prompts import SQL_GENERATOR_SYSTEM_PROMPT, SQL_REPAIR_SYSTEM_PROMPT
 class ReactAblationConfig:
     name: str = "react_core"
     use_repair_policy: bool = True
-    max_repairs: int = 1
+    max_repairs: int = 2  # allows one validation repair + one execution-guided repair
     max_steps: int = 8
     few_shot_k: int = 3
     few_shot_seed: int = 7
@@ -66,57 +65,6 @@ def _clean_sql_candidate(sql: str) -> str:
     if sql and not sql.endswith(";"):
         sql += ";"
     return sql
-
-
-_COUNT_CUE_RE = re.compile(r"\b(how many|count|number of)\b", re.IGNORECASE)
-_AVG_CUE_RE = re.compile(r"\b(average|avg)\b", re.IGNORECASE)
-_SUM_CUE_RE = re.compile(r"\b(total|sum|sales amount|total sales|total payments|order total)\b", re.IGNORECASE)
-_GROUP_CUE_RE = re.compile(r"\b(per|each|for each|by)\b", re.IGNORECASE)
-_RANK_CUE_RE = re.compile(r"\b(top|highest|lowest|largest|smallest|most|least|rank)\b", re.IGNORECASE)
-_LIMIT_CUE_RE = re.compile(r"\b(?:top|show)\s+(\d+)\b", re.IGNORECASE)
-
-
-def _infer_constraints(nlq: str) -> dict[str, Any]:
-    """
-    Infer structural constraints on the SQL from surface cues in the NLQ.
-    Checks for aggregate type (COUNT/AVG/SUM), GROUP BY, ORDER BY, and LIMIT.
-    """
-    constraints: dict[str, Any] = {}
-
-    if _COUNT_CUE_RE.search(nlq or ""):
-        constraints["agg"] = "COUNT"
-    elif _AVG_CUE_RE.search(nlq or ""):
-        constraints["agg"] = "AVG"
-    elif _SUM_CUE_RE.search(nlq or ""):
-        constraints["agg"] = "SUM"
-
-    if constraints.get("agg") and (_GROUP_CUE_RE.search(nlq or "") or _RANK_CUE_RE.search(nlq or "")):
-        constraints["needs_group_by"] = True
-
-    if _RANK_CUE_RE.search(nlq or ""):
-        constraints["needs_order_by"] = True
-
-    limit_match = _LIMIT_CUE_RE.search(nlq or "")
-    if limit_match and constraints.get("needs_order_by"):
-        constraints["limit"] = int(limit_match.group(1))
-
-    return constraints
-    # basically we want to give the model hints about what constraints the SQL should satisfy, based on surface cues in the NLQ. This is a simple heuristic approach that looks for keywords indicative of COUNT/AVG/SUM, grouping, ranking, and limits. The repair policy can then use this information to guide corrections when constraints are not met.
-
-
-def _format_constraint_error(result: dict[str, Any]) -> str:
-    reason = str(result.get("reason") or "constraint_failed")
-    if reason.startswith("missing_agg:"):
-        _, agg = reason.split(":", 1)
-        return f"validate_constraints:missing_agg:{agg}"
-    if reason.startswith("missing_limit:"):
-        _, limit = reason.split(":", 1)
-        return f"validate_constraints:missing_limit:{limit}"
-    return f"validate_constraints:{reason}"
-
-
-def _postprocess_sql(sql: str, nlq: str) -> str:
-    return guarded_postprocess(sql, nlq)
 
 
 def _build_prompt_messages(
@@ -160,28 +108,6 @@ def _repair_hint(error: str) -> str:
                 "Repair hint: do not use SELECT *. Return only the smallest set of columns "
                 "needed to answer the question."
             )
-        return ""
-
-    if not error.startswith("validate_constraints:"):
-        return ""
-
-    parts = error.split(":", 2)
-    reason = parts[1] if len(parts) > 1 else "constraint_failed"
-    detail = parts[2] if len(parts) > 2 else ""
-
-    if reason == "missing_agg":
-        return f"Repair hint: the question requires a {detail or 'aggregate'}(...) aggregate."
-    if reason == "missing_group_by":
-        return (
-            "Repair hint: the question asks for grouped results. "
-            "Add GROUP BY for the entity or dimension being aggregated."
-        )
-    if reason == "missing_group_dimension_projection":
-        return "Repair hint: include the grouping column in SELECT alongside the aggregate."
-    if reason == "missing_order_by":
-        return "Repair hint: ranking questions require ORDER BY on the ranking expression."
-    if reason == "missing_limit":
-        return f"Repair hint: add LIMIT {detail}."
     return ""
 
 
@@ -211,7 +137,7 @@ def generate_sql(nlq: str, schema_text: str) -> str:
         extract_select=True,
         stop_on_semicolon=True,
     )
-    return _postprocess_sql(_clean_sql_candidate(str(out)), nlq)
+    return guarded_postprocess(_clean_sql_candidate(str(out)), nlq)
 
 
 def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str) -> str:
@@ -238,12 +164,15 @@ def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str) -> str:
         repair_prompt += f"\n{hint}\n"
     repair_prompt += "\nReturn one corrected SQL SELECT."
 
-    messages = _build_prompt_messages(
-        nlq=nlq,
-        schema_text=schema_text,
-        system_prompt=SQL_REPAIR_SYSTEM_PROMPT,
-        final_user_content=repair_prompt,
-    )
+    # Zero-shot repair: NLQ→SQL generation exemplars are the wrong format for
+    # the repair task (error+SQL→fix).  Repair exemplars would require a separate
+    # corpus of (broken SQL, error, corrected SQL) triples; absent that, zero-shot
+    # with schema context is the correct approach per DIN-SQL (Pourreza & Rafiei 2023).
+    messages = [
+        {"role": "system", "content": SQL_REPAIR_SYSTEM_PROMPT},
+        {"role": "user", "content": "Schema Details:\n" + schema_text},
+        {"role": "user", "content": repair_prompt},
+    ]
     out = generate_sql_from_messages(
         model=ctx.model,
         tokenizer=ctx.tok,
@@ -255,7 +184,7 @@ def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str) -> str:
         extract_select=True,
         stop_on_semicolon=True,
     )
-    return _postprocess_sql(_clean_sql_candidate(str(out)), nlq)
+    return guarded_postprocess(_clean_sql_candidate(str(out)), nlq)
 
 
 def run_react_pipeline(
@@ -277,7 +206,6 @@ def run_react_pipeline(
 
     trace: list[dict[str, Any]] = []
     schema_text = ensure_schema_text(ctx)
-    constraints = _infer_constraints(nlq)
     current_sql: str | None = None
     last_error: str | None = None
     repairs_used = 0
@@ -293,7 +221,6 @@ def run_react_pipeline(
         *,
         observation: dict[str, Any],
         reason: str | None = None,
-        blocked: bool = False,
         payload: Optional[dict[str, Any]] = None,
     ) -> None:
         trace.append(
@@ -303,11 +230,50 @@ def run_react_pipeline(
                 "planned_action": action,
                 "planner_text": f"Action: {action}[{json.dumps(payload or {}, ensure_ascii=True)}]",
                 "payload": payload or {},
-                "blocked": blocked,
+                "blocked": False,
                 "reason": reason,
                 "observation": observation,
             }
         )
+
+    def stop_with(*, action: str, reason: str, observation: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
+        trace.append(
+            {
+                "step": step,
+                "action": "stop",
+                "planned_action": action,
+                "planner_text": f"Action: {action}[{{}}]",
+                "blocked": False,
+                "reason": reason,
+                "observation": observation,
+            }
+        )
+        return current_sql or "", trace
+
+    def try_repair(*, error: str, stop_action: str, stop_reason: str) -> bool:
+        nonlocal current_sql, repairs_used
+        if not cfg.use_repair_policy or repairs_used >= cfg.max_repairs or step >= cfg.max_steps:
+            stop_with(
+                action=stop_action,
+                reason=stop_reason,
+                observation={"sql": current_sql, "error": error},
+            )
+            return False
+
+        next_step()
+        current_sql = repair_sql(
+            nlq,
+            current_sql or "",
+            error,
+            schema_text,
+        )
+        repairs_used += 1
+        add_trace(
+            "repair_sql",
+            observation={"sql": current_sql, "repairs_used": repairs_used},
+            payload={"error": error},
+        )
+        return True
 
     try:
         next_step()
@@ -337,81 +303,17 @@ def run_react_pipeline(
             add_trace("validate_sql", observation=sql_check, reason=None if sql_check.get("valid") else sql_check.get("reason"))
             if not sql_check.get("valid"):
                 last_error = f"validate_sql:{sql_check.get('reason')}"
-            else:
-                last_error = None
-
-            if not sql_check.get("valid"):
-                if not cfg.use_repair_policy or repairs_used >= cfg.max_repairs or step >= cfg.max_steps:
-                    trace.append(
-                        {
-                            "step": step,
-                            "action": "stop",
-                            "planned_action": "validate_sql",
-                            "planner_text": "Action: validate_sql[{}]",
-                            "blocked": False,
-                            "reason": "validation_failed",
-                            "observation": {"sql": current_sql, "error": last_error},
-                        }
-                    )
+                if not try_repair(
+                    error=last_error,
+                    stop_action="validate_sql",
+                    stop_reason="validation_failed",
+                ):
                     return current_sql or "", trace
-                next_step()
-                current_sql = repair_sql(
-                    nlq,
-                    current_sql or "",
-                    last_error or "validate_sql_failed",
-                    schema_text,
-                )
-                repairs_used += 1
-                add_trace(
-                    "repair_sql",
-                    observation={"sql": current_sql, "repairs_used": repairs_used},
-                    payload={"error": last_error or "validate_sql_failed"},
-                )
                 continue
 
+            last_error = None
             next_step()
-            constraint_check = validate_constraints(
-                current_sql or "",
-                constraints,
-                schema_text=schema_text,
-            )
-            add_trace(
-                "validate_constraints",
-                observation=constraint_check,
-                reason=None if constraint_check.get("valid") else constraint_check.get("reason"),
-            )
-            if not constraint_check.get("valid"):
-                last_error = _format_constraint_error(constraint_check)
-                if not cfg.use_repair_policy or repairs_used >= cfg.max_repairs or step >= cfg.max_steps:
-                    trace.append(
-                        {
-                            "step": step,
-                            "action": "stop",
-                            "planned_action": "validate_constraints",
-                            "planner_text": "Action: validate_constraints[{}]",
-                            "blocked": False,
-                            "reason": "validation_failed",
-                            "observation": {"sql": current_sql, "error": last_error},
-                        }
-                    )
-                    return current_sql or "", trace
-                next_step()
-                current_sql = repair_sql(
-                    nlq,
-                    current_sql or "",
-                    last_error,
-                    schema_text,
-                )
-                repairs_used += 1
-                add_trace(
-                    "repair_sql",
-                    observation={"sql": current_sql, "repairs_used": repairs_used},
-                    payload={"error": last_error},
-                )
-                continue
-
-            next_step()
-            meta = ctx.runner.run(current_sql or "", capture_df=False)
+            meta = ctx.runner.run(current_sql or "")
             run_obs = {
                 "success": bool(meta.success),
                 "rowcount": int(meta.rowcount),
@@ -420,47 +322,19 @@ def run_react_pipeline(
             }
             add_trace("run_sql", observation=run_obs, reason=None if meta.success else (meta.error or "run_sql_failed"))
             if meta.success:
-                trace.append(
-                    {
-                        "step": step,
-                        "action": "stop",
-                        "planned_action": "run_sql",
-                        "planner_text": "Action: run_sql[{}]",
-                        "blocked": False,
-                        "reason": "success",
-                        "observation": {"sql": current_sql},
-                    }
+                return stop_with(
+                    action="run_sql",
+                    reason="success",
+                    observation={"sql": current_sql},
                 )
-                return current_sql or "", trace
 
             last_error = meta.error or "run_sql_failed"
-            if not cfg.use_repair_policy or repairs_used >= cfg.max_repairs or step >= cfg.max_steps:
-                trace.append(
-                    {
-                        "step": step,
-                        "action": "stop",
-                        "planned_action": "run_sql",
-                        "planner_text": "Action: run_sql[{}]",
-                        "blocked": False,
-                        "reason": "execution_failed",
-                        "observation": {"sql": current_sql, "error": last_error},
-                    }
-                )
+            if not try_repair(
+                error=last_error,
+                stop_action="run_sql",
+                stop_reason="execution_failed",
+            ):
                 return current_sql or "", trace
-
-            next_step()
-            current_sql = repair_sql(
-                nlq,
-                current_sql or "",
-                last_error,
-                schema_text,
-            )
-            repairs_used += 1
-            add_trace(
-                "repair_sql",
-                observation={"sql": current_sql, "repairs_used": repairs_used},
-                payload={"error": last_error},
-            )
 
         trace.append(
             {
@@ -504,7 +378,7 @@ def evaluate_react_ablation(
         pred_sql, trace = run_react_pipeline(nlq=nlq, config=config)
 
         if pred_sql:
-            meta = ctx.runner.run(pred_sql, capture_df=False)
+            meta = ctx.runner.run(pred_sql)
             va = bool(meta.success)
             pred_err = meta.error
         else:
@@ -517,7 +391,6 @@ def evaluate_react_ablation(
             pred_sql=pred_sql if pred_sql else "SELECT 1;",
             gold_sql=gold_sql,
             max_compare_rows=10000,
-            allow_extra_columns=False,
         )
         if not pred_sql:
             ex = False
@@ -529,13 +402,12 @@ def evaluate_react_ablation(
             and ts_suite_db_names
             and ts_make_engine_fn
         ):
-            ts, _ = test_suite_accuracy_for_item(
+            ts = test_suite_accuracy_for_item(
                 make_engine_fn=ts_make_engine_fn,
                 suite_db_names=ts_suite_db_names,
                 gold_sql=gold_sql,
                 pred_sql=pred_sql,
                 max_rows=ts_max_rows,
-                strict_gold=True,
             )
 
         out_items.append(

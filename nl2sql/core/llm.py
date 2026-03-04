@@ -11,10 +11,10 @@ import re
 from typing import Any
 
 
-# matches SELECT at the start of a line, or prefixed by "sql:".
+# Find SELECT at line starts, with optional "sql:" prefix.
 SQL_START_RE = re.compile(r"(?im)^\s*(?:sql\s*:\s*)?select\b")
 
-# tiny stopword list to filter obvious prose like "from the ...".
+# Reject prose-like "FROM the/this/..." candidates.
 _PROSE_FROM_STOPWORDS = {"the", "a", "an", "this", "that", "these", "those"}
 
 
@@ -37,7 +37,6 @@ def _read_from_target(s: str) -> str | None:
 
 def extract_first_select(text: str) -> str | None:
     """Extract the first valid SELECT statement from model output."""
-    # strip markdown code fences before searching.
     t = (text or "").strip()
     t = t.replace("```json", "```").replace("```sql", "```")
     t = re.sub(r"```(.*?)```", r"\1", t, flags=re.DOTALL).strip()
@@ -49,7 +48,7 @@ def extract_first_select(text: str) -> str | None:
         stmt = tail if semi == -1 else tail[: semi + 1]
         stmt = re.sub(r"(?im)^\s*sql\s*:\s*", "", stmt, count=1).strip()
 
-        # must look like a table-backed query.
+        # Keep only table-backed queries.
         from_m = re.search(r"(?is)\bfrom\b", stmt)
         if not from_m:
             continue
@@ -76,7 +75,7 @@ def generate_sql_from_messages(
     top_p: float = 0.9,
     extract_select: bool = False,
     stop_on_semicolon: bool = False,
-    **_kwargs: Any,  # absorb unused flags without breaking callers
+    **_kwargs: Any,  # compatibility with older call sites
 ) -> str:
     """Run the model and return a SQL string (or raw text if no SELECT found)."""
     import torch
@@ -97,8 +96,7 @@ def generate_sql_from_messages(
                 return False
             return input_ids[0, -1].item() == self._semi_id
 
-    # Converts the message list into the model's chat format (e.g. [INST]...[/INST]).
-    # Reference: https://huggingface.co/docs/transformers/chat_templating
+    # Build model-native chat tokens and prepare a matching attention mask.
     input_ids = tokenizer.apply_chat_template(
         messages,
         tokenize=True,
@@ -110,7 +108,7 @@ def generate_sql_from_messages(
     pad_token_id = getattr(tokenizer, "pad_token_id", None) or getattr(tokenizer, "eos_token_id", None)
     eos_token_id = getattr(tokenizer, "eos_token_id", None)
 
-    # neutral temperature/top_p when not sampling to avoid HuggingFace warnings.
+    # Suppress HF warnings when greedy decoding is used.
     effective_temperature = float(temperature) if do_sample else 1.0
     effective_top_p = float(top_p) if do_sample else 1.0
 
@@ -128,6 +126,7 @@ def generate_sql_from_messages(
     with torch.no_grad():
         out = model.generate(input_ids, attention_mask=attention_mask, **gen_kwargs)
 
+    # Drop prompt tokens; keep only newly generated text.
     gen_ids = out[0][input_ids.shape[-1]:]
     gen_text = tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
 

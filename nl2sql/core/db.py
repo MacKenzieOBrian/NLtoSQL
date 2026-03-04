@@ -36,7 +36,6 @@ def create_engine_with_connector(
     engine: Engine = sqlalchemy.create_engine(
         "mysql+pymysql://",
         creator=getconn,
-        future=True,
     )
     return engine, connector
 

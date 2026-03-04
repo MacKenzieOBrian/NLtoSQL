@@ -11,7 +11,10 @@ from __future__ import annotations
 import re
 
 
+# Capture the first SELECT statement, including multi-line SQL.
 SQL_RE = re.compile(r"(?is)\bselect\b.*?(;|\Z)")
+
+# Keep ranking clauses when the NLQ explicitly asks for ranking.
 RANKING_HINT_RE = re.compile(
     r"\b(top|highest|lowest|most|least|largest|smallest|first|last|max|min|order|sort|rank)\b",
     re.IGNORECASE,
@@ -19,6 +22,7 @@ RANKING_HINT_RE = re.compile(
 
 
 def normalize_sql(s: str) -> str:
+    """Normalize SQL for exact-match string comparison."""
     s = (s or "").strip()
     s = re.sub(r"\s+", " ", s)
     s = s.rstrip(";")
@@ -37,6 +41,7 @@ def first_select_only(text: str) -> str:
 
 
 def _strip_order_by_limit(sql: str, nlq: str) -> str:
+    """Remove ORDER BY/LIMIT unless the question asks for ranking."""
     if RANKING_HINT_RE.search(nlq or ""):
         return sql
     out = re.sub(r"(?is)\sorder\s+by\s+[^;]+", "", sql)

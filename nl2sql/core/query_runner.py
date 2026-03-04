@@ -7,12 +7,10 @@ caps returned rows, and stores results as QueryResult records for traceability.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-import pandas as pd
 import sqlalchemy
 from sqlalchemy.engine import Engine
 
@@ -50,7 +48,6 @@ class QueryResult:
     exec_time_s: Optional[float]
     error: Optional[str]
     columns: Optional[list[str]]
-    result_preview: Optional[pd.DataFrame]
 
     def to_jsonable(self) -> dict[str, Any]:
         d = {
@@ -83,7 +80,7 @@ class QueryRunner:
             if token in lowered:
                 raise QueryExecutionError(f"Destructive SQL token detected: {token.strip()}")
 
-    def run(self, sql: str, *, params: Optional[dict[str, Any]] = None, capture_df: bool = True) -> QueryResult:
+    def run(self, sql: str, *, params: Optional[dict[str, Any]] = None) -> QueryResult:
         timestamp = now_utc_iso()
         try:
             self._safety_check(sql)
@@ -92,8 +89,7 @@ class QueryRunner:
             with safe_connection(self.engine) as conn:
                 result = conn.execute(sqlalchemy.text(sql), params or {})
                 cols = list(result.keys())
-                # bound how much we fetch: queryrunner is for gating + debugging previews,
-                # not for full result materialization (ex/ts do their own bounded fetch).
+                # QueryRunner is for bounded preview execution, not full result materialization.
                 rows = result.fetchmany(self.max_rows + 1)
                 truncated = len(rows) > self.max_rows
                 if truncated:
@@ -101,11 +97,6 @@ class QueryRunner:
 
             end = datetime.now(timezone.utc)
             exec_time_s = (end - start).total_seconds()
-
-            df = None
-            if capture_df:
-                # the preview dataframe is a debugging aid for notebooks; it is not used for scoring.
-                df = pd.DataFrame(rows, columns=cols)
 
             out = QueryResult(
                 sql=sql,
@@ -117,7 +108,6 @@ class QueryRunner:
                 exec_time_s=exec_time_s,
                 error=None,
                 columns=cols,
-                result_preview=df,
             )
         except Exception as e:
             out = QueryResult(
@@ -130,7 +120,6 @@ class QueryRunner:
                 exec_time_s=None,
                 error=str(e),
                 columns=None,
-                result_preview=None,
             )
 
         self.history.append(out)
@@ -138,8 +127,3 @@ class QueryRunner:
 
     def last(self) -> Optional[QueryResult]:
         return self.history[-1] if self.history else None
-
-    def save_history(self, path: str) -> None:
-        serializable = [h.to_jsonable() for h in self.history]
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(serializable, f, indent=2, default=str)

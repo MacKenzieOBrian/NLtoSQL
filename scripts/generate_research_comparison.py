@@ -3,7 +3,8 @@
 Research stats generator for dissertation reporting.
 
 Single source of truth:
-- reads run JSON files from `results/**/results_k*_seed*.json`
+- reads baseline/QLoRA run JSON files from
+  `results/{baseline,qlora}/runs/**/results_k*_seed*.json`
 - reads ReAct extension runs from `results/agent/runs/**/results_react_200.json`
 
 Supported matrix:
@@ -14,7 +15,7 @@ Supported matrix:
 Outputs:
 - results/analysis/per_item_metrics_primary_raw.csv
 - results/analysis/run_manifest.csv
-- results/analysis/stats_mean_median_shapiro.csv
+- results/analysis/stats_mean_median_std.csv
 - results/analysis/stats_paired_ttests.csv
 
 Statistical approach:
@@ -23,18 +24,17 @@ Statistical approach:
 - Confidence interval: 95% CI on mean difference (t-distribution, df=n-1)
 - Multiple comparisons: Benjamini-Hochberg FDR correction within each metric family
 - Corroborating test: paired t-test (CLT justification at n>=600 pairs)
-- Normality check: Shapiro-Wilk on paired differences (expected to reject for binary data)
 
 Documentation:
 - Wilcoxon signed-rank: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.wilcoxon.html
 - Paired t-test: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.ttest_rel.html
-- Shapiro-Wilk: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import warnings
 from dataclasses import dataclass
 from datetime import datetime
@@ -42,58 +42,35 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from scipy.stats import shapiro, t as t_dist, ttest_rel, wilcoxon
+from scipy.stats import t as t_dist, ttest_rel, wilcoxon
 
 METRICS = ("va", "em", "ex", "ts")
 SUPPORTED_K = {0, 3}
 SUPPORTED_MODEL_TAGS = {"llama", "qwen"}
-SUPPORTED_METHODS = {"base", "qlora", "react"}
-
-TTEST_COLUMNS = [
-    "comparison",
-    "left_condition_id",
-    "right_condition_id",
-    "metric",
-    "pair_key",
-    "matched_seeds",
-    "n_pairs",
-    "left_mean",
-    "right_mean",
-    "mean_diff_right_minus_left",
-    "ci_95_lower",
-    "ci_95_upper",
-    "cohens_d",
-    "diff_shapiro_w",
-    "diff_shapiro_p",
-    "diff_shapiro_decision_alpha_0_05",
-    # Wilcoxon signed-rank: primary test (non-parametric, suited for binary data)
-    "wilcoxon_stat",
-    "wilcoxon_p",
-    "wilcoxon_decision_alpha_0_05",
-    "wilcoxon_p_bh_fdr",
-    "wilcoxon_decision_bh_fdr_alpha_0_05",
-    # Paired t-test: corroborating test (CLT justification at n>=600)
-    "t_stat",
-    "p_value",
-    "decision_alpha_0_05",
-]
+PRIMARY_METHODS = {"base", "qlora"}
 
 
+# frozen=True: a RunSpec is a discovery record — it describes a JSON file found on
+# disk. Making it immutable prevents accidental modification during deduplication
+# and sorting, and allows RunSpecs to be used as dict keys (dedup_key lookup).
 @dataclass(frozen=True)
 class RunSpec:
     path: Path
-    condition_id: str
+    condition_id: str          # e.g. "llama_base_k3" — the experimental condition
     model_tag: str
     method_tag: str
     k: int
     seed: int | None
     run_label: str
-    eval_profile: str | None
+    eval_profile: str | None   # "model_only_raw" for primary runs, "react" for agent runs
     ts_enabled: bool | None
-    run_timestamp: float
+    run_timestamp: float       # used for deduplication: keep newest run per condition+seed
 
     @property
     def run_id(self) -> str:
+        # @property computes run_id on demand from condition_id + seed.
+        # It cannot be a plain field because it depends on other fields.
+        # Format: "llama_base_k3_s7" — uniquely identifies one seed of one condition.
         seed_label = "na" if self.seed is None else str(self.seed)
         return f"{self.condition_id}_s{seed_label}"
 
@@ -118,12 +95,12 @@ def parse_args() -> argparse.Namespace:
         default=Path("results/analysis"),
         help="Output folder for manifest and stats CSVs.",
     )
-    parser.add_argument(
-        "--allow-non-raw",
-        action="store_true",
-        help="Include runs where eval_profile is not model_only_raw.",
-    )
     return parser.parse_args()
+
+
+def _as_dict(val: Any) -> dict:
+    """Return val if it is a dict, else an empty dict — used to safely read nested metadata."""
+    return val if isinstance(val, dict) else {}
 
 
 def _coerce_metric(value: Any) -> float | None:
@@ -164,22 +141,9 @@ def _parse_timestamp(payload: dict[str, Any], path: Path) -> float:
     return path.stat().st_mtime
 
 
-def _infer_model_tag(path: Path, payload: dict[str, Any]) -> str | None:
-    md = payload.get("run_metadata") if isinstance(payload.get("run_metadata"), dict) else {}
-    rm = payload.get("run_meta") if isinstance(payload.get("run_meta"), dict) else {}
-
-    text = " ".join(
-        str(x)
-        for x in [
-            md.get("model_alias"),
-            md.get("model_id"),
-            rm.get("model_alias"),
-            rm.get("model_id"),
-            str(path),
-        ]
-        if x
-    ).lower()
-
+def _model_tag_from_metadata(payload: dict[str, Any]) -> str | None:
+    md = _as_dict(payload.get("run_metadata"))
+    text = " ".join(str(x) for x in [md.get("model_alias"), md.get("model_id")] if x).lower()
     if "llama" in text:
         return "llama"
     if "qwen" in text:
@@ -187,54 +151,31 @@ def _infer_model_tag(path: Path, payload: dict[str, Any]) -> str | None:
     return None
 
 
-def _infer_method_tag(path: Path, payload: dict[str, Any]) -> str | None:
-    md = payload.get("run_metadata") if isinstance(payload.get("run_metadata"), dict) else {}
-    rm = payload.get("run_meta") if isinstance(payload.get("run_meta"), dict) else {}
-    raw_method = str(md.get("method") or rm.get("method") or "").strip().lower()
+def _method_tag_from_path(path: Path) -> str | None:
     path_text = str(path).lower()
-
-    if raw_method in {"baseline", "base"}:
+    if "/baseline/runs/" in path_text:
         return "base"
-    if raw_method == "qlora":
+    if "/qlora/runs/" in path_text:
         return "qlora"
-
-    if "qlora" in path_text:
-        return "qlora"
-    if "baseline" in path_text:
-        return "base"
     return None
 
 
-def _infer_k(payload: dict[str, Any]) -> int | None:
-    md = payload.get("run_metadata") if isinstance(payload.get("run_metadata"), dict) else {}
-    rm = payload.get("run_meta") if isinstance(payload.get("run_meta"), dict) else {}
-    return _int_or_none(payload.get("k") if payload.get("k") is not None else (md.get("k") if md.get("k") is not None else rm.get("k")))
-
-
-def _infer_seed(payload: dict[str, Any]) -> int | None:
-    md = payload.get("run_metadata") if isinstance(payload.get("run_metadata"), dict) else {}
-    rm = payload.get("run_meta") if isinstance(payload.get("run_meta"), dict) else {}
-    return _int_or_none(
-        payload.get("seed") if payload.get("seed") is not None else (md.get("seed") if md.get("seed") is not None else rm.get("seed"))
-    )
+def _parse_k_seed_from_filename(path: Path) -> tuple[int | None, int | None]:
+    match = re.fullmatch(r"results_k(\d+)_seed(\d+)", path.stem)
+    if not match:
+        return None, None
+    return int(match.group(1)), int(match.group(2))
 
 
 def _eval_profile(payload: dict[str, Any]) -> str | None:
-    md = payload.get("run_metadata") if isinstance(payload.get("run_metadata"), dict) else {}
-    rm = payload.get("run_meta") if isinstance(payload.get("run_meta"), dict) else {}
-    val = payload.get("eval_profile") or md.get("eval_profile") or rm.get("eval_profile")
+    val = payload.get("eval_profile")
     return str(val) if val is not None else None
 
 
 def _ts_enabled(payload: dict[str, Any]) -> bool | None:
-    md = payload.get("run_metadata") if isinstance(payload.get("run_metadata"), dict) else {}
-    rm = payload.get("run_meta") if isinstance(payload.get("run_meta"), dict) else {}
+    md = _as_dict(payload.get("run_metadata"))
     val = md.get("ts_enabled")
-    if val is None:
-        val = rm.get("ts_enabled")
-    if val is None:
-        return None
-    return bool(val)
+    return bool(val) if val is not None else None
 
 
 def _make_run_label(model_tag: str, method_tag: str, k: int, seed: int | None) -> str:
@@ -249,36 +190,57 @@ def _make_run_label(model_tag: str, method_tag: str, k: int, seed: int | None) -
     return f"{model_part} {method_part} | k={k} | seed={seed_part}"
 
 
+def _dedup_update(
+    discovered: dict,
+    drops: list,
+    dedup_key: tuple,
+    spec: RunSpec,
+) -> None:
+    """Keep the newest RunSpec per (condition_id, seed); record superseded duplicates."""
+    existing = discovered.get(dedup_key)
+    if existing is None or spec.run_timestamp >= existing.run_timestamp:
+        if existing is not None:
+            drops.append({"path": str(existing.path), "reason": "superseded_by_newer_duplicate_seed", "replacement": str(spec.path)})
+        discovered[dedup_key] = spec
+    else:
+        drops.append({"path": str(spec.path), "reason": "older_duplicate_seed", "kept": str(existing.path)})
+
+
 def discover_runs(
     *,
     project_root: Path,
     runs_root: Path,
-    allow_non_raw: bool = False,
 ) -> tuple[list[RunSpec], list[dict[str, Any]]]:
     root = runs_root if runs_root.is_absolute() else (project_root / runs_root)
-    files = sorted(root.rglob("results_k*_seed*.json"))
+    files: list[Path] = []
+    for subdir in ("baseline", "qlora"):
+        run_dir = root / subdir / "runs"
+        if run_dir.exists():
+            files.extend(sorted(run_dir.rglob("results_k*_seed*.json")))
 
     discovered: dict[tuple[str, int | None], RunSpec] = {}
     drops: list[dict[str, Any]] = []
 
     for path in files:
         payload = _load_json(path)
-        model_tag = _infer_model_tag(path, payload)
-        method_tag = _infer_method_tag(path, payload)
-        k = _infer_k(payload)
-        seed = _infer_seed(payload)
+        model_tag = _model_tag_from_metadata(payload)
+        method_tag = _method_tag_from_path(path)
+        k, seed = _parse_k_seed_from_filename(path)
         eval_profile = _eval_profile(payload)
 
         if model_tag not in SUPPORTED_MODEL_TAGS:
             drops.append({"path": str(path), "reason": "unsupported_or_missing_model_tag"})
             continue
-        if method_tag not in SUPPORTED_METHODS:
+        if method_tag not in PRIMARY_METHODS:
             drops.append({"path": str(path), "reason": "unsupported_or_missing_method_tag"})
             continue
         if k not in SUPPORTED_K:
-            drops.append({"path": str(path), "reason": "unsupported_k"})
+            drops.append({"path": str(path), "reason": "unsupported_or_missing_k"})
             continue
-        if not allow_non_raw and eval_profile not in {None, "model_only_raw"}:
+        if seed is None:
+            drops.append({"path": str(path), "reason": "missing_seed_in_filename"})
+            continue
+        if eval_profile not in {None, "model_only_raw"}:
             drops.append({"path": str(path), "reason": f"eval_profile={eval_profile}"})
             continue
 
@@ -296,26 +258,15 @@ def discover_runs(
             run_timestamp=_parse_timestamp(payload, path),
         )
 
-        dedup_key = (condition_id, seed)
-        existing = discovered.get(dedup_key)
-        if existing is None or spec.run_timestamp >= existing.run_timestamp:
-            if existing is not None:
-                drops.append(
-                    {
-                        "path": str(existing.path),
-                        "reason": "superseded_by_newer_duplicate_seed",
-                        "replacement": str(spec.path),
-                    }
-                )
-            discovered[dedup_key] = spec
-        else:
-            drops.append({"path": str(spec.path), "reason": "older_duplicate_seed", "kept": str(existing.path)})
+        # Multiple JSON files can share condition+seed (reruns, Colab imports).
+        # Keep only the newest; _dedup_update records what was dropped.
+        _dedup_update(discovered, drops, (condition_id, seed), spec)
 
     return sorted(discovered.values(), key=lambda x: (x.condition_id, x.seed if x.seed is not None else -1, x.run_id)), drops
 
 
-def discover_react_runs(*, project_root: Path) -> tuple[list[RunSpec], list[dict[str, Any]]]:
-    agent_root = project_root / "results" / "agent" / "runs"
+def discover_react_runs(*, runs_root: Path) -> tuple[list[RunSpec], list[dict[str, Any]]]:
+    agent_root = runs_root / "agent" / "runs"
     files = sorted(agent_root.rglob("results_react_200.json"))
 
     discovered: dict[tuple[str, int | None], RunSpec] = {}
@@ -323,7 +274,7 @@ def discover_react_runs(*, project_root: Path) -> tuple[list[RunSpec], list[dict
 
     for path in files:
         payload = _load_json(path)
-        model_tag = _infer_model_tag(path, payload)
+        model_tag = _model_tag_from_metadata(payload)
         config = payload.get("config", {})
         seed = _int_or_none(config.get("few_shot_seed"))
         k = _int_or_none(config.get("few_shot_k"))
@@ -353,20 +304,7 @@ def discover_react_runs(*, project_root: Path) -> tuple[list[RunSpec], list[dict
             run_timestamp=_parse_timestamp(payload, path),
         )
 
-        dedup_key = (condition_id, seed)
-        existing = discovered.get(dedup_key)
-        if existing is None or spec.run_timestamp >= existing.run_timestamp:
-            if existing is not None:
-                drops.append(
-                    {
-                        "path": str(existing.path),
-                        "reason": "superseded_by_newer_duplicate_seed",
-                        "replacement": str(spec.path),
-                    }
-                )
-            discovered[dedup_key] = spec
-        else:
-            drops.append({"path": str(spec.path), "reason": "older_duplicate_seed", "kept": str(existing.path)})
+        _dedup_update(discovered, drops, (condition_id, seed), spec)
 
     return sorted(discovered.values(), key=lambda x: (x.condition_id, x.seed if x.seed is not None else -1, x.run_id)), drops
 
@@ -443,7 +381,7 @@ def _prepare_per_item(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def compute_mean_median_shapiro(per_item: pd.DataFrame) -> pd.DataFrame:
+def compute_mean_median(per_item: pd.DataFrame) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     for run_id, group in per_item.groupby("run_id", sort=True):
         first = group.iloc[0]
@@ -452,17 +390,7 @@ def compute_mean_median_shapiro(per_item: pd.DataFrame) -> pd.DataFrame:
             n = int(len(values))
             mean = float(values.mean()) if n else None
             median = float(values.median()) if n else None
-            std = float(values.std(ddof=1)) if n > 1 else None
-
-            if n < 3:
-                w = None
-                p = None
-                decision = "insufficient_n"
-            else:
-                w_val, p_val = shapiro(values.to_numpy())
-                w = float(w_val)
-                p = float(p_val)
-                decision = "reject_normality" if p < 0.05 else "fail_to_reject_normality"
+            std = float(values.std(ddof=1)) if n > 1 else None  # ddof=1: Bessel's correction for sample std dev
 
             rows.append(
                 {
@@ -474,14 +402,10 @@ def compute_mean_median_shapiro(per_item: pd.DataFrame) -> pd.DataFrame:
                     "k": int(first["k"]) if pd.notna(first["k"]) else None,
                     "seed": int(first["seed"]) if pd.notna(first["seed"]) else None,
                     "metric": metric,
-                    "shapiro_scope": "per_run_metric_values",
                     "n": n,
                     "mean": mean,
                     "median": median,
                     "std": std,
-                    "shapiro_w": w,
-                    "shapiro_p": p,
-                    "decision_alpha_0_05": decision,
                 }
             )
     return pd.DataFrame(rows)
@@ -489,6 +413,14 @@ def compute_mean_median_shapiro(per_item: pd.DataFrame) -> pd.DataFrame:
 
 def _bh_fdr_adjust(pvalues: list[float | None]) -> list[float | None]:
     """Benjamini-Hochberg FDR-adjusted p-values. Returns None where input is None."""
+    # BH procedure (Benjamini & Hochberg 1995): controls the False Discovery Rate
+    # across m=12 comparisons per metric. Without correction, running 12 tests at
+    # alpha=0.05 gives a ~46% chance of at least one false positive by chance.
+    # Step 1: sort raw p-values ascending and assign rank k (1-indexed).
+    # Step 2: adjusted p = raw_p * m / k.
+    # Step 3: enforce monotonicity backwards so a less significant result is never
+    #         declared significant if a more significant one is not — this is the
+    #         min(adj[j], adj[j+1]) backward pass.
     result: list[float | None] = list(pvalues)
     valid_idx = [i for i, p in enumerate(pvalues) if p is not None]
     if not valid_idx:
@@ -550,6 +482,69 @@ def _join_for_pair(left: pd.DataFrame, right: pd.DataFrame) -> tuple[pd.DataFram
     return merged, pair_key, seed_vals
 
 
+def _paired_summary_stats(valid: pd.DataFrame, left_col: str, right_col: str, n_pairs: int) -> dict[str, Any]:
+    if n_pairs < 2:
+        return {
+            "left_mean": None,
+            "right_mean": None,
+            "mean_diff_right_minus_left": None,
+            "ci_95_lower": None,
+            "ci_95_upper": None,
+            "cohens_d": None,
+            "diffs_arr": None,
+        }
+
+    left_mean = float(valid[left_col].mean())
+    right_mean = float(valid[right_col].mean())
+    diff = right_mean - left_mean
+    diffs_arr = (valid[right_col] - valid[left_col]).to_numpy()
+    std_diff = float(diffs_arr.std(ddof=1))  # ddof=1: sample std dev (Bessel's correction)
+
+    # 95% CI on mean difference using the t-distribution.
+    se = std_diff / (n_pairs ** 0.5)
+    t_crit = float(t_dist.ppf(0.975, df=n_pairs - 1))
+    ci_lower = diff - t_crit * se
+    ci_upper = diff + t_crit * se
+
+    # Cohen's dz (effect size for paired designs): mean_diff / std_diff.
+    cohens_d = (diff / std_diff) if std_diff > 0 else 0.0
+
+    return {
+        "left_mean": left_mean,
+        "right_mean": right_mean,
+        "mean_diff_right_minus_left": diff,
+        "ci_95_lower": ci_lower,
+        "ci_95_upper": ci_upper,
+        "cohens_d": cohens_d,
+        "diffs_arr": diffs_arr,
+    }
+
+
+def _wilcoxon_stats(diffs_arr: Any, n_pairs: int) -> tuple[float | None, float | None, str]:
+    if n_pairs < 2:
+        return None, None, "insufficient_n"
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            wx = wilcoxon(diffs_arr, zero_method="wilcox", alternative="two-sided")
+        p = float(wx.pvalue)
+        decision = "reject_H0" if p < 0.05 else "fail_to_reject_H0"
+        return float(wx.statistic), p, decision
+    except ValueError:
+        # all differences are zero — conditions are identical on this metric
+        return 0.0, 1.0, "fail_to_reject_H0"
+
+
+def _paired_ttest_stats(valid: pd.DataFrame, left_col: str, right_col: str, n_pairs: int) -> tuple[float | None, float | None, str]:
+    if n_pairs < 2:
+        return None, None, "insufficient_n"
+    # Paired t-test is used as corroborating evidence.
+    test = ttest_rel(valid[right_col], valid[left_col], nan_policy="omit")
+    p = float(test.pvalue)
+    decision = "reject_H0" if p < 0.05 else "fail_to_reject_H0"
+    return float(test.statistic), p, decision
+
+
 def compute_paired_ttests(per_item: pd.DataFrame, comparisons: list[tuple[str, str, str]]) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     by_condition = {cid: grp.copy() for cid, grp in per_item.groupby("condition_id")}
@@ -563,63 +558,11 @@ def compute_paired_ttests(per_item: pd.DataFrame, comparisons: list[tuple[str, s
             left_col = f"{metric}_left"
             right_col = f"{metric}_right"
             valid = merged[[left_col, right_col]].dropna().astype(float)
-            n = int(len(valid))
-
-            diffs_arr = (valid[right_col] - valid[left_col]).to_numpy() if n >= 2 else None
-
-            # Shapiro-Wilk on paired differences (assumption check; expected to reject for binary data)
-            if n < 3:
-                diff_shapiro_w = None
-                diff_shapiro_p = None
-                diff_shapiro_decision = "insufficient_n"
-            else:
-                w_val, p_val = shapiro(diffs_arr)
-                diff_shapiro_w = float(w_val)
-                diff_shapiro_p = float(p_val)
-                diff_shapiro_decision = "reject_normality" if diff_shapiro_p < 0.05 else "fail_to_reject_normality"
-
-            if n < 2:
-                left_mean = right_mean = diff = None
-                ci_lower = ci_upper = cohens_d = None
-                wilcoxon_stat = wilcoxon_p = None
-                wilcoxon_decision = "insufficient_n"
-                t_stat = p_value = None
-                t_decision = "insufficient_n"
-            else:
-                left_mean = float(valid[left_col].mean())
-                right_mean = float(valid[right_col].mean())
-                diff = right_mean - left_mean
-                std_diff = float(diffs_arr.std(ddof=1))
-
-                # 95% CI on mean difference using t-distribution
-                se = std_diff / (n ** 0.5)
-                t_crit = float(t_dist.ppf(0.975, df=n - 1))
-                ci_lower = diff - t_crit * se
-                ci_upper = diff + t_crit * se
-
-                # Cohen's d for paired differences (dz)
-                cohens_d = (diff / std_diff) if std_diff > 0 else 0.0
-
-                # Wilcoxon signed-rank: primary test (non-parametric, suited for binary 0/1 data)
-                # zero_method='wilcox' excludes tied-zero differences from the rank sum
-                try:
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore")
-                        wx = wilcoxon(diffs_arr, zero_method="wilcox", alternative="two-sided")
-                    wilcoxon_stat = float(wx.statistic)
-                    wilcoxon_p = float(wx.pvalue)
-                    wilcoxon_decision = "reject_H0" if wilcoxon_p < 0.05 else "fail_to_reject_H0"
-                except ValueError:
-                    # all differences are zero — conditions are identical on this metric
-                    wilcoxon_stat = 0.0
-                    wilcoxon_p = 1.0
-                    wilcoxon_decision = "fail_to_reject_H0"
-
-                # Paired t-test: corroborating test (CLT justification at n>=600)
-                test = ttest_rel(valid[right_col], valid[left_col], nan_policy="omit")
-                t_stat = float(test.statistic)
-                p_value = float(test.pvalue)
-                t_decision = "reject_H0" if p_value < 0.05 else "fail_to_reject_H0"
+            n_pairs = int(len(valid))
+            summary = _paired_summary_stats(valid, left_col, right_col, n_pairs)
+            diffs_arr = summary["diffs_arr"]
+            wilcoxon_stat, wilcoxon_p, wilcoxon_decision = _wilcoxon_stats(diffs_arr, n_pairs)
+            t_stat, p_value, t_decision = _paired_ttest_stats(valid, left_col, right_col, n_pairs)
 
             rows.append(
                 {
@@ -629,16 +572,13 @@ def compute_paired_ttests(per_item: pd.DataFrame, comparisons: list[tuple[str, s
                     "metric": metric,
                     "pair_key": pair_key,
                     "matched_seeds": ",".join(str(s) for s in matched_seeds),
-                    "n_pairs": n,
-                    "left_mean": left_mean,
-                    "right_mean": right_mean,
-                    "mean_diff_right_minus_left": diff,
-                    "ci_95_lower": ci_lower,
-                    "ci_95_upper": ci_upper,
-                    "cohens_d": cohens_d,
-                    "diff_shapiro_w": diff_shapiro_w,
-                    "diff_shapiro_p": diff_shapiro_p,
-                    "diff_shapiro_decision_alpha_0_05": diff_shapiro_decision,
+                    "n_pairs": n_pairs,
+                    "left_mean": summary["left_mean"],
+                    "right_mean": summary["right_mean"],
+                    "mean_diff_right_minus_left": summary["mean_diff_right_minus_left"],
+                    "ci_95_lower": summary["ci_95_lower"],
+                    "ci_95_upper": summary["ci_95_upper"],
+                    "cohens_d": summary["cohens_d"],
                     "wilcoxon_stat": wilcoxon_stat,
                     "wilcoxon_p": wilcoxon_p,
                     "wilcoxon_decision_alpha_0_05": wilcoxon_decision,
@@ -651,9 +591,9 @@ def compute_paired_ttests(per_item: pd.DataFrame, comparisons: list[tuple[str, s
             )
 
     if not rows:
-        return pd.DataFrame(columns=TTEST_COLUMNS)
+        return pd.DataFrame()
 
-    df = pd.DataFrame(rows, columns=TTEST_COLUMNS)
+    df = pd.DataFrame(rows)
 
     # BH FDR correction applied within each metric family (12 comparisons per metric)
     for metric in METRICS:
@@ -674,7 +614,6 @@ def generate(
     per_item_csv: Path = Path("results/analysis/per_item_metrics_primary_raw.csv"),
     out_dir: Path = Path("results/analysis"),
     project_root: Path | None = None,
-    allow_non_raw: bool = False,
 ) -> dict[str, Any]:
     if project_root is None:
         project_root = Path.cwd()
@@ -686,8 +625,8 @@ def generate(
     out_dir.mkdir(parents=True, exist_ok=True)
     per_item_csv.parent.mkdir(parents=True, exist_ok=True)
 
-    specs, drops = discover_runs(project_root=project_root, runs_root=runs_root, allow_non_raw=allow_non_raw)
-    react_specs, react_drops = discover_react_runs(project_root=project_root)
+    specs, drops = discover_runs(project_root=project_root, runs_root=runs_root)
+    react_specs, react_drops = discover_react_runs(runs_root=runs_root)
     drops.extend(react_drops)
     all_specs = sorted(
         specs + react_specs,
@@ -707,14 +646,14 @@ def generate(
     comparisons = build_planned_comparisons(condition_ids)
 
     manifest_out = out_dir / "run_manifest.csv"
-    shapiro_out = out_dir / "stats_mean_median_shapiro.csv"
+    mean_out = out_dir / "stats_mean_median_std.csv"
     ttests_out = out_dir / "stats_paired_ttests.csv"
 
     paired_tests = compute_paired_ttests(per_item, comparisons).sort_values(["comparison", "metric"])
 
     manifest_df.sort_values(["model_tag", "method", "k", "seed", "run_id"]).to_csv(manifest_out, index=False)
     per_item.sort_values(["condition_id", "seed", "example_id"]).to_csv(per_item_csv, index=False)
-    compute_mean_median_shapiro(per_item).sort_values(["condition_id", "seed", "metric"]).to_csv(shapiro_out, index=False)
+    compute_mean_median(per_item).sort_values(["condition_id", "seed", "metric"]).to_csv(mean_out, index=False)
     paired_tests.to_csv(ttests_out, index=False)
 
     return {
@@ -727,7 +666,7 @@ def generate(
         "comparisons_planned": int(len(comparisons)),
         "dropped_files": drops,
         "per_item_csv": str(per_item_csv),
-        "outputs": [str(manifest_out), str(shapiro_out), str(ttests_out)],
+        "outputs": [str(manifest_out), str(mean_out), str(ttests_out)],
     }
 
 
@@ -737,7 +676,6 @@ def main() -> None:
         runs_root=args.runs_root,
         per_item_csv=args.per_item_csv,
         out_dir=args.out_dir,
-        allow_non_raw=args.allow_non_raw,
     )
     print(json.dumps(summary, indent=2))
 

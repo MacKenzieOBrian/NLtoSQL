@@ -2,7 +2,7 @@
 Validation helpers for generated SQL.
 
 Parses schema text from the prompt context and checks that table names,
-column names, and basic SQL shape constraints are satisfied before execution.
+column names, and SQL safety constraints are satisfied before execution.
 """
 
 from __future__ import annotations
@@ -34,53 +34,17 @@ def parse_schema_text(schema_text: str) -> tuple[set[str], dict[str, set[str]]]:
     return tables, table_cols
 
 
-_SELECT_CLAUSE_RE = re.compile(r"(?is)\bselect\b(.*?)\bfrom\b")
-_AGG_EXPR_RE = re.compile(r"(?is)\b(count|sum|avg|min|max)\s*\(")
+# SELECT * is blocked by default: it returns every column so the result set
+# almost never matches a gold SQL that names specific columns, causing spurious
+# EX failures. Forbidding it steers the model toward explicit column selection.
 _SELECT_STAR_RE = re.compile(r"(?is)\bselect\s+([a-zA-Z_][\w$]*\.)?\*")
+
+# Override: if the NLQ explicitly asks for all columns, SELECT * is legitimate.
+# This prevents over-rejection for questions like "show all details of order 103".
 _SELECT_STAR_ALLOW_RE = re.compile(
     r"\b(all columns|all fields|full details|full row|entire row|all details|every column)\b",
     re.IGNORECASE,
 )
-
-
-def _extract_select_clause(sql_low: str) -> str:
-    m = _SELECT_CLAUSE_RE.search(sql_low or "")
-    return m.group(1) if m else ""
-
-
-def _select_has_star(sql_low: str) -> bool:
-    return re.search(r"\bselect\s+([a-zA-Z_][\w$]*\.)?\*\b", sql_low or "") is not None
-
-
-def _select_has_field(select_clause: str, field: str) -> bool:
-    if not select_clause or not field:
-        return False
-    return re.search(rf"\b{re.escape(field.lower())}\b", select_clause) is not None
-
-
-def _split_select_expressions(select_clause: str) -> list[str]:
-    """Split a SELECT clause on commas, respecting parentheses depth."""
-    parts, curr, depth = [], [], 0
-    for ch in (select_clause or ""):
-        if ch == "(":
-            depth += 1
-        elif ch == ")" and depth > 0:
-            depth -= 1
-        if ch == "," and depth == 0:
-            piece = "".join(curr).strip()
-            if piece:
-                parts.append(piece)
-            curr = []
-        else:
-            curr.append(ch)
-    tail = "".join(curr).strip()
-    if tail:
-        parts.append(tail)
-    return parts
-
-
-def _is_agg_expression(expr: str) -> bool:
-    return bool(_AGG_EXPR_RE.search(expr or ""))
 
 
 def schema_validate(
@@ -96,6 +60,9 @@ def schema_validate(
     sql_low = (sql or "").lower()
     for m in re.finditer(r"(?is)\b(from|join)\s+([a-zA-Z_][\w$]*)", sql_low):
         table = m.group(2)
+        # Peek at the character immediately after the identifier. If it is "(",
+        # the "table" is actually a subquery alias (FROM (SELECT ...) AS t) — not
+        # a real table name, so skip it rather than rejecting a valid query.
         after = sql_low[m.end(): m.end() + 1]
         if after == "(" or table in tables:
             continue
@@ -140,73 +107,3 @@ def validate_sql(
         return out
 
     return {"valid": True, "reason": "schema_ok"}
-
-
-def validate_constraints(sql: str, constraints: Optional[dict], *, schema_text: Optional[str] = None) -> dict:
-    """Validate SQL against a very small set of optional shape hints."""
-    if not constraints:
-        return {"valid": True, "reason": "no_constraints"}
-    if not isinstance(constraints, dict):
-        return {"valid": True, "reason": "no_constraints"}
-    if not sql or not sql.strip():
-        return {"valid": False, "reason": "empty_sql"}
-
-    sql_low = sql.lower()
-    select_clause = _extract_select_clause(sql_low)
-    has_select_star = _select_has_star(sql_low)
-
-    agg = constraints.get("agg")
-    if constraints.get("distinct") and "select distinct" not in sql_low:
-        return {"valid": False, "reason": "missing_distinct"}
-
-    if agg:
-        agg_low = agg.lower()
-        has_agg = re.search(rf"\b{re.escape(agg_low)}\s*\(", sql_low) is not None
-        if not has_agg and agg in {"MAX", "MIN"}:
-            has_agg = "order by" in sql_low and re.search(r"\blimit\s+1\b", sql_low) is not None
-        if not has_agg:
-            return {"valid": False, "reason": f"missing_agg:{agg}"}
-
-    if constraints.get("needs_group_by") and "group by" not in sql_low:
-        return {"valid": False, "reason": "missing_group_by"}
-    if constraints.get("needs_group_by") and not has_select_star:
-        exprs = _split_select_expressions(select_clause)
-        non_agg_exprs = [e for e in exprs if not _is_agg_expression(e)]
-        if not non_agg_exprs:
-            return {"valid": False, "reason": "missing_group_dimension_projection"}
-
-    if constraints.get("needs_order_by") and "order by" not in sql_low:
-        return {"valid": False, "reason": "missing_order_by"}
-
-    limit = constraints.get("limit")
-    if limit is not None:
-        if re.search(rf"\blimit\s+{limit}\b", sql_low) is None:
-            return {"valid": False, "reason": f"missing_limit:{limit}"}
-
-    value_hints = constraints.get("value_hints") or []
-    if value_hints and not any(v in sql_low for v in value_hints):
-        return {"valid": False, "reason": "missing_value_hint"}
-
-    required_output_fields = constraints.get("required_output_fields") or []
-    if required_output_fields and not has_select_star:
-        missing_required = [f for f in required_output_fields if not _select_has_field(select_clause, f)]
-        if missing_required:
-            return {
-                "valid": False,
-                "reason": "missing_required_output_field",
-                "missing_fields": missing_required,
-            }
-    if constraints.get("strict_required_output_fields") and required_output_fields and not has_select_star:
-        exprs = _split_select_expressions(select_clause)
-        unexpected = [
-            expr for expr in exprs
-            if not any(_select_has_field(expr, f) for f in required_output_fields)
-        ]
-        if unexpected:
-            return {
-                "valid": False,
-                "reason": "unexpected_output_field",
-                "unexpected_fields": unexpected[:3],
-            }
-
-    return {"valid": True, "reason": "ok"}

@@ -24,7 +24,7 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional
+from typing import Any, Callable, Optional
 
 import sqlalchemy
 from sqlalchemy.engine import Engine
@@ -37,14 +37,14 @@ from ..core.query_runner import DEFAULT_FORBIDDEN_TOKENS, QueryRunner
 from ..core.sql_guardrails import clean_candidate_with_reason
 
 
-def _apply_optional_reliability_layer(
+def _clean_sql(
     *,
     sql_text: str,
     nlq: str,
     apply_sql_guardrails: bool,
     apply_postprocess: bool,
 ) -> str:
-    # extension path: keep this layer off for primary model-only claims.
+    # Optional cleanup layer — disabled for primary runs, enabled only in extension runs.
     out = (sql_text or "").strip()
 
     if apply_sql_guardrails:
@@ -64,13 +64,16 @@ def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+# frozen=True makes EvalItem immutable after creation. Each item is a permanent
+# record of one evaluation: once scored it must not change. Immutability also
+# makes EvalItem hashable so it can be stored in sets or used as a dict key.
 @dataclass(frozen=True)
 class EvalItem:
     i: int
     nlq: str
     gold_sql: str
-    raw_sql: str
-    pred_sql: str
+    raw_sql: str      # exact model output before any post-processing
+    pred_sql: str     # SQL actually scored (may differ from raw_sql if reliability layer is on)
     va: bool
     em: bool
     ex: bool
@@ -128,57 +131,27 @@ def execution_accuracy(
     pred_sql: str,
     gold_sql: str,
     max_compare_rows: int = 10000,
-    allow_extra_columns: bool = False,
 ) -> tuple[bool, str | None, str | None]:
-    pred_ok, pred_cols, pred_rows, pred_err = execute_fetch(
-        engine=engine,
-        sql=pred_sql,
-        max_rows=max_compare_rows,
-    )
-    gold_ok, gold_cols, gold_rows, gold_err = execute_fetch(
-        engine=engine,
-        sql=gold_sql,
-        max_rows=max_compare_rows,
-    )
+    pred_ok, _, pred_rows, pred_err = execute_fetch(engine=engine, sql=pred_sql, max_rows=max_compare_rows)
+    gold_ok, _, gold_rows, gold_err = execute_fetch(engine=engine, sql=gold_sql, max_rows=max_compare_rows)
 
     if not gold_ok:
         return False, pred_err, gold_err
     if not pred_ok:
         return False, pred_err, gold_err
 
-    if allow_extra_columns and pred_cols and gold_cols:
-        def _norm_col(c: str) -> str:
-            c = (c or "").strip()
-            c = c.split(".")[-1]
-            c = c.strip("`\"[]")
-            return c.lower()
-
-        pred_map = {}
-        for i, c in enumerate(pred_cols):
-            key = _norm_col(c)
-            if key not in pred_map:
-                pred_map[key] = i
-
-        gold_keys = [_norm_col(c) for c in gold_cols]
-        if all(k in pred_map for k in gold_keys):
-            idxs = [pred_map[k] for k in gold_keys]
-            pred_rows = [tuple(r[i] for i in idxs) for r in pred_rows]
-
     # Counter gives bag/multiset equality: order-insensitive result comparison.
-    # This matches the EX metric definition in the Spider benchmark:
-    # Yu et al. (2018) "Spider: A Large-Scale Human-Labeled Dataset for Complex NL to SQL"
-    # https://arxiv.org/abs/1809.08887
+    # This matches the EX metric definition in the Spider benchmark (Yu et al. 2018).
     return Counter(pred_rows) == Counter(gold_rows), None, None
 
 
-TS_ORDER_BY_RE = re.compile(r"(?is)\border\s+by\b")
-
-
-def _has_order_by(sql: str) -> bool:
-    return bool(TS_ORDER_BY_RE.search(sql or ""))
-
-
 def _coerce_cell(x: Any) -> Any:
+    # Normalise individual result cells before Counter comparison.
+    # NaN must be checked before round() because math.isnan(None) raises TypeError,
+    # and more importantly float('nan') != float('nan') in Python — two identical
+    # NULL-like results would appear unequal without this guard.
+    # round(x, 10) prevents floating-point precision drift (e.g. 3.9999999999 vs 4.0)
+    # from causing a false mismatch between pred and gold result sets.
     if x is None:
         return None
     if isinstance(x, float):
@@ -188,46 +161,16 @@ def _coerce_cell(x: Any) -> Any:
     return x
 
 
-def _normalize_rows(rows: Iterable[Iterable[Any]]) -> list[tuple[Any, ...]]:
-    out: list[tuple[Any, ...]] = []
-    for r in rows:
-        out.append(tuple(_coerce_cell(v) for v in r))
-    return out
-
-
-def _sorted_rows(rows: list[tuple[Any, ...]]) -> list[tuple[Any, ...]]:
-    return sorted(rows, key=lambda t: tuple("" if v is None else v for v in t))
-
-
-@dataclass
-class TSQueryRun:
-    ok: bool
-    rows: Optional[list[tuple[Any, ...]]] = None
-    cols: Optional[tuple[str, ...]] = None
-    error: Optional[str] = None
-
-
-def _run_select_ts(engine: Engine, sql: str, max_rows: int = 2000) -> TSQueryRun:
+def _run_query_ts(engine: Engine, sql: str, max_rows: int = 2000):
+    """Execute a SELECT on a perturbed database; return normalised rows or None on failure."""
     try:
         _safety_check(sql)
         with safe_connection(engine) as conn:
             res = conn.execute(sqlalchemy.text(sql))
-            cols = tuple(res.keys())
-            fetched = res.fetchmany(max_rows)
-            rows = _normalize_rows(fetched)
-        return TSQueryRun(ok=True, rows=rows, cols=cols)
-    except Exception as e:
-        return TSQueryRun(ok=False, rows=None, cols=None, error=str(e))
-
-
-def _results_match_ts(
-    gold_rows: list[tuple[Any, ...]],
-    pred_rows: list[tuple[Any, ...]],
-    ordered: bool,
-) -> bool:
-    if ordered:
-        return gold_rows == pred_rows
-    return _sorted_rows(gold_rows) == _sorted_rows(pred_rows)
+            rows = res.fetchmany(max_rows)
+        return [tuple(_coerce_cell(v) for v in r) for r in rows]
+    except Exception:
+        return None
 
 
 def test_suite_accuracy_for_item(
@@ -237,84 +180,137 @@ def test_suite_accuracy_for_item(
     gold_sql: str,
     pred_sql: str,
     max_rows: int = 2000,
-    strict_gold: bool = True,
-) -> tuple[int, dict]:
-    ordered = _has_order_by(gold_sql)
-
-    per_db: list[dict[str, Any]] = []
+) -> int:
+    """Return 1 if pred_sql matches gold_sql on every usable perturbed database, else 0."""
+    # ORDER BY queries need order-sensitive comparison; others use Counter (bag equality).
+    ordered = bool(re.search(r"(?i)\border\s+by\b", gold_sql or ""))
     usable = 0
-    all_ok = True
-
     for db in suite_db_names:
         eng = make_engine_fn(db)
-
-        g = _run_select_ts(eng, gold_sql, max_rows=max_rows)
-        p = _run_select_ts(eng, pred_sql, max_rows=max_rows)
-
-        if not g.ok:
-            per_db.append(
-                {
-                    "db": db,
-                    "gold_ok": False,
-                    "pred_ok": p.ok,
-                    "gold_error": g.error,
-                    "pred_error": p.error if not p.ok else None,
-                    "match": False,
-                }
-            )
-            if strict_gold:
-                all_ok = False
-            continue
-
+        gold_rows = _run_query_ts(eng, gold_sql, max_rows)
+        if gold_rows is None:
+            return 0  # any replica where gold fails → reject
+        pred_rows = _run_query_ts(eng, pred_sql, max_rows)
         usable += 1
-
-        if not p.ok:
-            per_db.append(
-                {
-                    "db": db,
-                    "gold_ok": True,
-                    "pred_ok": False,
-                    "gold_error": None,
-                    "pred_error": p.error,
-                    "match": False,
-                }
-            )
-            all_ok = False
-            continue
-
-        if g.cols is not None and p.cols is not None and len(g.cols) != len(p.cols):
-            per_db.append(
-                {
-                    "db": db,
-                    "gold_ok": True,
-                    "pred_ok": True,
-                    "match": False,
-                    "ordered_compare": ordered,
-                    "gold_cols": g.cols,
-                    "pred_cols": p.cols,
-                }
-            )
-            all_ok = False
-            continue
-
-        match = _results_match_ts(g.rows or [], p.rows or [], ordered=ordered)
-        per_db.append(
-            {
-                "db": db,
-                "gold_ok": True,
-                "pred_ok": True,
-                "match": match,
-                "ordered_compare": ordered,
-            }
-        )
+        if pred_rows is None:
+            return 0
+        match = gold_rows == pred_rows if ordered else Counter(gold_rows) == Counter(pred_rows)
         if not match:
-            all_ok = False
+            return 0
+    return 1 if usable > 0 else 0
 
-    if not strict_gold and usable == 0:
-        all_ok = False
 
-    ts = 1 if all_ok else 0
-    return ts, {"ordered_compare": ordered, "usable_dbs": usable, "per_db": per_db}
+def _build_item_pool(
+    *,
+    item: dict[str, Any],
+    test_set: list[dict[str, Any]],
+    exemplar_pool: list[dict[str, Any]] | None,
+    avoid_exemplar_leakage: bool,
+) -> list[dict[str, Any]]:
+    pool = exemplar_pool if exemplar_pool is not None else test_set
+    if not avoid_exemplar_leakage:
+        return pool
+    nlq = item["nlq"]
+    gold_sql = item["sql"]
+    return [
+        ex
+        for ex in pool
+        if not (ex.get("nlq") == nlq and ex.get("sql") == gold_sql)
+    ]
+
+
+def _sample_exemplars(*, rng: random.Random, pool: list[dict[str, Any]], k: int) -> list[dict[str, Any]]:
+    if k <= 0:
+        return []
+    if len(pool) < k:
+        raise ValueError(f"Exemplar pool too small: k={k} but pool has {len(pool)} items")
+    return rng.sample(pool, k)
+
+
+def _evaluate_item(
+    *,
+    i: int,
+    item: dict[str, Any],
+    exemplars: list[dict[str, Any]],
+    schema_summary: str,
+    model: Any,
+    tokenizer: Any,
+    qr: QueryRunner,
+    engine: Engine,
+    max_new_tokens: int,
+    max_compare_rows: int,
+    generation_extract_select: bool,
+    generation_stop_on_semicolon: bool,
+    apply_sql_guardrails: bool,
+    apply_postprocess: bool,
+    ts_suite_db_names: Optional[list[str]],
+    ts_make_engine_fn: Optional[Callable[[str], Engine]],
+    ts_max_rows: int,
+) -> EvalItem:
+    nlq = item["nlq"]
+    gold_sql = item["sql"]
+
+    messages = make_few_shot_messages(
+        schema=schema_summary,
+        exemplars=exemplars,
+        nlq=nlq,
+    )
+    raw_sql = generate_sql_from_messages(
+        model=model,
+        tokenizer=tokenizer,
+        messages=messages,
+        max_new_tokens=max_new_tokens,
+        extract_select=generation_extract_select,
+        stop_on_semicolon=generation_stop_on_semicolon,
+    )
+    pred_sql = _clean_sql(
+        sql_text=raw_sql,
+        nlq=nlq,
+        apply_sql_guardrails=apply_sql_guardrails,
+        apply_postprocess=apply_postprocess,
+    )
+
+    meta = qr.run(pred_sql)
+    em = _normalize_sql(pred_sql) == _normalize_sql(gold_sql)
+    ex, ex_pred_err, ex_gold_err = execution_accuracy(
+        engine=engine,
+        pred_sql=pred_sql,
+        gold_sql=gold_sql,
+        max_compare_rows=max_compare_rows,
+    )
+
+    ts: Optional[int] = None
+    if bool(meta.success) and ts_suite_db_names and ts_make_engine_fn and pred_sql:
+        ts = test_suite_accuracy_for_item(
+            make_engine_fn=ts_make_engine_fn,
+            suite_db_names=ts_suite_db_names,
+            gold_sql=gold_sql,
+            pred_sql=pred_sql,
+            max_rows=ts_max_rows,
+        )
+
+    return EvalItem(
+        i=i,
+        nlq=nlq,
+        gold_sql=gold_sql,
+        raw_sql=raw_sql,
+        pred_sql=pred_sql,
+        va=bool(meta.success),
+        em=bool(em),
+        ex=bool(ex),
+        ts=ts,
+        error=meta.error or ex_pred_err,
+        gold_error=ex_gold_err,
+    )
+
+
+def _summarize_eval(out: list[EvalItem]) -> tuple[float, float, float, float | None, list[int]]:
+    va_rate = sum(r.va for r in out) / max(len(out), 1)
+    em_rate = sum(r.em for r in out) / max(len(out), 1)
+    ex_rate = sum(r.ex for r in out) / max(len(out), 1)
+    ts_values = [int(r.ts) for r in out if r.ts is not None]
+    ts_rate = (sum(ts_values) / len(ts_values)) if ts_values else None
+    return va_rate, em_rate, ex_rate, ts_rate, ts_values
 
 
 def eval_run(
@@ -334,18 +330,15 @@ def eval_run(
     run_metadata: Optional[dict[str, Any]] = None,
     avoid_exemplar_leakage: bool = True,
     max_compare_rows: int = 10000,
-    allow_extra_columns_ex: bool = False,
     ts_suite_db_names: Optional[list[str]] = None,
     ts_make_engine_fn: Optional[Callable[[str], Engine]] = None,
     ts_max_rows: int = 500,
-    ts_strict_gold: bool = True,
-    table_descriptions: str | None = None,
-    generation_constrained: bool = False,
     generation_extract_select: bool = False,
     generation_stop_on_semicolon: bool = False,
     apply_sql_guardrails: bool = False,
     apply_postprocess: bool = False,
 ) -> list[EvalItem]:
+    # Isolated RNG keeps exemplar sampling reproducible for a fixed seed.
     rng = random.Random(seed)
     items = test_set[:limit] if limit else test_set
 
@@ -353,91 +346,36 @@ def eval_run(
     out: list[EvalItem] = []
 
     for i, item in enumerate(items):
-        nlq = item["nlq"]
-        gold_sql = item["sql"]
-
-        pool = exemplar_pool if exemplar_pool is not None else test_set
-        if avoid_exemplar_leakage:
-            pool = [
-                ex
-                for ex in pool
-                if not (ex.get("nlq") == nlq and ex.get("sql") == gold_sql)
-            ]
-
-        if k > 0:
-            if len(pool) < k:
-                raise ValueError(f"Exemplar pool too small: k={k} but pool has {len(pool)} items")
-            exemplars = rng.sample(pool, k)
-        else:
-            exemplars = []
-
-        messages = make_few_shot_messages(
-            schema=schema_summary,
-            exemplars=exemplars,
-            nlq=nlq,
-            table_descriptions=table_descriptions,
+        pool = _build_item_pool(
+            item=item,
+            test_set=test_set,
+            exemplar_pool=exemplar_pool,
+            avoid_exemplar_leakage=avoid_exemplar_leakage,
         )
-
-        # primary path: run with all reliability flags off.
-        # extension path: enable reliability flags only in extension runs.
-        raw_sql = generate_sql_from_messages(
-            model=model,
-            tokenizer=tokenizer,
-            messages=messages,
-            max_new_tokens=max_new_tokens,
-            constrained=generation_constrained,
-            extract_select=generation_extract_select,
-            stop_on_semicolon=generation_stop_on_semicolon,
-        )
-        pred_sql = _apply_optional_reliability_layer(
-            sql_text=raw_sql,
-            nlq=nlq,
-            apply_sql_guardrails=apply_sql_guardrails,
-            apply_postprocess=apply_postprocess,
-        )
-
-        meta = qr.run(pred_sql, capture_df=False)
-        em = _normalize_sql(pred_sql) == _normalize_sql(gold_sql)
-        ex, ex_pred_err, ex_gold_err = execution_accuracy(
-            engine=engine,
-            pred_sql=pred_sql,
-            gold_sql=gold_sql,
-            max_compare_rows=max_compare_rows,
-            allow_extra_columns=allow_extra_columns_ex,
-        )
-
-        ts: Optional[int] = None
-        if bool(meta.success) and ts_suite_db_names and ts_make_engine_fn and pred_sql:
-            ts, _ = test_suite_accuracy_for_item(
-                make_engine_fn=ts_make_engine_fn,
-                suite_db_names=ts_suite_db_names,
-                gold_sql=gold_sql,
-                pred_sql=pred_sql,
-                max_rows=ts_max_rows,
-                strict_gold=ts_strict_gold,
-            )
-
+        exemplars = _sample_exemplars(rng=rng, pool=pool, k=k)
         out.append(
-            EvalItem(
+            _evaluate_item(
                 i=i,
-                nlq=nlq,
-                gold_sql=gold_sql,
-                raw_sql=raw_sql,
-                pred_sql=pred_sql,
-                va=bool(meta.success),
-                em=bool(em),
-                ex=bool(ex),
-                ts=ts,
-                error=meta.error or ex_pred_err,
-                gold_error=ex_gold_err,
+                item=item,
+                exemplars=exemplars,
+                schema_summary=schema_summary,
+                model=model,
+                tokenizer=tokenizer,
+                qr=qr,
+                engine=engine,
+                max_new_tokens=max_new_tokens,
+                max_compare_rows=max_compare_rows,
+                generation_extract_select=generation_extract_select,
+                generation_stop_on_semicolon=generation_stop_on_semicolon,
+                apply_sql_guardrails=apply_sql_guardrails,
+                apply_postprocess=apply_postprocess,
+                ts_suite_db_names=ts_suite_db_names,
+                ts_make_engine_fn=ts_make_engine_fn,
+                ts_max_rows=ts_max_rows,
             )
         )
 
-    va_rate = sum(r.va for r in out) / max(len(out), 1)
-    em_rate = sum(r.em for r in out) / max(len(out), 1)
-    ex_rate = sum(r.ex for r in out) / max(len(out), 1)
-    ts_values = [int(r.ts) for r in out if r.ts is not None]
-    ts_rate = (sum(ts_values) / len(ts_values)) if ts_values else None
+    va_rate, em_rate, ex_rate, ts_rate, ts_values = _summarize_eval(out)
     ts_s = "NA" if ts_rate is None else f"{ts_rate:.3f}"
     print(f"k={k} | n={len(out)} | VA={va_rate:.3f} | EM={em_rate:.3f} | EX={ex_rate:.3f} | TS={ts_s}")
 
@@ -445,7 +383,6 @@ def eval_run(
         save_path = Path(save_path)
         save_path.parent.mkdir(parents=True, exist_ok=True)
         optional_reliability_enabled = any((
-            generation_constrained,
             generation_extract_select,
             generation_stop_on_semicolon,
             apply_sql_guardrails,
@@ -465,7 +402,6 @@ def eval_run(
             "ts_rate": ts_rate,
             "ts_n": len(ts_values),
             "eval_profile": eval_profile,
-            "generation_constrained": bool(generation_constrained),
             "generation_extract_select": bool(generation_extract_select),
             "generation_stop_on_semicolon": bool(generation_stop_on_semicolon),
             "sql_guardrails": "enabled" if apply_sql_guardrails else "disabled",

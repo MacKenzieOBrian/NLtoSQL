@@ -25,7 +25,6 @@ def make_few_shot_messages(
     schema: str,
     exemplars: list[dict],
     nlq: str,
-    table_descriptions: str | None = None,
 ) -> list[dict[str, str]]:
     """
     Build a schema-grounded few-shot prompt in a single, explainable format.
@@ -35,13 +34,9 @@ def make_few_shot_messages(
     - include schema/table context before examples to anchor decoding
     - include curated NLQ->SQL exemplars for in-context adaptation
     """
-    context_parts = ["Schema Details:\n" + schema]
-    if table_descriptions:
-        context_parts.append("Table Descriptions:\n" + table_descriptions)
-
     msgs: list[dict[str, str]] = [
         {"role": "system", "content": SYSTEM_INSTRUCTIONS},
-        {"role": "user", "content": "\n\n".join(context_parts)},
+        {"role": "user", "content": "Schema Details:\n" + schema},
     ]
     for ex in exemplars:
         msgs.append({"role": "user", "content": f"Example Question: {ex['nlq']}"})
