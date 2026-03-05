@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 import random
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -25,6 +24,7 @@ from sqlalchemy.engine import Engine
 from ..core.llm import extract_first_select, generate_sql_from_messages
 from ..core.postprocess import guarded_postprocess, normalize_sql
 from ..core.prompting import make_few_shot_messages
+from ..core.query_runner import now_utc_iso
 from ..core.validation import validate_sql
 from ..evaluation.eval import execution_accuracy, test_suite_accuracy_for_item
 from .agent_tools import ensure_schema_text, get_agent_context
@@ -39,6 +39,7 @@ class ReactAblationConfig:
     max_steps: int = 8
     few_shot_k: int = 3
     few_shot_seed: int = 7
+    # Confound (Item 3): ReAct=256, baseline=128. Disclose in dissertation.
     max_new_tokens: int = 256
     do_sample: bool = False
     temperature: float = 0.2
@@ -47,17 +48,6 @@ class ReactAblationConfig:
 
 def core_react_config(name: str = "react_core") -> ReactAblationConfig:
     return ReactAblationConfig(name=name)
-
-
-_ACTIVE_CONFIG: ReactAblationConfig | None = None
-
-
-def _now_utc_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _effective_config() -> ReactAblationConfig:
-    return _ACTIVE_CONFIG or core_react_config()
 
 
 def _clean_sql_candidate(sql: str) -> str:
@@ -72,10 +62,10 @@ def _build_prompt_messages(
     nlq: str,
     schema_text: str,
     system_prompt: str,
+    config: ReactAblationConfig,
     final_user_content: str | None = None,
 ) -> list[dict[str, str]]:
     ctx = get_agent_context()
-    config = _effective_config()
     exemplars: list[dict[str, Any]] = []
     pool = list(ctx.exemplar_pool or [])
 
@@ -83,9 +73,9 @@ def _build_prompt_messages(
         pool = [ex for ex in pool if ex.get("nlq") != nlq]
         if pool:
             sample_n = min(config.few_shot_k, len(pool))
-            # Few-shot in-context learning: sample k exemplars from the pool.
-            # Approach from Brown et al. (2020) "Language Models are Few-Shot Learners"
-            # https://arxiv.org/abs/2005.14165
+            # Per-NLQ deterministic RNG [Brown et al. 2020].
+            # Confound (Item 5): baseline uses a global sequential RNG — different exemplar
+            # sets are selected for the same NLQ/seed, limiting direct comparability.
             rng = random.Random(f"{config.few_shot_seed}:{normalize_sql(nlq)}")
             exemplars = rng.sample(pool, sample_n)
 
@@ -111,13 +101,10 @@ def _repair_hint(error: str) -> str:
     return ""
 
 
-def generate_sql(nlq: str, schema_text: str) -> str:
-    """
-    Generate one SQL candidate for the NLQ.
-    Signature is intentionally stable for notebook monkeypatch demos.
-    """
+def generate_sql(nlq: str, schema_text: str, config: ReactAblationConfig | None = None) -> str:
+    """Generate one SQL candidate for the NLQ."""
     ctx = get_agent_context()
-    config = _effective_config()
+    cfg = config or core_react_config()
     if ctx.model is None or ctx.tok is None:
         raise RuntimeError("Agent context model/tokenizer not set for SQL generation.")
 
@@ -125,32 +112,26 @@ def generate_sql(nlq: str, schema_text: str) -> str:
         nlq=nlq,
         schema_text=schema_text,
         system_prompt=SQL_GENERATOR_SYSTEM_PROMPT,
+        config=cfg,
     )
     out = generate_sql_from_messages(
         model=ctx.model,
         tokenizer=ctx.tok,
         messages=messages,
-        max_new_tokens=config.max_new_tokens,
-        do_sample=config.do_sample,
-        temperature=config.temperature,
-        top_p=config.top_p,
+        max_new_tokens=cfg.max_new_tokens,
+        do_sample=cfg.do_sample,
+        temperature=cfg.temperature,
+        top_p=cfg.top_p,
         extract_select=True,
         stop_on_semicolon=True,
     )
     return guarded_postprocess(_clean_sql_candidate(str(out)), nlq)
 
 
-def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str) -> str:
-    """
-    Repair SQL from validator/runtime feedback.
-    Signature is intentionally stable for notebook monkeypatch demos.
-
-    Execution-guided repair follows the DIN-SQL approach:
-    Pourreza & Rafiei (2023) "DIN-SQL: Decomposed In-Context Learning of Text-to-SQL"
-    https://arxiv.org/abs/2304.11015
-    """
+def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str, config: ReactAblationConfig | None = None) -> str:
+    """Repair SQL from validator/runtime error feedback (DIN-SQL approach [5])."""
     ctx = get_agent_context()
-    config = _effective_config()
+    cfg = config or core_react_config()
     if ctx.model is None or ctx.tok is None:
         raise RuntimeError("Agent context model/tokenizer not set for SQL repair.")
 
@@ -164,10 +145,8 @@ def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str) -> str:
         repair_prompt += f"\n{hint}\n"
     repair_prompt += "\nReturn one corrected SQL SELECT."
 
-    # Zero-shot repair: NLQ→SQL generation exemplars are the wrong format for
-    # the repair task (error+SQL→fix).  Repair exemplars would require a separate
-    # corpus of (broken SQL, error, corrected SQL) triples; absent that, zero-shot
-    # with schema context is the correct approach per DIN-SQL (Pourreza & Rafiei 2023).
+    # Zero-shot: generation exemplars (NLQ→SQL) are the wrong format for repair
+    # (error+SQL→fix); absent a dedicated repair corpus, zero-shot is correct [5].
     messages = [
         {"role": "system", "content": SQL_REPAIR_SYSTEM_PROMPT},
         {"role": "user", "content": "Schema Details:\n" + schema_text},
@@ -177,21 +156,17 @@ def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str) -> str:
         model=ctx.model,
         tokenizer=ctx.tok,
         messages=messages,
-        max_new_tokens=config.max_new_tokens,
-        do_sample=config.do_sample,
-        temperature=config.temperature,
-        top_p=config.top_p,
+        max_new_tokens=cfg.max_new_tokens,
+        do_sample=cfg.do_sample,
+        temperature=cfg.temperature,
+        top_p=cfg.top_p,
         extract_select=True,
         stop_on_semicolon=True,
     )
     return guarded_postprocess(_clean_sql_candidate(str(out)), nlq)
 
 
-# ---------------------------------------------------------------------------
-# ReAct loop helpers — module-level so each function has a single, testable
-# responsibility.  _ReactState carries mutable loop state explicitly instead
-# of relying on closures with nonlocal variables.
-# ---------------------------------------------------------------------------
+# ReAct loop helpers — explicit state threading avoids nonlocal/closure complexity.
 
 @dataclass
 class _ReactState:
@@ -264,7 +239,7 @@ def _try_repair(
         return False
 
     state.step += 1
-    state.current_sql = repair_sql(nlq, state.current_sql or "", error, schema_text)
+    state.current_sql = repair_sql(nlq, state.current_sql or "", error, schema_text, cfg)
     state.repairs_used += 1
     _add_trace(
         state,
@@ -280,106 +255,98 @@ def run_react_pipeline(
     nlq: str,
     config: ReactAblationConfig | None = None,
 ) -> tuple[str, list[dict[str, Any]]]:
-    """
-    Execute one ReAct loop for a single NLQ and return (final_sql, trace).
+    """KEY FUNCTION — one Reason+Act+Observe loop for a single NLQ [19].
 
-    Implements the Reason+Act+Observe loop from:
-    Yao et al. (2023) "ReAct: Synergizing Reasoning and Acting in Language Models", ICLR 2023
-    https://arxiv.org/abs/2210.03629
+    Returns (final_sql, trace). Trace records every step for dissertation analysis.
     """
-    global _ACTIVE_CONFIG
     cfg = config or core_react_config()
-    _ACTIVE_CONFIG = cfg
     ctx = get_agent_context()
     state = _ReactState()
     schema_text = ensure_schema_text(ctx)
 
-    try:
+    state.step += 1
+    _add_trace(
+        state,
+        "get_schema",
+        observation={
+            "schema_lines": len((schema_text or "").splitlines()),
+            "tables": [
+                ln.split("(")[0].strip()
+                for ln in (schema_text or "").splitlines()
+                if "(" in ln
+            ][:10],
+        },
+    )
+
+    state.step += 1
+    state.current_sql = generate_sql(nlq, schema_text, cfg)
+    _add_trace(state, "generate_sql", observation={"sql": state.current_sql})
+
+    while state.step < cfg.max_steps:
         state.step += 1
+        sql_check = validate_sql(state.current_sql or "", schema_text, nlq=nlq)
         _add_trace(
             state,
-            "get_schema",
-            observation={
-                "schema_lines": len((schema_text or "").splitlines()),
-                "tables": [
-                    ln.split("(")[0].strip()
-                    for ln in (schema_text or "").splitlines()
-                    if "(" in ln
-                ][:10],
-            },
+            "validate_sql",
+            observation=sql_check,
+            reason=None if sql_check.get("valid") else sql_check.get("reason"),
         )
-
-        state.step += 1
-        state.current_sql = generate_sql(nlq, schema_text)
-        _add_trace(state, "generate_sql", observation={"sql": state.current_sql})
-
-        while state.step < cfg.max_steps:
-            state.step += 1
-            sql_check = validate_sql(state.current_sql or "", schema_text, nlq=nlq)
-            _add_trace(
-                state,
-                "validate_sql",
-                observation=sql_check,
-                reason=None if sql_check.get("valid") else sql_check.get("reason"),
-            )
-            if not sql_check.get("valid"):
-                if not _try_repair(
-                    state, cfg,
-                    nlq=nlq,
-                    schema_text=schema_text,
-                    error=f"validate_sql:{sql_check.get('reason')}",
-                    stop_action="validate_sql",
-                    stop_reason="validation_failed",
-                ):
-                    return state.current_sql or "", state.trace
-                continue
-
-            state.step += 1
-            meta = ctx.runner.run(state.current_sql or "")
-            run_obs = {
-                "success": bool(meta.success),
-                "rowcount": int(meta.rowcount),
-                "error": meta.error,
-                "sql": state.current_sql,
-            }
-            _add_trace(
-                state,
-                "run_sql",
-                observation=run_obs,
-                reason=None if meta.success else (meta.error or "run_sql_failed"),
-            )
-            if meta.success:
-                return _stop_with(
-                    state,
-                    action="run_sql",
-                    reason="success",
-                    observation={"sql": state.current_sql},
-                )
-
+        if not sql_check.get("valid"):
             if not _try_repair(
                 state, cfg,
                 nlq=nlq,
                 schema_text=schema_text,
-                error=meta.error or "run_sql_failed",
-                stop_action="run_sql",
-                stop_reason="execution_failed",
+                error=f"validate_sql:{sql_check.get('reason')}",
+                stop_action="validate_sql",
+                stop_reason="validation_failed",
             ):
                 return state.current_sql or "", state.trace
+            continue
 
-        state.trace.append(
-            {
-                "step": state.step,
-                "action": "stop",
-                "planned_action": None,
-                "planner_text": "",
-                "blocked": False,
-                "reason": "max_steps_exhausted" if state.step >= cfg.max_steps else "repair_budget_exhausted",
-                "observation": {"sql": state.current_sql},
-            }
+        state.step += 1
+        meta = ctx.runner.run(state.current_sql or "")
+        run_obs = {
+            "success": bool(meta.success),
+            "rowcount": int(meta.rowcount),
+            "error": meta.error,
+            "sql": state.current_sql,
+        }
+        _add_trace(
+            state,
+            "run_sql",
+            observation=run_obs,
+            reason=None if meta.success else (meta.error or "run_sql_failed"),
         )
-        return state.current_sql or "", state.trace
-    finally:
-        _ACTIVE_CONFIG = None
+        if meta.success:
+            return _stop_with(
+                state,
+                action="run_sql",
+                reason="success",
+                observation={"sql": state.current_sql},
+            )
+
+        if not _try_repair(
+            state, cfg,
+            nlq=nlq,
+            schema_text=schema_text,
+            error=meta.error or "run_sql_failed",
+            stop_action="run_sql",
+            stop_reason="execution_failed",
+        ):
+            return state.current_sql or "", state.trace
+
+    state.trace.append(
+        {
+            "step": state.step,
+            "action": "stop",
+            "planned_action": None,
+            "planner_text": "",
+            "blocked": False,
+            "reason": "max_steps_exhausted" if state.step >= cfg.max_steps else "repair_budget_exhausted",
+            "observation": {"sql": state.current_sql},
+        }
+    )
+    return state.current_sql or "", state.trace
 
 
 def evaluate_react_ablation(
@@ -474,7 +441,7 @@ def evaluate_react_ablation(
     ts_rate = (sum(ts_values) / len(ts_values)) if ts_values else None
 
     report: dict[str, Any] = {
-        "timestamp": _now_utc_iso(),
+        "timestamp": now_utc_iso(),
         "method": "react",
         "config": asdict(config),
         "n": n,

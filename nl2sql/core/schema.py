@@ -1,8 +1,7 @@
 """
 Schema inspection helpers.
 
-Queries INFORMATION_SCHEMA to get table and column metadata, then builds
-the compact schema text used in model prompts.
+Queries INFORMATION_SCHEMA and builds the compact table(col, ...) text used in all prompts.
 """
 
 from __future__ import annotations
@@ -35,8 +34,7 @@ def get_table_columns(engine: Engine, *, db_name: str, table_name: str) -> pd.Da
         """
     )
     with safe_connection(engine) as conn:
-        # use sqlalchemy execution directly instead of pandas.read_sql to avoid
-        # pandas/sqlalchemy adapter issues in some colab environments.
+        # pandas.read_sql has adapter issues in some Colab environments; use raw execution.
         result = conn.execute(query, {"db": db_name, "table": table_name})
         rows = result.fetchall()
 

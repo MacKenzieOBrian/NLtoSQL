@@ -92,7 +92,11 @@ def validate_sql(
     if not schema_text:
         return {"valid": False, "reason": "schema_missing"}
 
-    # table_cols available here for future column-level validation.
+    # Column-level validation is NOT implemented (known scope limitation, not a bug).
+    # parse_schema_text() returns table_cols but it is always discarded here (_).
+    # schema_validate() receives an empty dict for table_cols and skips column checks.
+    # Only table-name presence is verified.  Adding column-level checks would require
+    # handling aliases, subqueries, and wildcard expansions — out of scope for this work.
     tables, _ = parse_schema_text(schema_text)
     if not tables:
         return {"valid": False, "reason": "schema_missing"}

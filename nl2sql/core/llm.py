@@ -1,8 +1,8 @@
 """
-Model generation helpers for chat LLMs.
+Model generation helpers.
 
-Wraps the transformers generation pipeline for chat-template models.
-Handles SQL extraction from raw output.
+Wraps HuggingFace transformers for chat-template models and handles SQL
+extraction from raw model output.
 """
 
 from __future__ import annotations
@@ -11,15 +11,15 @@ import re
 from typing import Any
 
 
-# Find SELECT at line starts, with optional "sql:" prefix.
+# Anchors SELECT at line starts; optional "sql:" prefix covers labelled model outputs.
 SQL_START_RE = re.compile(r"(?im)^\s*(?:sql\s*:\s*)?select\b")
 
-# Reject prose-like "FROM the/this/..." candidates.
+# Articles and demonstratives that signal prose rather than a table name after FROM.
 _PROSE_FROM_STOPWORDS = {"the", "a", "an", "this", "that", "these", "those"}
 
 
 def _read_from_target(s: str) -> str | None:
-    """Return the first token after FROM to check it looks like a table, not prose."""
+    """Return the first token after FROM to verify it is a table name, not prose."""
     s = (s or "").lstrip()
     if not s:
         return None
@@ -36,7 +36,7 @@ def _read_from_target(s: str) -> str | None:
 
 
 def extract_first_select(text: str) -> str | None:
-    """Extract the first valid SELECT statement from model output."""
+    """Extract the first valid SELECT…FROM statement from raw model output."""
     t = (text or "").strip()
     t = t.replace("```json", "```").replace("```sql", "```")
     t = re.sub(r"```(.*?)```", r"\1", t, flags=re.DOTALL).strip()
@@ -48,7 +48,7 @@ def extract_first_select(text: str) -> str | None:
         stmt = tail if semi == -1 else tail[: semi + 1]
         stmt = re.sub(r"(?im)^\s*sql\s*:\s*", "", stmt, count=1).strip()
 
-        # Keep only table-backed queries.
+        # Reject statements where FROM is followed by prose rather than a table name.
         from_m = re.search(r"(?is)\bfrom\b", stmt)
         if not from_m:
             continue
@@ -77,16 +77,12 @@ def generate_sql_from_messages(
     stop_on_semicolon: bool = False,
     **_kwargs: Any,  # compatibility with older call sites
 ) -> str:
-    """Run the model and return a SQL string (or raw text if no SELECT found)."""
+    """Run the model and return SQL (or raw text if no SELECT found). KEY FUNCTION."""
     import torch
     from transformers import StoppingCriteria, StoppingCriteriaList
 
     class _StopOnSemicolon(StoppingCriteria):
-        """Stop generation at the first ';' to avoid run-on explanations.
-
-        Implements the HuggingFace StoppingCriteria interface:
-        https://huggingface.co/docs/transformers/main_classes/text_generation#transformers.StoppingCriteria
-        """
+        """Stop at ';' so the model doesn't continue with explanations after the query."""
         def __init__(self, tok: Any):
             ids = tok.encode(";", add_special_tokens=False)
             self._semi_id = ids[-1] if ids else None
@@ -96,7 +92,6 @@ def generate_sql_from_messages(
                 return False
             return input_ids[0, -1].item() == self._semi_id
 
-    # Build model-native chat tokens using the HuggingFace chat template API [27].
     input_ids = tokenizer.apply_chat_template(
         messages,
         tokenize=True,
@@ -108,7 +103,7 @@ def generate_sql_from_messages(
     pad_token_id = getattr(tokenizer, "pad_token_id", None) or getattr(tokenizer, "eos_token_id", None)
     eos_token_id = getattr(tokenizer, "eos_token_id", None)
 
-    # Suppress HF warnings when greedy decoding is used.
+    # HuggingFace warns if temperature/top_p are set when greedy decoding is used.
     effective_temperature = float(temperature) if do_sample else 1.0
     effective_top_p = float(top_p) if do_sample else 1.0
 
@@ -126,7 +121,7 @@ def generate_sql_from_messages(
     with torch.no_grad():
         out = model.generate(input_ids, attention_mask=attention_mask, **gen_kwargs)
 
-    # Drop prompt tokens; keep only newly generated text.
+    # Slice off the input prompt; decode only the tokens the model generated.
     gen_ids = out[0][input_ids.shape[-1]:]
     gen_text = tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
 

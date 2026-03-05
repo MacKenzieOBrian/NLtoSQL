@@ -42,7 +42,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from scipy.stats import t as t_dist, ttest_rel, wilcoxon
+from scipy.stats import shapiro, t as t_dist, ttest_rel, wilcoxon
 
 METRICS = ("va", "em", "ex", "ts")
 SUPPORTED_K = {0, 3}
@@ -381,6 +381,18 @@ def _prepare_per_item(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _shapiro_stats(values: Any, n: int) -> tuple[float | None, float | None, str]:
+    """Shapiro-Wilk normality test.  Returns (W, p, decision) or None on insufficient data."""
+    if n < 3:
+        return None, None, "insufficient_n"
+    try:
+        stat, p = shapiro(values)
+        decision = "reject_normality" if p < 0.05 else "fail_to_reject_normality"
+        return float(stat), float(p), decision
+    except Exception:
+        return None, None, "error"
+
+
 def compute_mean_median(per_item: pd.DataFrame) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     for run_id, group in per_item.groupby("run_id", sort=True):
@@ -391,6 +403,7 @@ def compute_mean_median(per_item: pd.DataFrame) -> pd.DataFrame:
             mean = float(values.mean()) if n else None
             median = float(values.median()) if n else None
             std = float(values.std(ddof=1)) if n > 1 else None  # ddof=1: Bessel's correction for sample std dev
+            sw_w, sw_p, sw_decision = _shapiro_stats(values.to_numpy(), n)
 
             rows.append(
                 {
@@ -406,6 +419,9 @@ def compute_mean_median(per_item: pd.DataFrame) -> pd.DataFrame:
                     "mean": mean,
                     "median": median,
                     "std": std,
+                    "shapiro_w": sw_w,
+                    "shapiro_p": sw_p,
+                    "shapiro_decision_alpha_0_05": sw_decision,
                 }
             )
     return pd.DataFrame(rows)
@@ -563,6 +579,11 @@ def compute_paired_ttests(per_item: pd.DataFrame, comparisons: list[tuple[str, s
             diffs_arr = summary["diffs_arr"]
             wilcoxon_stat, wilcoxon_p, wilcoxon_decision = _wilcoxon_stats(diffs_arr, n_pairs)
             t_stat, p_value, t_decision = _paired_ttest_stats(valid, left_col, right_col, n_pairs)
+            # Shapiro-Wilk on paired differences: justifies Wilcoxon as primary test
+            # when normality is rejected (expected for binary 0/1 metrics).
+            diff_sw_w, diff_sw_p, diff_sw_decision = _shapiro_stats(
+                diffs_arr if diffs_arr is not None else [], n_pairs
+            )
 
             rows.append(
                 {
@@ -587,6 +608,9 @@ def compute_paired_ttests(per_item: pd.DataFrame, comparisons: list[tuple[str, s
                     "t_stat": t_stat,
                     "p_value": p_value,
                     "decision_alpha_0_05": t_decision,
+                    "diff_shapiro_w": diff_sw_w,
+                    "diff_shapiro_p": diff_sw_p,
+                    "diff_shapiro_decision_alpha_0_05": diff_sw_decision,
                 }
             )
 

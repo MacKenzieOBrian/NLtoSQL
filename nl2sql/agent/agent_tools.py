@@ -16,7 +16,7 @@ from ..core.schema import build_schema_summary
 
 
 def _safe_str(obj: Any, key: str) -> str:
-    """Get a stripped string field from a dict; returns '' for missing/non-dict input."""
+    """Returns '' rather than raising when schema cache entries are missing or malformed."""
     return str(obj.get(key) or "").strip() if isinstance(obj, dict) else ""
 
 
@@ -27,7 +27,6 @@ class AgentContext:
     model: Any
     tok: Any
     runner: Any
-    max_new_tokens: int = 128
     schema_cache: Optional[dict[str, Any]] = None
     schema_text_cache: Optional[str] = None
     exemplar_pool: Optional[list[dict[str, Any]]] = None
@@ -50,11 +49,7 @@ def get_agent_context() -> AgentContext:
 
 
 def schema_to_text(schema_cache: dict[str, Any] | None) -> str:
-    """
-    Convert structured schema cache into prompt text:
-    table(col1, col2, ...)
-    Join hints: t1.c1 = t2.c2; ...
-    """
+    """Serialise a structured schema cache to the compact prompt format: table(col1, col2, ...)."""
     if not isinstance(schema_cache, dict):
         return ""
 
@@ -83,12 +78,7 @@ def schema_to_text(schema_cache: dict[str, Any] | None) -> str:
 
 
 def ensure_schema_text(ctx: AgentContext) -> str:
-    """
-    Resolve schema text in this order:
-    1) cached schema text
-    2) structured schema cache converted to text
-    3) live DB summary via build_schema_summary
-    """
+    """Return schema text, preferring cached text, then cached struct, then a live DB query."""
     if isinstance(ctx.schema_text_cache, str) and ctx.schema_text_cache.strip():
         return ctx.schema_text_cache
 

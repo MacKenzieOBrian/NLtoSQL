@@ -19,20 +19,17 @@ Rules:
 """
 
 
-# primary path: this prompt builder is used for model-only raw runs.
+# KEY FUNCTION — builds the prompt for every baseline and ReAct evaluation call.
 def make_few_shot_messages(
     *,
     schema: str,
     exemplars: list[dict],
     nlq: str,
 ) -> list[dict[str, str]]:
-    """
-    Build a schema-grounded few-shot prompt in a single, explainable format.
+    """Build a schema-grounded few-shot prompt for chat-template models.
 
-    Design intent:
-    - keep prompt structure fixed for comparability across runs
-    - include schema/table context before examples to anchor decoding
-    - include curated NLQ->SQL exemplars for in-context adaptation
+    Schema appears before exemplars so table names are in context when the model
+    reads the examples — consistent ordering is required for cross-run comparability.
     """
     msgs: list[dict[str, str]] = [
         {"role": "system", "content": SYSTEM_INSTRUCTIONS},

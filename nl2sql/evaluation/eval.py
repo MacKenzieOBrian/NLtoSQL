@@ -1,17 +1,10 @@
 """
-Evaluation helpers for VA/EM/EX/TS.
+Evaluation pipeline for VA / EM / EX / TS metrics.
 
-Default mode:
-1) Build few-shot prompts from schema + exemplars.
-2) Generate raw model text with no decoding constraints.
-3) Score VA / EM / EX (and optional TS).
+Primary path: prompt → generate → score with no post-processing (model-only raw).
+Extension path: optional guardrails/postprocess layers enabled via EvalRunConfig.
 
-Optional mode:
-- Enable constrained decoding and reliability cleanup layers
-  (guardrails/postprocess) for extension runs.
-
-Related benchmarks and metrics: Spider [22], distilled test suites [21], and
-LLM text-to-SQL benchmark studies [3, 23].
+Related benchmarks: Spider [22], distilled test suites [21], text-to-SQL surveys [3, 23].
 """
 
 from __future__ import annotations
@@ -22,7 +15,6 @@ import random
 import re
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -33,7 +25,7 @@ from ..core.db import safe_connection
 from ..core.llm import generate_sql_from_messages
 from ..core.postprocess import guarded_postprocess, normalize_sql as _normalize_sql
 from ..core.prompting import make_few_shot_messages
-from ..core.query_runner import DEFAULT_FORBIDDEN_TOKENS, QueryRunner
+from ..core.query_runner import check_sql_safety, now_utc_iso, QueryRunner
 from ..core.sql_guardrails import clean_candidate_with_reason
 
 
@@ -60,13 +52,7 @@ def _clean_sql(
     return out.strip()
 
 
-def now_utc_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-# frozen=True makes EvalItem immutable after creation. Each item is a permanent
-# record of one evaluation: once scored it must not change. Immutability also
-# makes EvalItem hashable so it can be stored in sets or used as a dict key.
+# frozen=True: each item is a permanent, hashable record — scores must not change after assignment.
 @dataclass(frozen=True)
 class EvalItem:
     i: int
@@ -97,15 +83,6 @@ class EvalItem:
         }
 
 
-def _safety_check(sql: str) -> None:
-    lowered = (sql or "").strip().lower()
-    if not lowered:
-        raise ValueError("Empty SQL string")
-    for token in DEFAULT_FORBIDDEN_TOKENS:
-        if token in lowered:
-            raise ValueError(f"Destructive SQL token detected: {token.strip()}")
-
-
 def execute_fetch(
     *,
     engine: Engine,
@@ -113,7 +90,7 @@ def execute_fetch(
     max_rows: int = 10000,
 ) -> tuple[bool, list[str] | None, list[tuple] | None, str | None]:
     try:
-        _safety_check(sql)
+        check_sql_safety(sql)
         with safe_connection(engine) as conn:
             result = conn.execute(sqlalchemy.text(sql))
             cols = list(result.keys())
@@ -140,18 +117,14 @@ def execution_accuracy(
     if not pred_ok:
         return False, pred_err, gold_err
 
-    # Counter gives bag/multiset equality: order-insensitive result comparison.
-    # This matches the EX metric definition in the Spider benchmark (Yu et al. 2018).
+    # Counter gives bag equality — order-insensitive, matching Spider EX definition [22].
     return Counter(pred_rows) == Counter(gold_rows), None, None
 
 
 def _coerce_cell(x: Any) -> Any:
-    # Normalise individual result cells before Counter comparison.
-    # NaN must be checked before round() because math.isnan(None) raises TypeError,
-    # and more importantly float('nan') != float('nan') in Python — two identical
-    # NULL-like results would appear unequal without this guard.
-    # round(x, 10) prevents floating-point precision drift (e.g. 3.9999999999 vs 4.0)
-    # from causing a false mismatch between pred and gold result sets.
+    # float('nan') != float('nan'), so NaN cells must be normalised to a sentinel string
+    # or two identical NULL rows would compare unequal in Counter.  round() prevents
+    # floating-point drift from causing false mismatches.
     if x is None:
         return None
     if isinstance(x, float):
@@ -164,7 +137,7 @@ def _coerce_cell(x: Any) -> Any:
 def _run_query_ts(engine: Engine, sql: str, max_rows: int = 2000):
     """Execute a SELECT on a perturbed database; return normalised rows or None on failure."""
     try:
-        _safety_check(sql)
+        check_sql_safety(sql)
         with safe_connection(engine) as conn:
             res = conn.execute(sqlalchemy.text(sql))
             rows = res.fetchmany(max_rows)
@@ -227,6 +200,25 @@ def _sample_exemplars(*, rng: random.Random, pool: list[dict[str, Any]], k: int)
     return rng.sample(pool, k)
 
 
+@dataclass(frozen=True)
+class EvalRunConfig:
+    """Generation and reliability knobs for eval_run(), grouped to keep the call-site clean.
+
+    Confound (Item 3): baseline uses max_new_tokens=128; ReAct uses 256. Disclose in dissertation.
+    """
+    max_new_tokens: int = 128
+    max_rows: int = 50
+    max_compare_rows: int = 10000
+    avoid_exemplar_leakage: bool = True
+    generation_extract_select: bool = False
+    generation_stop_on_semicolon: bool = False
+    apply_sql_guardrails: bool = False
+    apply_postprocess: bool = False
+    ts_suite_db_names: Optional[list[str]] = None
+    ts_make_engine_fn: Optional[Callable[[str], Engine]] = None
+    ts_max_rows: int = 500
+
+
 def _evaluate_item(
     *,
     i: int,
@@ -237,15 +229,7 @@ def _evaluate_item(
     tokenizer: Any,
     qr: QueryRunner,
     engine: Engine,
-    max_new_tokens: int,
-    max_compare_rows: int,
-    generation_extract_select: bool,
-    generation_stop_on_semicolon: bool,
-    apply_sql_guardrails: bool,
-    apply_postprocess: bool,
-    ts_suite_db_names: Optional[list[str]],
-    ts_make_engine_fn: Optional[Callable[[str], Engine]],
-    ts_max_rows: int,
+    config: EvalRunConfig,
 ) -> EvalItem:
     nlq = item["nlq"]
     gold_sql = item["sql"]
@@ -259,15 +243,15 @@ def _evaluate_item(
         model=model,
         tokenizer=tokenizer,
         messages=messages,
-        max_new_tokens=max_new_tokens,
-        extract_select=generation_extract_select,
-        stop_on_semicolon=generation_stop_on_semicolon,
+        max_new_tokens=config.max_new_tokens,
+        extract_select=config.generation_extract_select,
+        stop_on_semicolon=config.generation_stop_on_semicolon,
     )
     pred_sql = _clean_sql(
         sql_text=raw_sql,
         nlq=nlq,
-        apply_sql_guardrails=apply_sql_guardrails,
-        apply_postprocess=apply_postprocess,
+        apply_sql_guardrails=config.apply_sql_guardrails,
+        apply_postprocess=config.apply_postprocess,
     )
 
     meta = qr.run(pred_sql)
@@ -276,17 +260,17 @@ def _evaluate_item(
         engine=engine,
         pred_sql=pred_sql,
         gold_sql=gold_sql,
-        max_compare_rows=max_compare_rows,
+        max_compare_rows=config.max_compare_rows,
     )
 
     ts: Optional[int] = None
-    if bool(meta.success) and ts_suite_db_names and ts_make_engine_fn and pred_sql:
+    if bool(meta.success) and config.ts_suite_db_names and config.ts_make_engine_fn and pred_sql:
         ts = test_suite_accuracy_for_item(
-            make_engine_fn=ts_make_engine_fn,
-            suite_db_names=ts_suite_db_names,
+            make_engine_fn=config.ts_make_engine_fn,
+            suite_db_names=config.ts_suite_db_names,
             gold_sql=gold_sql,
             pred_sql=pred_sql,
-            max_rows=ts_max_rows,
+            max_rows=config.ts_max_rows,
         )
 
     return EvalItem(
@@ -325,24 +309,16 @@ def eval_run(
     limit: int | None = 50,
     seed: int = 7,
     save_path: str | Path | None = None,
-    max_rows: int = 50,
-    max_new_tokens: int = 128,
     run_metadata: Optional[dict[str, Any]] = None,
-    avoid_exemplar_leakage: bool = True,
-    max_compare_rows: int = 10000,
-    ts_suite_db_names: Optional[list[str]] = None,
-    ts_make_engine_fn: Optional[Callable[[str], Engine]] = None,
-    ts_max_rows: int = 500,
-    generation_extract_select: bool = False,
-    generation_stop_on_semicolon: bool = False,
-    apply_sql_guardrails: bool = False,
-    apply_postprocess: bool = False,
+    config: EvalRunConfig | None = None,
 ) -> list[EvalItem]:
-    # Isolated RNG keeps exemplar sampling reproducible for a fixed seed.
+    """KEY FUNCTION — run one complete evaluation grid cell and return per-item results."""
+    cfg = config or EvalRunConfig()
+    # Seeded RNG isolates exemplar sampling so results are reproducible per (k, seed) cell.
     rng = random.Random(seed)
     items = test_set[:limit] if limit else test_set
 
-    qr = QueryRunner(engine, max_rows=max_rows)
+    qr = QueryRunner(engine, max_rows=cfg.max_rows)
     out: list[EvalItem] = []
 
     for i, item in enumerate(items):
@@ -350,7 +326,7 @@ def eval_run(
             item=item,
             test_set=test_set,
             exemplar_pool=exemplar_pool,
-            avoid_exemplar_leakage=avoid_exemplar_leakage,
+            avoid_exemplar_leakage=cfg.avoid_exemplar_leakage,
         )
         exemplars = _sample_exemplars(rng=rng, pool=pool, k=k)
         out.append(
@@ -363,15 +339,7 @@ def eval_run(
                 tokenizer=tokenizer,
                 qr=qr,
                 engine=engine,
-                max_new_tokens=max_new_tokens,
-                max_compare_rows=max_compare_rows,
-                generation_extract_select=generation_extract_select,
-                generation_stop_on_semicolon=generation_stop_on_semicolon,
-                apply_sql_guardrails=apply_sql_guardrails,
-                apply_postprocess=apply_postprocess,
-                ts_suite_db_names=ts_suite_db_names,
-                ts_make_engine_fn=ts_make_engine_fn,
-                ts_max_rows=ts_max_rows,
+                config=cfg,
             )
         )
 
@@ -383,10 +351,10 @@ def eval_run(
         save_path = Path(save_path)
         save_path.parent.mkdir(parents=True, exist_ok=True)
         optional_reliability_enabled = any((
-            generation_extract_select,
-            generation_stop_on_semicolon,
-            apply_sql_guardrails,
-            apply_postprocess,
+            cfg.generation_extract_select,
+            cfg.generation_stop_on_semicolon,
+            cfg.apply_sql_guardrails,
+            cfg.apply_postprocess,
         ))
         eval_profile = "optional_reliability_layer" if optional_reliability_enabled else "model_only_raw"
 
@@ -402,16 +370,16 @@ def eval_run(
             "ts_rate": ts_rate,
             "ts_n": len(ts_values),
             "eval_profile": eval_profile,
-            "generation_extract_select": bool(generation_extract_select),
-            "generation_stop_on_semicolon": bool(generation_stop_on_semicolon),
-            "sql_guardrails": "enabled" if apply_sql_guardrails else "disabled",
-            "postprocess": "guarded_postprocess" if apply_postprocess else "none",
+            "generation_extract_select": bool(cfg.generation_extract_select),
+            "generation_stop_on_semicolon": bool(cfg.generation_stop_on_semicolon),
+            "sql_guardrails": "enabled" if cfg.apply_sql_guardrails else "disabled",
+            "postprocess": "guarded_postprocess" if cfg.apply_postprocess else "none",
             "results": [r.to_jsonable() for r in out],
         }
         if run_metadata:
             payload["run_metadata"] = run_metadata
         payload["exemplar_policy"] = "custom_pool" if exemplar_pool is not None else "benchmark_pool"
-        payload["avoid_exemplar_leakage"] = bool(avoid_exemplar_leakage)
+        payload["avoid_exemplar_leakage"] = bool(cfg.avoid_exemplar_leakage)
 
         save_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         print("Saved:", str(save_path))

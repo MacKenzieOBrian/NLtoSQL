@@ -10,9 +10,7 @@ from __future__ import annotations
 
 import re
 
-
-# Capture the first SELECT statement, including multi-line SQL.
-SQL_RE = re.compile(r"(?is)\bselect\b.*?(;|\Z)")
+from .llm import extract_first_select as _extract_first_select
 
 # Keep ranking clauses when the NLQ explicitly asks for ranking.
 RANKING_HINT_RE = re.compile(
@@ -30,14 +28,13 @@ def normalize_sql(s: str) -> str:
 
 
 def first_select_only(text: str) -> str:
-    """Return the first SELECT statement if one exists."""
-    m = SQL_RE.search((text or "").strip())
-    if not m:
-        return text
-    sql = m.group(0).strip()
-    if sql and not sql.endswith(";"):
-        sql += ";"
-    return sql
+    """Return the first SELECT statement if one exists.
+
+    Delegates to extract_first_select (llm.py) — single SQL extractor.
+    Falls back to the original text if no SELECT is found.
+    """
+    result = _extract_first_select(text or "")
+    return result if result is not None else (text or "")
 
 
 def _strip_order_by_limit(sql: str, nlq: str) -> str:

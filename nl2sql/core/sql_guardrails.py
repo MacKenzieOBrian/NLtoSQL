@@ -10,6 +10,9 @@ from __future__ import annotations
 import re
 from typing import Optional
 
+from .llm import extract_first_select as _extract_first_select
+from .query_runner import DEFAULT_FORBIDDEN_TOKENS
+
 
 def _normalize_spaced_keywords(text: str) -> str:
     """Fix tokenized keywords like 'S E L E C T' produced by some decoders."""
@@ -36,19 +39,6 @@ def _normalize_spaced_keywords(text: str) -> str:
     return out
 
 
-_FORBIDDEN_SQL = (
-    "insert",
-    "update",
-    "delete",
-    "drop",
-    "alter",
-    "truncate",
-    "create",
-    "grant",
-    "revoke",
-)
-
-
 # extension path: guardrails are optional and excluded from primary model-only claims.
 def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
     """
@@ -63,27 +53,22 @@ def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
 
     text = _normalize_spaced_keywords(raw)
 
-    # remove markdown fences commonly returned by chat models.
-    text = text.replace("```sql", "```").replace("```json", "```")
+    # Chat models often wrap output in fenced blocks; strip before extraction.
     text = re.sub(r"```(.*?)```", r"\1", text, flags=re.S).strip()
 
-    # reuse shared extraction helper so behavior matches other code paths.
-    from .llm import extract_first_select as _extract_first_select
-
-    # extract_first_select guarantees SELECT…FROM structure; None means no valid SQL found.
     sql = _extract_first_select(text)
     if not sql:
         return None, "no_select"
 
     sql = sql.strip()
-    # keep only the first statement.
     if ";" in sql:
         sql = sql.split(";", 1)[0].strip() + ";"
     else:
         sql = sql.rstrip(";") + ";"
 
+    # DEFAULT_FORBIDDEN_TOKENS tokens have trailing spaces ("drop "); strip for matching.
     low = sql.lower()
-    if any(tok in low for tok in _FORBIDDEN_SQL):
+    if any(tok.strip() in low for tok in DEFAULT_FORBIDDEN_TOKENS):
         return None, "forbidden_sql"
 
     return sql, "ok"
