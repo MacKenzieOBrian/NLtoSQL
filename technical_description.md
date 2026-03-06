@@ -4,12 +4,11 @@
 
 ## 3.1 System Architecture
 
-The system is structured as a three-layer Python library, housed under the `nl2sql/` package. Rather than writing evaluation logic and model calls in a single notebook, the codebase separates concerns across three distinct layers: `core/`, `agent/`, and `evaluation/`. This layering was a deliberate design decision made early in development, motivated by the need to test multiple conditions — different models, different shot counts, different post-processing strategies — without duplicating logic or risking inconsistency across runs.
+The system is structured as a four-layer Python library, housed under the `nl2sql/` package. Rather than writing evaluation logic and model calls in a single notebook, the codebase separates concerns across four distinct layers: `core/`, `agent/`, `evaluation/`, and `infra/`. This layering was a deliberate design decision made early in development, motivated by the need to test multiple conditions — different models, different shot counts, different scoring policies — without duplicating logic or risking inconsistency across runs.
 
 ```
 nl2sql/
-├── core/          # stateless building blocks — no ML-specific logic
-│   ├── db.py      # Cloud SQL connection factory
+├── core/          # reusable pipeline building blocks
 │   ├── schema.py  # schema introspection and serialisation
 │   ├── prompting.py      # few-shot message construction
 │   ├── llm.py            # model generation and SQL extraction
@@ -21,13 +20,22 @@ nl2sql/
 │   ├── agent_tools.py    # shared runtime context
 │   ├── prompts.py        # system prompts for generation and repair
 │   └── react_pipeline.py # generate → validate → execute → repair loop
-└── evaluation/
-    └── eval.py    # evaluation runner, metrics, and result serialisation
+├── evaluation/
+│   ├── eval.py                 # evaluation runner, metrics, and result serialisation
+│   ├── research_runs.py        # run discovery and manifest building
+│   ├── research_stats.py       # statistical tests and BH-FDR correction
+│   └── research_comparison.py  # top-level comparison-table generator
+└── infra/         # notebook-facing setup and orchestration helpers
+    ├── db.py                # Cloud SQL connection and TS engine helpers
+    ├── notebook_utils.py    # auth, paths, and dataset loading
+    ├── model_loading.py     # quantised model and adapter loading
+    ├── training_set.py      # training-set validation helpers
+    └── experiment_helpers.py# shared notebook wrappers and run metadata
 ```
 
-The core layer has no knowledge of the model or the agent loop. Each module in `core/` solves one narrow problem. This means, for example, that `sql_guardrails.py` can be tested in isolation without instantiating a model, and that `query_runner.py` can be reused by both the baseline evaluation and the ReAct loop without modification. The agent layer imports from core but not from evaluation; evaluation imports from both. This strict dependency direction means that changes to the agent loop cannot accidentally break the baseline evaluation.
+The core layer holds the reusable NL-to-SQL building blocks: prompting, generation, validation, output cleaning, and safe query execution. The agent layer builds on core to implement the ReAct extension. The evaluation layer handles scoring, run discovery, and statistical comparison. The infra layer contains notebook-facing code such as DB/auth setup, model-loading wrappers, and shared notebook orchestration helpers. This separation keeps the experimental notebooks thin while still exposing a small number of named entry points for each workflow.
 
-Notebooks serve as the entry point that wires the layers together, loading models, creating database engines, and calling `eval_run()` or `evaluate_react_ablation()`. They do not contain any library logic — they are configuration and orchestration only. This separation proved essential when running multiple experimental conditions in sequence: a single notebook cell could swap a model object and rerun evaluation without touching any evaluation logic.
+Notebooks serve as the entry point that wires the layers together, loading models, creating database engines, and calling wrappers such as `run_model_grid_notebook_eval()` or `run_react_notebook_eval()`. They do not contain pipeline logic — they are configuration and orchestration only. In the final simplified version, each experiment notebook defines one small run-plan object (`GridPlan` for baseline and QLoRA, `ReactEvalPlan` for ReAct) and then passes that plan into a shared helper. This keeps the visible notebook code close to the dissertation mental model: choose settings, run the experiment, inspect the saved outputs.
 
 ---
 
@@ -175,7 +183,7 @@ return Counter(pred_rows) == Counter(gold_rows), None, None
 
 `Counter` provides bag equality — it counts occurrences of each row but ignores order. This matches the definition used by the Spider benchmark (Yu et al., 2018), where SQL execution accuracy is defined as equality of unordered result multisets. A prediction can pass EX with completely different SQL syntax from the gold, as long as the rows it returns are identical. This is the most reliable indicator of real-world correctness.
 
-**Test Suite Accuracy (TS)** extends EX by running both queries against N perturbed variants of the database, each with different data values. A query that hard-codes a specific value (`WHERE country = 'France'`) would pass EX on the original database but fail on a perturbed variant where the French customers have been replaced with German ones. TS therefore measures generalisation rather than point-in-time correctness, following the methodology of Zhong et al. (2020). A prediction scores TS=1 only if it matches the gold on every usable perturbed database; a single mismatch is sufficient to fail.
+**Test Suite Accuracy (TS)** extends EX by running both queries against N perturbed variants of the database, each with different data values. A query that hard-codes a specific value (`WHERE country = 'France'`) would pass EX on the original database but fail on a perturbed variant where the French customers have been replaced with German ones. TS therefore measures generalisation rather than point-in-time correctness, following the methodology of Zhong et al. (2020). In the implementation used here, a prediction scores TS=1 only if it matches the gold on every checked perturbed database; a single mismatch is sufficient to fail, and if the gold query itself fails on any replica the item is scored TS=0 rather than skipped.
 
 One subtle implementation challenge arose in the TS scorer: floating-point equality. Two identical `NULL` values in different query results compare as equal in Python. But `float('nan') != float('nan')` by IEEE 754 definition, meaning two rows that should match can appear different if either contains a `NaN`. This was fixed by normalising all `NaN` values to the sentinel string `"NaN"` before comparison, and rounding floats to 10 decimal places to suppress floating-point drift:
 
@@ -196,7 +204,7 @@ The system prompt for the baseline evaluation was developed iteratively by ident
 - *"Output only SQL"* — without this instruction, both Llama and Qwen frequently prefaced their output with explanatory prose ("Here is the SQL query that answers your question:"), which broke downstream SQL extraction.
 - *"Exactly one statement starting with SELECT"* — some model configurations emitted two queries separated by a comment, or emitted a `WITH` clause followed by a `SELECT`.
 - *"Use only tables and columns in the provided schema"* — models consistently hallucinated plausible-sounding table names (`customer_orders`, `product_details`) that did not exist in the ClassicModels schema.
-- *"ORDER BY and LIMIT only when the question asks for ranking"* — this is a scoring artefact rather than a correctness concern. The Spider EX metric uses bag equality, so a query with a spurious `ORDER BY` returns the correct rows but in a different order from the gold query, causing the `Counter` comparison to succeed. However, removing spurious `ORDER BY` was retained as a post-processing option because it keeps predictions cleaner and eliminates a class of false EX failures.
+- *"ORDER BY and LIMIT only when the question asks for ranking"* — this is an output-cleanliness rule rather than the main source of semantic correctness. Because EX uses bag equality, a spurious `ORDER BY` often does not change the EX score by itself. It was still retained as an optional post-processing rule in the reliability-layer profile because it reduces unnecessary variation in model outputs and makes qualitative error analysis easier.
 
 Schema information is provided to the model before the few-shot examples, rather than after:
 
@@ -254,4 +262,4 @@ Every step in the loop appends to the `trace` list, recording the action taken, 
 
 **Reliability.** Frozen dataclasses prevent result mutation after scoring. All results are written to JSON immediately after each run with a UTC timestamp, so a notebook crash partway through a session does not lose completed results — each JSON file is a complete, self-contained record for that condition. The `QueryResult.history` list on `QueryRunner` provides a per-session audit of every attempted query, including failures, which was used during development to diagnose systematic extraction failures without re-running the full evaluation.
 
-**Reproducibility.** Beyond the seeded RNG described in Section 3.4, each results JSON records the full configuration under which it was produced: model ID, k, seed, limit, generation flags, and a UTC timestamp. The `generate_research_comparison.py` script can reconstruct the full experimental grid from these files alone, without relying on notebook state or external metadata. This ensures that the statistical analysis is self-contained and auditable.
+**Reproducibility.** Beyond the seeded RNG described in Section 3.4, each results JSON records the full configuration under which it was produced: model ID, k, seed, limit, generation flags, and a UTC timestamp. The final analysis path was simplified into two explicit stages. First, `scripts/collect_research_tables.py` flattens saved run JSON files into `run_manifest.csv` and `per_item_metrics_primary_raw.csv`. Second, `scripts/format_research_outputs.py` turns that raw per-item table into the summary-statistics and paired-test outputs. The all-in-one wrapper `scripts/generate_research_comparison.py` still exists, but the two-stage version more closely matches the dissertation mental model: collect raw evidence first, then format it for hypothesis testing. This ensures that the statistical analysis is self-contained and auditable without relying on notebook state or hidden metadata.

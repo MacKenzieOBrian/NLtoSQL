@@ -98,7 +98,9 @@ graph LR
 
     subgraph scripts
         SETUP[colab_setup.sh\nColab dependency install]
-        GENCLI[generate_research_comparison.py\nthin CLI wrapper]
+        COLLECT[collect_research_tables.py\nbuild raw manifest + per-item table]
+        FORMAT[format_research_outputs.py\nbuild stats tables from per-item CSV]
+        GENCLI[generate_research_comparison.py\nall-in-one wrapper]
     end
 
     subgraph nl2sql/infra
@@ -162,9 +164,12 @@ graph LR
     NB05 --> IMOD
     NB05 --> IEXP
 
-    NB06 --> RCOMP
+    NB06 --> COLLECT
+    NB06 --> FORMAT
     NB06 --> APLOT
 
+    COLLECT --> RCOMP
+    FORMAT --> RCOMP
     GENCLI --> RCOMP
 
     IEXP --> GRID
@@ -209,9 +214,9 @@ graph LR
 
 ---
 
-## 4. Statistical Analysis Pipeline — `research_comparison.generate`
+## 4. Two-Stage Analysis Pipeline
 
-How saved result files turn into summary tables and test results.
+How saved result files first become raw tables, and then become hypothesis-test outputs.
 
 ```mermaid
 flowchart TD
@@ -224,13 +229,14 @@ flowchart TD
     DEDUP --> BUILD[build_tables_from_runs\nexpand items list per RunSpec\nextract va · em · ex · ts per example_id]
     BUILD --> PREP[prepare_per_item_table\nturn va · em · ex · ts into numeric columns]
 
-    PREP --> PCSV[per_item_metrics_primary_raw.csv\none row per item per run\nrun_id · condition_id · seed · i · va · em · ex · ts]
     BUILD --> MCSV[run_manifest.csv\none row per run\ncondition_id · seed · source_json]
+    PREP --> PCSV[per_item_metrics_primary_raw.csv\none row per item per run\nrun_id · condition_id · seed · i · va · em · ex · ts]
 
-    PREP --> STATS[compute_mean_median_std\ngroup by run_id and metric\nmean · median · std · Shapiro-Wilk W + p]
+    PCSV --> STAGE2[Stage 2: format stats tables]
+    STAGE2 --> STATS[compute_mean_median_std\ngroup by run_id and metric\nmean · median · std · Shapiro-Wilk W + p]
     STATS --> SCSV[stats_mean_median_std.csv]
 
-    PREP --> PAIRS[planned_comparisons\nkeep only the comparison pairs that exist]
+    STAGE2 --> PAIRS[planned_comparisons\nkeep only the comparison pairs that exist]
 
     PAIRS --> JOIN[_join_pair\nmatch by seed + example_id\nfallback: seed + nlq]
 
@@ -289,12 +295,15 @@ What happens to one benchmark question in the shared baseline/QLoRA evaluation p
 ```mermaid
 flowchart LR
     NLQ([NLQ string\ngold_sql]) --> POOL[_build_item_pool\nfilter exemplar candidates]
-    POOL --> SAMP[_sample_exemplars\nrng.sample pool k=3 times]
+    POOL --> SHOT{k > 0?}
+    SHOT -- Yes --> SAMP[_sample_exemplars\nrng.sample pool k times]
+    SHOT -- No --> EMPTY[exemplars = empty list]
 
-    SAMP --> MSGS[make_few_shot_messages\nsystem prompt + schema\n+ 3 example pairs + question]
+    SAMP --> MSGS[make_few_shot_messages\nsystem prompt + schema\n+ k example pairs + question]
+    EMPTY --> MSGS
 
     MSGS --> TEMPL[tokenizer.apply_chat_template\nturn prompt into token ids]
-    TEMPL --> MODEL[model.generate\ngreedy decode\nstop on semicolon]
+    TEMPL --> MODEL[model.generate\nconfigured decode\noptional stop on semicolon]
     MODEL --> DECODE[tokenizer.decode\nturn output tokens into raw_sql]
 
     DECODE --> CLEAN{guardrails or\npostprocess enabled?}

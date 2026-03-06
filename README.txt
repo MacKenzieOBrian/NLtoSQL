@@ -33,7 +33,9 @@ Top-level layout:
   - `05_qlora_train_eval.ipynb`: QLoRA training + evaluation.
   - `06_research_comparison.ipynb`: analysis notebook wrapper.
 - `scripts/`
-  - `generate_research_comparison.py`: thin CLI wrapper around the research comparison modules.
+  - `collect_research_tables.py`: flatten saved run JSON files into raw tables.
+  - `format_research_outputs.py`: turn the raw per-item table into stats outputs.
+  - `generate_research_comparison.py`: all-in-one wrapper for the two-stage analysis path.
   - `colab_setup.sh`: Colab runtime dependency bootstrap.
 - `results/`
   - active hypothesis experiment artifacts and analysis outputs.
@@ -69,8 +71,8 @@ Third-party or supervisor source code:
 - No supervisor-provided code files are included as direct source modules.
 
 Compatibility wrappers:
-- `nl2sql/*.py` wrapper modules re-export canonical modules to keep older imports working.
-- These wrappers are project-maintained glue code, not external dependencies.
+- None are required in the current simplified layout.
+- The active code paths live under `nl2sql/core`, `nl2sql/agent`, `nl2sql/evaluation`, and `nl2sql/infra`.
 
 
 4) AI use documentation
@@ -104,11 +106,15 @@ File-level disclosure:
   - AI-assisted: shell script boilerplate and install block structure.
   - Human decisions: pinned versions and runtime acceptance.
 
-- `nl2sql/infra/experiment_helpers.py`, `nl2sql/infra/db.py`,
+- `scripts/collect_research_tables.py`, `scripts/format_research_outputs.py`,
+  `scripts/generate_research_comparison.py`,
+  `nl2sql/infra/experiment_helpers.py`, `nl2sql/infra/db.py`,
   `nl2sql/infra/notebook_utils.py`, `nl2sql/infra/model_loading.py`
   - AI-assisted: helper/orchestration boilerplate for notebook setup, run metadata,
-    DB/auth prompts, model-loading scaffolds, and shared eval wrappers.
-  - Human decisions: experiment options, profile choices, run plans, and how the helpers are used.
+    DB/auth prompts, model-loading scaffolds, shared eval wrappers, and the
+    two-stage analysis scripts.
+  - Human decisions: experiment options, profile choices, run plans, and which
+    outputs count as the raw evidence versus the formatted analysis.
 
 - `notebooks/02_baseline_prompting_eval.ipynb`
   - AI-assisted: repeated run-loop scaffolding and output wiring.
@@ -132,7 +138,7 @@ Concrete examples of boilerplate-style AI assistance:
   `compute_mean_median_std`, `_bh_fdr_adjust`, `compute_paired_tests`,
   `generate`, `main`.
 - notebook run-plan and grid-loop cells in baseline/QLoRA notebooks.
-- simple compatibility wrappers (`from ... import *`) for legacy import paths.
+- small helper modules and script wrappers around the raw-table and stats-table stages.
 
 Not AI-owned outcomes:
 - research framing and final evidence claims.
@@ -178,8 +184,9 @@ C) Notebook execution order
 
 D) Scripted analysis build
 Run from repo root:
-- `python scripts/generate_research_comparison.py`
-- Optional: `python scripts/generate_research_comparison.py --primary-eval-profile model_only_raw`
+- Stage 1 (raw tables): `python scripts/collect_research_tables.py --primary-eval-profile model_only_raw`
+- Stage 2 (stats tables): `python scripts/format_research_outputs.py`
+- Optional all-in-one wrapper: `python scripts/generate_research_comparison.py --primary-eval-profile model_only_raw`
 
 Outputs:
 - `results/analysis/per_item_metrics_primary_raw.csv`
@@ -191,9 +198,14 @@ Outputs:
 7) Reproducibility and run-policy notes
 ---------------------------------------
 - Primary dissertation claims should use `model_only_raw` runs only.
-- If rerunning baseline or QLoRA notebooks, keep the notebook `EVAL_PROFILE` set to `model_only_raw`
-  and regenerate the analysis tables with `--primary-eval-profile model_only_raw`.
-- Keep run settings explicit (`EVAL_PROFILE`, `K_VALUES`, `SEEDS`, TS settings) and persist generated JSON artifacts.
+- If rerunning baseline or QLoRA notebooks, keep the notebook grid plan set to the
+  default raw-profile configuration and regenerate the analysis tables with
+  `--primary-eval-profile model_only_raw`.
+- Keep notebook run plans explicit and persist the generated JSON artifacts.
+- The simplest mental model is:
+  1. notebooks save raw run JSON files
+  2. stage 1 scripts flatten them into raw tables
+  3. stage 2 scripts format those tables into hypothesis/statistics outputs
 - Do not mix extension/non-primary runs into primary hypothesis statistics.
 - When TS is required, ensure `enable_ts=True` and that TS databases are available.
 

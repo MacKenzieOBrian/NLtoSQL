@@ -18,12 +18,12 @@ Suites', EMNLP 2020. doi: 10.18653/v1/2020.emnlp-main.29.
 **[24]** R. Dror et al., 'The Hitchhiker's Guide to Testing Statistical Significance in Natural
 Language Processing', ACL 2018. doi: 10.18653/v1/P18-1128.
 → Justifies the choice of non-parametric Wilcoxon test over parametric t-test as primary,
-  and BH-FDR correction for multiple comparisons, in `scripts/generate_research_comparison.py`.
+  and BH-FDR correction for multiple comparisons, in `nl2sql/evaluation/research_stats.py`.
 
 **[29]** P. Virtanen et al., 'SciPy 1.0: Fundamental Algorithms for Scientific Computing in
 Python', Nature Methods, vol. 17, pp. 261–272, 2020. doi: 10.1038/s41592-020-0772-5.
 → Provides `shapiro`, `wilcoxon`, and `ttest_rel` used in
-  `scripts/generate_research_comparison.py`.
+  `nl2sql/evaluation/research_stats.py`.
 
 
 ## Text-to-SQL Surveys and Benchmarks
@@ -131,8 +131,9 @@ AAAI 2023. doi: 10.1609/aaai.v37i11.26535.
 **[15]** T. Scholak, N. Schucher, and D. Bahdanau, 'PICARD: Parsing Incrementally for Constrained
 Auto-Regressive Decoding from Language Models', Sep. 2021, arXiv: arXiv:2109.05093.
 doi: 10.48550/arXiv.2109.05093.
-→ Constrained decoding for SQL; motivates the `generation_constrained` flag in `eval.py` (disabled
-  in primary runs as it requires a grammar server incompatible with Colab constraints).
+→ Constrained decoding for SQL; provides background for why grammar-constrained decoding was considered
+  during design, even though the final primary implementation uses raw-model and optional reliability-layer
+  profiles rather than a grammar-server path.
 
 
 ## Base Models and Libraries
