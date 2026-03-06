@@ -75,6 +75,7 @@ def generate_sql_from_messages(
     from transformers import StoppingCriteria, StoppingCriteriaList
 
     class _StopOnSemicolon(StoppingCriteria):
+        # Inspired by Hugging Face's custom stopping-criteria pattern.
         def __init__(self, tok: Any):
             ids = tok.encode(";", add_special_tokens=False)
             self._semi_id = ids[-1] if ids else None
@@ -84,6 +85,7 @@ def generate_sql_from_messages(
                 return False
             return input_ids[0, -1].item() == self._semi_id
 
+    # Use the tokenizer chat template so prompts match the instruct model format.
     input_ids = tokenizer.apply_chat_template(
         messages,
         tokenize=True,

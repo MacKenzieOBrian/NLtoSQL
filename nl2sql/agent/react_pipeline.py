@@ -40,6 +40,18 @@ def _clean_sql_candidate(sql: str) -> str:
     return sql
 
 
+def _schema_observation(schema_text: str) -> dict[str, Any]:
+    """Small schema summary used in the trace."""
+    return {
+        "schema_lines": len((schema_text or "").splitlines()),
+        "tables": [
+            line.split("(")[0].strip()
+            for line in (schema_text or "").splitlines()
+            if "(" in line
+        ][:10],
+    }
+
+
 def _build_prompt_messages(
     *,
     nlq: str,
@@ -160,7 +172,7 @@ def _add_trace(
     *,
     observation: dict[str, Any],
     reason: str | None = None,
-    payload: Optional[dict[str, Any]] = None,
+    payload: dict[str, Any] | None = None,
 ) -> None:
     state.trace.append(
         {
@@ -197,7 +209,37 @@ def _stop_with(
     return state.current_sql or "", state.trace
 
 
-def _try_repair(
+def _validate_current_sql(state: _ReactState, schema_text: str) -> dict[str, Any]:
+    """Validate the current SQL and record the trace entry."""
+    sql_check = validate_sql(state.current_sql or "", schema_text)
+    _add_trace(
+        state,
+        "validate_sql",
+        observation=sql_check,
+        reason=None if sql_check.get("valid") else sql_check.get("reason"),
+    )
+    return sql_check
+
+
+def _run_current_sql(ctx: Any, state: _ReactState) -> Any:
+    """Run the current SQL and record the trace entry."""
+    meta = ctx.runner.run(state.current_sql or "")
+    run_obs = {
+        "success": bool(meta.success),
+        "rowcount": int(meta.rowcount),
+        "error": meta.error,
+        "sql": state.current_sql,
+    }
+    _add_trace(
+        state,
+        "run_sql",
+        observation=run_obs,
+        reason=None if meta.success else (meta.error or "run_sql_failed"),
+    )
+    return meta
+
+
+def _repair_or_stop(
     state: _ReactState,
     cfg: ReactAblationConfig,
     *,
@@ -234,6 +276,7 @@ def run_react_pipeline(
     config: ReactAblationConfig | None = None,
 ) -> tuple[str, list[dict[str, Any]]]:
     """Run the agent loop for one question and return (sql, trace)."""
+    # Inspired by a simple ReAct loop: generate -> validate -> run -> repair.
     cfg = config or core_react_config()
     ctx = get_agent_context()
     state = _ReactState()
@@ -243,14 +286,7 @@ def run_react_pipeline(
     _add_trace(
         state,
         "get_schema",
-        observation={
-            "schema_lines": len((schema_text or "").splitlines()),
-            "tables": [
-                ln.split("(")[0].strip()
-                for ln in (schema_text or "").splitlines()
-                if "(" in ln
-            ][:10],
-        },
+        observation=_schema_observation(schema_text),
     )
 
     state.step += 1
@@ -259,15 +295,9 @@ def run_react_pipeline(
 
     while state.step < cfg.max_steps:
         state.step += 1
-        sql_check = validate_sql(state.current_sql or "", schema_text)
-        _add_trace(
-            state,
-            "validate_sql",
-            observation=sql_check,
-            reason=None if sql_check.get("valid") else sql_check.get("reason"),
-        )
+        sql_check = _validate_current_sql(state, schema_text)
         if not sql_check.get("valid"):
-            if not _try_repair(
+            if not _repair_or_stop(
                 state, cfg,
                 nlq=nlq,
                 schema_text=schema_text,
@@ -279,19 +309,7 @@ def run_react_pipeline(
             continue
 
         state.step += 1
-        meta = ctx.runner.run(state.current_sql or "")
-        run_obs = {
-            "success": bool(meta.success),
-            "rowcount": int(meta.rowcount),
-            "error": meta.error,
-            "sql": state.current_sql,
-        }
-        _add_trace(
-            state,
-            "run_sql",
-            observation=run_obs,
-            reason=None if meta.success else (meta.error or "run_sql_failed"),
-        )
+        meta = _run_current_sql(ctx, state)
         if meta.success:
             return _stop_with(
                 state,
@@ -300,7 +318,7 @@ def run_react_pipeline(
                 observation={"sql": state.current_sql},
             )
 
-        if not _try_repair(
+        if not _repair_or_stop(
             state, cfg,
             nlq=nlq,
             schema_text=schema_text,
@@ -310,18 +328,12 @@ def run_react_pipeline(
         ):
             return state.current_sql or "", state.trace
 
-    state.trace.append(
-        {
-            "step": state.step,
-            "action": "stop",
-            "planned_action": None,
-            "planner_text": "",
-            "blocked": False,
-            "reason": "max_steps_exhausted" if state.step >= cfg.max_steps else "repair_budget_exhausted",
-            "observation": {"sql": state.current_sql},
-        }
+    return _stop_with(
+        state,
+        action="run_sql",
+        reason="max_steps_exhausted" if state.step >= cfg.max_steps else "repair_budget_exhausted",
+        observation={"sql": state.current_sql},
     )
-    return state.current_sql or "", state.trace
 __all__ = [
     "ReactAblationConfig",
     "core_react_config",
