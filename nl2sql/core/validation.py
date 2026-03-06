@@ -34,17 +34,8 @@ def parse_schema_text(schema_text: str) -> tuple[set[str], dict[str, set[str]]]:
     return tables, table_cols
 
 
-# SELECT * is blocked by default: it returns every column so the result set
-# almost never matches a gold SQL that names specific columns, causing spurious
-# EX failures. Forbidding it steers the model toward explicit column selection.
+# SELECT * blocked: wildcard results never match gold SQL naming specific columns.
 _SELECT_STAR_RE = re.compile(r"(?is)\bselect\s+([a-zA-Z_][\w$]*\.)?\*")
-
-# Override: if the NLQ explicitly asks for all columns, SELECT * is legitimate.
-# This prevents over-rejection for questions like "show all details of order 103".
-_SELECT_STAR_ALLOW_RE = re.compile(
-    r"\b(all columns|all fields|full details|full row|entire row|all details|every column)\b",
-    re.IGNORECASE,
-)
 
 
 def schema_validate(
@@ -74,8 +65,6 @@ def schema_validate(
 def validate_sql(
     sql: str,
     schema_text: Optional[str] = None,
-    *,
-    nlq: Optional[str] = None,
 ) -> dict:
     """Validate SQL formatting + schema references without executing."""
     # catch obvious formatting/schema errors before hitting the database.
@@ -86,17 +75,13 @@ def validate_sql(
     if not cleaned:
         return {"valid": False, "reason": f"clean_reject:{reason}"}
 
-    if _SELECT_STAR_RE.search(cleaned) and not _SELECT_STAR_ALLOW_RE.search(nlq or ""):
+    if _SELECT_STAR_RE.search(cleaned):
         return {"valid": False, "reason": "select_star_forbidden"}
 
     if not schema_text:
         return {"valid": False, "reason": "schema_missing"}
 
-    # Column-level validation is NOT implemented (known scope limitation, not a bug).
-    # parse_schema_text() returns table_cols but it is always discarded here (_).
-    # schema_validate() receives an empty dict for table_cols and skips column checks.
-    # Only table-name presence is verified.  Adding column-level checks would require
-    # handling aliases, subqueries, and wildcard expansions — out of scope for this work.
+    # Table-name presence only — column-level checks are out of scope [22].
     tables, _ = parse_schema_text(schema_text)
     if not tables:
         return {"valid": False, "reason": "schema_missing"}

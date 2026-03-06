@@ -12,9 +12,9 @@ import re
 
 from .llm import extract_first_select as _extract_first_select
 
-# Keep ranking clauses when the NLQ explicitly asks for ranking.
+# "first"/"last" omitted — both appear in ClassicModels column names (contactFirstName etc.).
 RANKING_HINT_RE = re.compile(
-    r"\b(top|highest|lowest|most|least|largest|smallest|first|last|max|min|order|sort|rank)\b",
+    r"\b(top|highest|lowest|most|least|largest|smallest|max|min|order|sort|rank)\b",
     re.IGNORECASE,
 )
 
@@ -28,21 +28,13 @@ def normalize_sql(s: str) -> str:
 
 
 def first_select_only(text: str) -> str:
-    """Return the first SELECT statement if one exists.
-
-    Delegates to extract_first_select (llm.py) — single SQL extractor.
-    Falls back to the original text if no SELECT is found.
-    """
+    """Return the first SELECT found, or original text as fallback."""
     result = _extract_first_select(text or "")
     return result if result is not None else (text or "")
 
 
 def _strip_order_by_limit(sql: str, nlq: str) -> str:
-    """Remove ORDER BY/LIMIT unless the question asks for ranking.
-
-    Most Spider [22] questions do not specify row ordering; spurious ORDER BY
-    causes EX failures when the DB returns the same rows in a different order.
-    """
+    """Remove ORDER BY/LIMIT unless NLQ requests ranking — prevents spurious EX failures [22]."""
     if RANKING_HINT_RE.search(nlq or ""):
         return sql
     out = re.sub(r"(?is)\sorder\s+by\s+[^;]+", "", sql)

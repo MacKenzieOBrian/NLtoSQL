@@ -2,7 +2,7 @@
 SQL text cleanup helpers.
 
 Turns raw model output into one executable SELECT statement by stripping
-markdown fences, normalising spaced keywords, and rejecting non-SELECT output.
+markdown fences and rejecting non-SELECT output.
 """
 
 from __future__ import annotations
@@ -12,31 +12,6 @@ from typing import Optional
 
 from .llm import extract_first_select as _extract_first_select
 from .query_runner import DEFAULT_FORBIDDEN_TOKENS
-
-
-def _normalize_spaced_keywords(text: str) -> str:
-    """Fix tokenized keywords like 'S E L E C T' produced by some decoders."""
-    keywords = [
-        "select",
-        "from",
-        "where",
-        "group",
-        "by",
-        "order",
-        "limit",
-        "join",
-        "inner",
-        "left",
-        "right",
-        "on",
-        "having",
-        "distinct",
-    ]
-    out = text or ""
-    for kw in keywords:
-        pattern = r"\b" + r"\s*".join(list(kw)) + r"\b"
-        out = re.sub(pattern, kw.upper(), out, flags=re.I)
-    return out
 
 
 # extension path: guardrails are optional and excluded from primary model-only claims.
@@ -51,7 +26,7 @@ def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
     if not raw or not raw.strip():
         return None, "empty"
 
-    text = _normalize_spaced_keywords(raw)
+    text = raw
 
     # Chat models often wrap output in fenced blocks; strip before extraction.
     text = re.sub(r"```(.*?)```", r"\1", text, flags=re.S).strip()

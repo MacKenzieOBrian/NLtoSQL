@@ -73,7 +73,8 @@ def _build_prompt_messages(
         pool = [ex for ex in pool if ex.get("nlq") != nlq]
         if pool:
             sample_n = min(config.few_shot_k, len(pool))
-            # Per-NLQ deterministic RNG [Brown et al. 2020].
+            # Per-NLQ deterministic seed: string seed → unique RNG per (seed, nlq) pair.
+            # https://docs.python.org/3/library/random.html#random.Random
             # Confound (Item 5): baseline uses a global sequential RNG — different exemplar
             # sets are selected for the same NLQ/seed, limiting direct comparability.
             rng = random.Random(f"{config.few_shot_seed}:{normalize_sql(nlq)}")
@@ -145,8 +146,7 @@ def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str, config: Rea
         repair_prompt += f"\n{hint}\n"
     repair_prompt += "\nReturn one corrected SQL SELECT."
 
-    # Zero-shot: generation exemplars (NLQ→SQL) are the wrong format for repair
-    # (error+SQL→fix); absent a dedicated repair corpus, zero-shot is correct [5].
+    # Zero-shot repair: NLQ→SQL exemplars are the wrong format for error+SQL→fix [5].
     messages = [
         {"role": "system", "content": SQL_REPAIR_SYSTEM_PROMPT},
         {"role": "user", "content": "Schema Details:\n" + schema_text},
@@ -165,8 +165,6 @@ def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str, config: Rea
     )
     return guarded_postprocess(_clean_sql_candidate(str(out)), nlq)
 
-
-# ReAct loop helpers — explicit state threading avoids nonlocal/closure complexity.
 
 @dataclass
 class _ReactState:
@@ -284,7 +282,7 @@ def run_react_pipeline(
 
     while state.step < cfg.max_steps:
         state.step += 1
-        sql_check = validate_sql(state.current_sql or "", schema_text, nlq=nlq)
+        sql_check = validate_sql(state.current_sql or "", schema_text)
         _add_trace(
             state,
             "validate_sql",

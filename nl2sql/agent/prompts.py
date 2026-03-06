@@ -22,7 +22,7 @@ Rules:
 - Use only provided schema tables/columns.
 - Return the smallest projection that answers the question.
 - Do not add extra columns, IDs, codes, or ORDER BY unless the question asks for them.
-- Do not use SELECT * unless the question explicitly asks for all columns or full row details.
+- Never use SELECT *.
 - Do not output explanations.
 """
 
@@ -37,7 +37,7 @@ Rules:
 - Use only provided schema tables/columns.
 - Return the smallest projection that answers the question.
 - Do not add extra columns, IDs, codes, or ORDER BY unless the question asks for them.
-- Do not use SELECT * unless the question explicitly asks for all columns or full row details.
+- Never use SELECT *.
 """
 
 
