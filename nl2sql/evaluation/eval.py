@@ -52,7 +52,6 @@ def _clean_sql(
     return out.strip()
 
 
-# frozen=True: each item is a permanent, hashable record — scores must not change after assignment.
 @dataclass(frozen=True)
 class EvalItem:
     i: int
@@ -117,14 +116,11 @@ def execution_accuracy(
     if not pred_ok:
         return False, pred_err, gold_err
 
-    # Counter gives bag equality — order-insensitive, matching Spider EX definition [22].
-    return Counter(pred_rows) == Counter(gold_rows), None, None
+    return Counter(pred_rows) == Counter(gold_rows), None, None  # bag equality — Spider EX [22]
 
 
 def _coerce_cell(x: Any) -> Any:
-    # float('nan') != float('nan'), so NaN cells must be normalised to a sentinel string
-    # or two identical NULL rows would compare unequal in Counter.  round() prevents
-    # floating-point drift from causing false mismatches.
+    # IEEE 754 NaN != NaN; sentinel + rounding prevents false Counter mismatches. https://docs.python.org/3/library/math.html#math.isnan
     if x is None:
         return None
     if isinstance(x, float):
@@ -180,6 +176,10 @@ def _build_item_pool(
     exemplar_pool: list[dict[str, Any]] | None,
     avoid_exemplar_leakage: bool,
 ) -> list[dict[str, Any]]:
+    """Exclude the current test item from the exemplar pool to prevent leakage.
+
+    Both nlq AND sql must match — nlq alone would drop valid paraphrases.
+    """
     pool = exemplar_pool if exemplar_pool is not None else test_set
     if not avoid_exemplar_leakage:
         return pool
@@ -200,12 +200,9 @@ def _sample_exemplars(*, rng: random.Random, pool: list[dict[str, Any]], k: int)
     return rng.sample(pool, k)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True)  # https://docs.python.org/3/library/dataclasses.html
 class EvalRunConfig:
-    """Generation and reliability knobs for eval_run(), grouped to keep the call-site clean.
-
-    Confound (Item 3): baseline uses max_new_tokens=128; ReAct uses 256. Disclose in dissertation.
-    """
+    """Generation flags for eval_run(). All False = model-only raw (primary path)."""
     max_new_tokens: int = 128
     max_rows: int = 50
     max_compare_rows: int = 10000
@@ -314,8 +311,7 @@ def eval_run(
 ) -> list[EvalItem]:
     """KEY FUNCTION — run one complete evaluation grid cell and return per-item results."""
     cfg = config or EvalRunConfig()
-    # Seeded RNG isolates exemplar sampling so results are reproducible per (k, seed) cell.
-    rng = random.Random(seed)
+    rng = random.Random(seed)  # https://docs.python.org/3/library/random.html#random.Random
     items = test_set[:limit] if limit else test_set
 
     qr = QueryRunner(engine, max_rows=cfg.max_rows)
@@ -370,6 +366,8 @@ def eval_run(
             "ts_rate": ts_rate,
             "ts_n": len(ts_values),
             "eval_profile": eval_profile,
+            "exemplar_policy": "custom_pool" if exemplar_pool is not None else "benchmark_pool",
+            "avoid_exemplar_leakage": bool(cfg.avoid_exemplar_leakage),
             "generation_extract_select": bool(cfg.generation_extract_select),
             "generation_stop_on_semicolon": bool(cfg.generation_stop_on_semicolon),
             "sql_guardrails": "enabled" if cfg.apply_sql_guardrails else "disabled",
@@ -378,10 +376,30 @@ def eval_run(
         }
         if run_metadata:
             payload["run_metadata"] = run_metadata
-        payload["exemplar_policy"] = "custom_pool" if exemplar_pool is not None else "benchmark_pool"
-        payload["avoid_exemplar_leakage"] = bool(cfg.avoid_exemplar_leakage)
 
         save_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         print("Saved:", str(save_path))
 
     return out
+
+
+def categorize_failure(item: dict) -> str:
+    """Classify one result item into an EX failure category."""
+    pred = item.get("pred_sql")
+    va = int(item.get("va", 0))
+    ex = int(item.get("ex", 0))
+    err = str(item.get("error") or "").lower()
+
+    if not pred:
+        return "repair_budget_exhausted" if "repair_budget_exhausted" in err else "no_prediction"
+    if va == 0:
+        if "guardrail_reject" in err:
+            return "guardrail_reject"
+        if "validate_sql" in err:
+            return "validate_sql_failed"
+        return "invalid_sql"
+    if ex == 1:
+        return "correct"
+    if "intent_mismatch" in err:
+        return "intent_mismatch"
+    return "semantic_mismatch"

@@ -43,6 +43,7 @@ from typing import Any
 
 import pandas as pd
 from scipy.stats import shapiro, t as t_dist, ttest_rel, wilcoxon
+from statsmodels.stats.multitest import multipletests
 
 METRICS = ("va", "em", "ex", "ts")
 SUPPORTED_K = {0, 3}
@@ -73,6 +74,11 @@ class RunSpec:
         # Format: "llama_base_k3_s7" — uniquely identifies one seed of one condition.
         seed_label = "na" if self.seed is None else str(self.seed)
         return f"{self.condition_id}_s{seed_label}"
+
+
+# ---------------------------------------------------------------------------
+# CLI entrypoint — argument parsing and main() only; no logic lives below here
+# ---------------------------------------------------------------------------
 
 
 def parse_args() -> argparse.Namespace:
@@ -428,26 +434,17 @@ def compute_mean_median(per_item: pd.DataFrame) -> pd.DataFrame:
 
 
 def _bh_fdr_adjust(pvalues: list[float | None]) -> list[float | None]:
-    """Benjamini-Hochberg FDR-adjusted p-values. Returns None where input is None."""
-    # BH procedure (Benjamini & Hochberg 1995): controls the False Discovery Rate
-    # across m=12 comparisons per metric. Without correction, running 12 tests at
-    # alpha=0.05 gives a ~46% chance of at least one false positive by chance.
-    # Step 1: sort raw p-values ascending and assign rank k (1-indexed).
-    # Step 2: adjusted p = raw_p * m / k.
-    # Step 3: enforce monotonicity backwards so a less significant result is never
-    #         declared significant if a more significant one is not — this is the
-    #         min(adj[j], adj[j+1]) backward pass.
+    """BH FDR correction via statsmodels multipletests. Handles None (insufficient-n) entries.
+    https://www.statsmodels.org/dev/generated/statsmodels.stats.multitest.multipletests.html
+    """
     result: list[float | None] = list(pvalues)
     valid_idx = [i for i, p in enumerate(pvalues) if p is not None]
     if not valid_idx:
         return result
-    m = len(valid_idx)
-    sorted_idx = sorted(valid_idx, key=lambda i: pvalues[i])  # ascending by raw p
-    adj = [pvalues[i] * m / (rank + 1) for rank, i in enumerate(sorted_idx)]
-    for j in range(m - 2, -1, -1):
-        adj[j] = min(adj[j], adj[j + 1])
-    for rank, orig_i in enumerate(sorted_idx):
-        result[orig_i] = min(adj[rank], 1.0)
+    raw = [pvalues[i] for i in valid_idx]
+    _, adj, _, _ = multipletests(raw, method="fdr_bh")
+    for i, orig_i in enumerate(valid_idx):
+        result[orig_i] = float(adj[i])
     return result
 
 
@@ -470,10 +467,6 @@ def build_planned_comparisons(condition_ids: set[str]) -> list[tuple[str, str, s
     return [(l, r, label) for (l, r, label) in plan if l in condition_ids and r in condition_ids]
 
 
-def _drop_duplicate_keys(df: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
-    return df.sort_values(["run_id", *keys]).drop_duplicates(subset=keys, keep="first")
-
-
 def _join_for_pair(left: pd.DataFrame, right: pd.DataFrame) -> tuple[pd.DataFrame, str, list[int]]:
     left = left.copy()
     right = right.copy()
@@ -485,8 +478,8 @@ def _join_for_pair(left: pd.DataFrame, right: pd.DataFrame) -> tuple[pd.DataFram
         keys = ["seed", "nlq"]
         pair_key = "seed+nlq"
 
-    left_keyed = _drop_duplicate_keys(left, keys)
-    right_keyed = _drop_duplicate_keys(right, keys)
+    left_keyed = left.sort_values(["run_id", *keys]).drop_duplicates(subset=keys, keep="first")
+    right_keyed = right.sort_values(["run_id", *keys]).drop_duplicates(subset=keys, keep="first")
     merged = left_keyed[keys + list(METRICS)].merge(
         right_keyed[keys + list(METRICS)],
         on=keys,
