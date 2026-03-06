@@ -9,7 +9,7 @@ and where AI use is documented.
 ------------------
 - Goal: evaluate NL-to-SQL performance on ClassicModels under constrained hardware.
 - Main comparison: base model vs QLoRA, and zero-shot (`k=0`) vs few-shot (`k=3`).
-- Primary evaluation mode: model-only outputs (no optional cleanup layers).
+- Primary evaluation mode: `model_only_raw` (no optional cleanup layers).
 - Primary metrics: VA, EM, EX, and optional TS when enabled.
 
 
@@ -22,8 +22,10 @@ Top-level layout:
 - root project documentation:
   - `README.txt`, `REFERENCES.md`, `documentation.md`.
 - `nl2sql/`
-  - canonical runtime/evaluation code (`core/`, `evaluation/`).
-  - thin wrappers at package root re-export core modules for backwards compatibility.
+  - `core/`: prompt, generation, SQL cleanup, validation, query execution.
+  - `evaluation/`: scoring, run discovery, comparison statistics, analysis helpers.
+  - `agent/`: ReAct extension logic.
+  - `infra/`: notebook setup, DB/auth helpers, and orchestration wrappers.
 - `notebooks/`
   - `02_baseline_prompting_eval.ipynb`: baseline experiments.
   - `03_agentic_eval.ipynb`: extension path (agentic/reliability).
@@ -31,7 +33,7 @@ Top-level layout:
   - `05_qlora_train_eval.ipynb`: QLoRA training + evaluation.
   - `06_research_comparison.ipynb`: analysis notebook wrapper.
 - `scripts/`
-  - `generate_research_comparison.py`: statistical outputs used in reporting.
+  - `generate_research_comparison.py`: thin CLI wrapper around the research comparison modules.
   - `colab_setup.sh`: Colab runtime dependency bootstrap.
 - `results/`
   - active hypothesis experiment artifacts and analysis outputs.
@@ -41,14 +43,14 @@ Primary evidence folders:
 - `results/baseline/runs` (base model runs, Llama and Qwen)
 - `results/qlora/runs` (QLoRA runs, Llama and Qwen)
 - `results/agent/runs` (ReAct extension runs)
-- `results/analysis` (computed CSVs from generate_research_comparison.py)
+- `results/analysis` (computed CSVs from the research comparison workflow)
 
 
 3) Code ownership and provenance
 --------------------------------
 Own code (author-developed in this repository):
-- `nl2sql/core/*`, `nl2sql/evaluation/*` and orchestration logic in notebooks.
-- `scripts/generate_research_comparison.py`.
+- `nl2sql/core/*`, `nl2sql/evaluation/*`, `nl2sql/agent/*`, `nl2sql/infra/*`, and notebook orchestration.
+- `scripts/generate_research_comparison.py` as a CLI wrapper.
 - project notebook workflows and run plans.
 - result management and reporting scripts/files.
 
@@ -60,7 +62,7 @@ Not own code (external dependencies/services):
 - model weights/tokenizers downloaded at runtime from Hugging Face model hubs
   (for example Llama/Qwen checkpoints), not redistributed in this archive.
 - Cloud SQL connector and SQLAlchemy integration patterns are based on official
-  documentation; implementation is adapted into project code in `nl2sql/core/db.py`.
+  documentation; implementation is adapted into project code in `nl2sql/infra/db.py`.
 
 Third-party or supervisor source code:
 - No standalone third-party source files are vendored directly into this repository.
@@ -78,33 +80,35 @@ drafting. Research decisions — hypothesis design, experiment scope, run
 selection, result interpretation, and dissertation conclusions — are my own.
 
 File-level disclosure:
-- `scripts/generate_research_comparison.py`
-  - What the script does:
+- `nl2sql/evaluation/research_runs.py`, `nl2sql/evaluation/research_stats.py`,
+  `nl2sql/evaluation/research_comparison.py`, and `scripts/generate_research_comparison.py`
+  - What this workflow does:
     - discovers run JSON files under `results/**/results_k*_seed*.json` and ReAct runs
-      under `results/agent/runs/**/results_react_200.json`.
+      under `results/agent/runs/**/results_react_200.json` or `results_react_eval.json`.
+    - filters primary baseline/QLoRA runs to one explicit `primary_eval_profile`
+      (default: `model_only_raw`) so analysis does not silently mix raw and reliability-layer runs.
     - normalizes run metadata into `condition_id` (`llama|qwen` x `base|qlora|react` x `k=0|3`).
     - builds per-item analysis rows and run manifest rows.
-    - computes mean/median and Shapiro-Wilk checks per run.
-    - for each predefined comparison: Wilcoxon signed-rank test (primary), paired t-test
-      (corroborating), 95% CI on mean difference, and Cohen's d effect size.
-    - applies Benjamini-Hochberg FDR correction within each metric family (12 tests per metric).
+    - computes mean/median/std and paired-comparison statistics.
+    - applies Benjamini-Hochberg FDR correction within each metric family.
     - writes analysis CSV outputs under `results/analysis/`.
   - AI-assisted (plumbing): CLI scaffold, JSON/file ingestion, metadata normalization,
     deduplication, pandas joins/grouping, Wilcoxon/t-test/CI/Cohen's d wrappers,
-    BH FDR implementation, and CSV export wiring.
+    BH FDR helper, and CSV export wiring.
   - Human decisions (research logic): source-of-truth run folder, supported matrix
-    (`llama`/`qwen`, `base`/`qlora`/`react`, `k in {0,3}`), inclusion policy
-    (`model_only_raw` by default), predefined hypothesis comparisons, choice of primary
-    test (Wilcoxon) and FDR family scope, and interpretation of statistical results in
-    the dissertation.
+    (`llama`/`qwen`, `base`/`qlora`/`react`, `k in {0,3}`), primary eval profile
+    (`model_only_raw` for dissertation claims), predefined hypothesis comparisons,
+    choice of primary test (Wilcoxon), and interpretation of statistical results.
 
 - `scripts/colab_setup.sh`
   - AI-assisted: shell script boilerplate and install block structure.
   - Human decisions: pinned versions and runtime acceptance.
 
-- `nl2sql/experiment_helpers.py`
-  - AI-assisted: helper structure for model aliases and option handling.
-  - Human decisions: allowed experiment options and how they are used.
+- `nl2sql/infra/experiment_helpers.py`, `nl2sql/infra/db.py`,
+  `nl2sql/infra/notebook_utils.py`, `nl2sql/infra/model_loading.py`
+  - AI-assisted: helper/orchestration boilerplate for notebook setup, run metadata,
+    DB/auth prompts, model-loading scaffolds, and shared eval wrappers.
+  - Human decisions: experiment options, profile choices, run plans, and how the helpers are used.
 
 - `notebooks/02_baseline_prompting_eval.ipynb`
   - AI-assisted: repeated run-loop scaffolding and output wiring.
@@ -123,10 +127,10 @@ File-level disclosure:
   - Human decisions: validation policy location and compatibility strategy.
 
 Concrete examples of boilerplate-style AI assistance:
-- `generate_research_comparison.py`:
-  `parse_args`, `discover_runs`, `discover_react_runs`, `build_tables_from_runs`,
-  `_join_for_pair`, `compute_mean_median_shapiro`, `_bh_fdr_adjust`,
-  `compute_paired_ttests`, `generate`, `main`.
+- research comparison plumbing:
+  `discover_primary_runs`, `discover_react_runs`, `build_tables_from_runs`,
+  `compute_mean_median_std`, `_bh_fdr_adjust`, `compute_paired_tests`,
+  `generate`, `main`.
 - notebook run-plan and grid-loop cells in baseline/QLoRA notebooks.
 - simple compatibility wrappers (`from ... import *`) for legacy import paths.
 
@@ -175,19 +179,21 @@ C) Notebook execution order
 D) Scripted analysis build
 Run from repo root:
 - `python scripts/generate_research_comparison.py`
-- Optional: `python scripts/generate_research_comparison.py --runs-root results/baseline/runs`
+- Optional: `python scripts/generate_research_comparison.py --primary-eval-profile model_only_raw`
 
 Outputs:
 - `results/analysis/per_item_metrics_primary_raw.csv`
 - `results/analysis/run_manifest.csv`
-- `results/analysis/stats_mean_median_shapiro.csv`
+- `results/analysis/stats_mean_median_std.csv`
 - `results/analysis/stats_paired_ttests.csv`
 
 
 7) Reproducibility and run-policy notes
 ---------------------------------------
-- Primary dissertation claims should use model-only runs (optional reliability flags off).
-- Keep run plans explicit (`RUN_PLAN`, `CUSTOM_PLAN`) and persist generated JSON artifacts.
+- Primary dissertation claims should use `model_only_raw` runs only.
+- If rerunning baseline or QLoRA notebooks, keep the notebook `EVAL_PROFILE` set to `model_only_raw`
+  and regenerate the analysis tables with `--primary-eval-profile model_only_raw`.
+- Keep run settings explicit (`EVAL_PROFILE`, `K_VALUES`, `SEEDS`, TS settings) and persist generated JSON artifacts.
 - Do not mix extension/non-primary runs into primary hypothesis statistics.
 - When TS is required, ensure `enable_ts=True` and that TS databases are available.
 

@@ -68,7 +68,7 @@
 ## Google Cloud SQL
 
 ### `create_engine_with_connector()`
-**File**: `nl2sql/core/db.py`
+**File**: `nl2sql/infra/db.py`
 **Source 1**: [GitHub — GoogleCloudPlatform/cloud-sql-python-connector](https://github.com/GoogleCloudPlatform/cloud-sql-python-connector)
 **Source 2**: [Google Cloud Docs — Connect using Cloud SQL Python Connector with SQLAlchemy (MySQL)](https://cloud.google.com/sql/docs/mysql/samples/cloud-sql-mysql-sqlalchemy-connect-connector)
 **What it covers**: The Cloud SQL Python Connector handles IAM authentication and TLS tunnelling to a Cloud SQL instance. The standard SQLAlchemy connection URL (`mysql+pymysql://user:password@host/db`) cannot be used because it does not go through the connector's auth layer. The Google Cloud docs show the exact `creator=` pattern: pass a callable that returns a raw `pymysql` connection, and SQLAlchemy calls it on demand for each connection pool slot.
@@ -78,7 +78,7 @@
 ## SQLAlchemy
 
 ### `@contextmanager` / `safe_connection()`
-**File**: `nl2sql/core/db.py`
+**File**: `nl2sql/infra/db.py`
 **Source 1**: [Python Docs — contextlib.contextmanager](https://docs.python.org/3/library/contextlib.html#contextlib.contextmanager)
 **Source 2**: [SQLAlchemy Docs — Working with Engines and Connections](https://docs.sqlalchemy.org/en/20/core/connections.html)
 **What it covers**: The `@contextmanager` decorator turns a generator function into a context manager. The `try/finally` pattern guarantees that `conn.close()` runs even if the query raises an exception. The SQLAlchemy connections docs note that explicit connection management (rather than implicit pool checkout) is required when you need deterministic close-on-error behaviour.
@@ -113,10 +113,10 @@
 **Source**: [Python Docs — collections.Counter](https://docs.python.org/3/library/collections.html#collections.Counter)
 **What it covers**: `Counter` is a dict subclass that counts hashable elements, equivalent to a mathematical multiset. Two `Counter` objects are equal if every element has the same count in both — order-insensitive, which is what the Spider EX metric requires. The docs describe Counter as "similar to bags or multisets in other languages".
 
-### `with warnings.catch_warnings(record=True) as caught`
-**File**: `scripts/generate_research_comparison.py`
+### `with warnings.catch_warnings():`
+**File**: `nl2sql/evaluation/research_stats.py`
 **Source**: [Python Docs — warnings.catch_warnings](https://docs.python.org/3/library/warnings.html#warnings.catch_warnings)
-**What it covers**: `catch_warnings(record=True)` captures all warnings into a list rather than printing them to stderr. `warnings.simplefilter("always")` ensures every warning fires even if it has been seen before. Used to capture scipy's Shapiro-Wilk sample-size warning so it is recorded in the CSV output rather than silently lost.
+**What it covers**: `catch_warnings()` creates a temporary warnings filter scope. Here it is used with `warnings.simplefilter("ignore")` so repeated Shapiro-Wilk warnings do not flood notebook output during the comparison workflow.
 
 ### `math.isnan(x)` → sentinel `"NaN"`
 **File**: `nl2sql/evaluation/eval.py`
@@ -129,9 +129,9 @@
 **What it covers**: Makes all type annotations in the module lazy (evaluated as strings rather than at import time). This allows forward references and the `X | None` union syntax in Python versions below 3.10, which is important for Colab compatibility where the Python version may lag.
 
 ### `Path.write_text()` / `Path.read_text()` / `.rglob()`
-**File**: `nl2sql/evaluation/eval.py`, `scripts/generate_research_comparison.py`
+**File**: `nl2sql/evaluation/eval.py`, `nl2sql/evaluation/research_runs.py`, `nl2sql/evaluation/research_comparison.py`
 **Source**: [Python Docs — pathlib.Path](https://docs.python.org/3/library/pathlib.html)
-**What it covers**: `pathlib` provides object-oriented filesystem paths. `write_text()` writes a string to a file in one call (no open/close). `rglob("*.json")` recursively finds files matching a pattern — used in the stats script to discover all result JSON files across nested run directories.
+**What it covers**: `pathlib` provides object-oriented filesystem paths. `write_text()` writes a string to a file in one call (no open/close). `rglob("*.json")` recursively finds files matching a pattern — used in the run-discovery helper to discover result JSON files across nested run directories.
 
 ### `re.compile(r"...", re.IGNORECASE)`
 **File**: `nl2sql/core/sql_guardrails.py`, `nl2sql/core/postprocess.py`, `nl2sql/core/validation.py`
@@ -140,24 +140,24 @@
 
 ---
 
-## SciPy / Statsmodels — Statistical Testing
+## SciPy / Statistical Testing
 
 ### `scipy.stats.wilcoxon(diffs, zero_method='wilcox')`
-**File**: `scripts/generate_research_comparison.py`
+**File**: `nl2sql/evaluation/research_stats.py`
 **Source**: [SciPy Docs — scipy.stats.wilcoxon](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.wilcoxon.html)
 **What it covers**: The Wilcoxon signed-rank test tests whether the distribution of paired differences is symmetric about zero — a non-parametric alternative to the paired t-test. The docs explain `zero_method='wilcox'` (the Wilcoxon 1945 original method, which discards zero differences). This is the primary test in the dissertation because binary 0/1 metrics violate the normality assumption required by the t-test.
 
 ### `scipy.stats.ttest_rel(a, b)`
-**File**: `scripts/generate_research_comparison.py`
+**File**: `nl2sql/evaluation/research_stats.py`
 **Source**: [SciPy Docs — scipy.stats.ttest_rel](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.ttest_rel.html)
 **What it covers**: The paired t-test. Used as a corroborating test alongside Wilcoxon. At n≥600 paired observations, the Central Limit Theorem justifies its use even with binary metric distributions. The docs describe the test statistic and degrees of freedom (n-1) used for the confidence interval calculation.
 
 ### `scipy.stats.shapiro(diffs)`
-**File**: `scripts/generate_research_comparison.py`
+**File**: `nl2sql/evaluation/research_stats.py`
 **Source**: [SciPy Docs — scipy.stats.shapiro](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html)
-**What it covers**: Shapiro-Wilk normality test on the paired differences. Run on every comparison pair to document that normality is rejected (expected for binary metrics). The docs note that the test emits a `UserWarning` when `n > 5000`; this is the warning captured with `warnings.catch_warnings`.
+**What it covers**: Shapiro-Wilk normality test on the paired differences. Run on every comparison pair to document whether normality looks plausible before reading the paired t-test. The warnings context is used to keep repeated range-zero warnings out of the notebook output.
 
-### `statsmodels.stats.multitest.multipletests(pvals, method='fdr_bh')`
-**File**: `scripts/generate_research_comparison.py`
+### `_bh_fdr_adjust(pvalues)`
+**File**: `nl2sql/evaluation/research_stats.py`
 **Source**: [Statsmodels Docs — multipletests](https://www.statsmodels.org/dev/generated/statsmodels.stats.multitest.multipletests.html)
-**What it covers**: Applies multiple comparison correction to a family of p-values. `method='fdr_bh'` is the Benjamini-Hochberg procedure, which controls the False Discovery Rate rather than the Family-Wise Error Rate. The docs describe the returned `reject` array and `pvals_corrected` array — the corrected p-values are what appear in the dissertation's results table.
+**What it covers**: Applies multiple comparison correction to a family of p-values. `method='fdr_bh'` is the Benjamini-Hochberg procedure, which controls the False Discovery Rate rather than the Family-Wise Error Rate. The project now uses a small local helper that follows the same adjustment rule rather than importing `statsmodels`.
