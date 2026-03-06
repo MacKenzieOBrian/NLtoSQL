@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI wrapper for the research comparison generator."""
+"""All-in-one wrapper: collect raw tables, then format the analysis outputs."""
 
 from nl2sql.evaluation.research_comparison import generate, main
 

@@ -1,19 +1,18 @@
 """
 Evaluation grid runner — shared by baseline and QLoRA notebooks.
 
-Iterates (k, seed) combinations, calls eval_run(), and writes per-run JSONs
-plus aggregated grid_summary CSVs to a timestamped run directory.
+Iterates (k, seed) combinations, calls eval_run(), and writes one JSON file
+per run. Keeps output plain: raw result files first, later analysis second.
 """
 
 from __future__ import annotations
 
-import shutil
+import json
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
 from sqlalchemy.engine import Engine
 
 from ..infra.db import create_engine_with_connector
@@ -43,27 +42,26 @@ def _summarize_items(items: list[Any]) -> dict[str, Any]:
     }
 
 
-def _copy_canonical_result(*, save_path: Path, canonical_dir: str | Path, k: int) -> None:
-    name = "results_zero_shot_200.json" if k == 0 else "results_few_shot_k3_200.json"
-    target = Path(canonical_dir) / name
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(save_path, target)
-    print(f"Updated canonical: {target}")
-
-
-def _write_grid_summaries(rows: list[dict[str, Any]], run_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    df = pd.DataFrame(rows).sort_values(["k", "seed"]).reset_index(drop=True)
-    df.to_csv(run_dir / "grid_summary.csv", index=False)
-
-    agg = df.groupby(["k"], as_index=False).agg(
-        runs=("seed", "count"),
-        va_mean=("va_rate", "mean"), va_std=("va_rate", "std"),
-        em_mean=("em_rate", "mean"), em_std=("em_rate", "std"),
-        ex_mean=("ex_rate", "mean"), ex_std=("ex_rate", "std"),
-        ts_mean=("ts_rate", "mean"), ts_std=("ts_rate", "std"),
-    )
-    agg.to_csv(run_dir / "grid_summary_by_k.csv", index=False)
-    return df, agg
+def _write_run_report(
+    *,
+    rows: list[dict[str, Any]],
+    run_dir: Path,
+    run_tag: str,
+    eval_profile: str,
+    k_values: list[int],
+    seeds: list[int],
+) -> Path:
+    report_path = run_dir / "run_report.json"
+    payload = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "run_tag": run_tag,
+        "eval_profile": eval_profile,
+        "k_values": list(k_values),
+        "seeds": list(seeds),
+        "runs": rows,
+    }
+    report_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return report_path
 
 
 def run_eval_grid(
@@ -82,18 +80,16 @@ def run_eval_grid(
     runs_dir: str | Path,
     run_metadata: dict[str, Any],
     limit: int | None = None,
-    copy_canonical: bool = False,
-    canonical_dir: str | Path | None = None,
     enable_ts_for_k: set[int] | None = None,
     ts_n: int = 10,
     ts_prefix: str = "classicmodels_ts",
     ts_max_rows: int = 500,
     max_new_tokens: int = 128,
     eval_profile: str = EVAL_PROFILE_MODEL_ONLY_RAW,
-) -> tuple[pd.DataFrame, pd.DataFrame, Path]:
-    """Run a (k × seed) evaluation grid and write results to runs_dir.
+) -> dict[str, Any]:
+    """Run a (k × seed) grid and save one JSON file per condition.
 
-    Returns (per-run DataFrame, per-k aggregated DataFrame, run directory Path).
+    Returns a plain run report with saved file paths and simple per-run metrics.
     """
     if not seeds:
         raise ValueError("Provide at least one seed.")
@@ -119,7 +115,6 @@ def run_eval_grid(
         return eng
 
     rows: list[dict[str, Any]] = []
-    primary_seed = seeds[0]
 
     try:
         for k in k_values:
@@ -167,9 +162,6 @@ def run_eval_grid(
                     "json_path": str(save_path),
                 })
 
-                if copy_canonical and seed == primary_seed and k in {0, 3} and canonical_dir:
-                    _copy_canonical_result(save_path=save_path, canonical_dir=canonical_dir, k=k)
-
     finally:
         for conn in ts_connectors.values():
             try:
@@ -177,10 +169,23 @@ def run_eval_grid(
             except Exception:
                 pass
 
-    df, agg = _write_grid_summaries(rows, run_dir)
+    rows = sorted(rows, key=lambda row: (row["k"], row["seed"]))
+    report_path = _write_run_report(
+        rows=rows,
+        run_dir=run_dir,
+        run_tag=run_tag,
+        eval_profile=eval_profile,
+        k_values=k_values,
+        seeds=seeds,
+    )
 
-    print("Saved grid run to:", run_dir, "| eval_profile:", eval_profile)
-    return df, agg, run_dir
+    print("Saved run dir:", run_dir, "| eval_profile:", eval_profile)
+    return {
+        "run_dir": run_dir,
+        "report_path": report_path,
+        "eval_profile": eval_profile,
+        "runs": rows,
+    }
 
 
 __all__ = ["run_eval_grid"]
