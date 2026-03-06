@@ -15,6 +15,7 @@ from sqlalchemy.engine import Engine
 from .db import safe_connection
 
 
+# Schema-linking heuristic (Lin et al. [2]): PK and identifier columns surfaced first.
 NAME_LIKE_RE = re.compile(r"name|id|line|code|number", re.IGNORECASE)
 
 

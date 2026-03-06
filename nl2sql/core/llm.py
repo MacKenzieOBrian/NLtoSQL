@@ -11,10 +11,9 @@ import re
 from typing import Any
 
 
-# Anchors SELECT at line starts; optional "sql:" prefix covers labelled model outputs.
 SQL_START_RE = re.compile(r"(?im)^\s*(?:sql\s*:\s*)?select\b")
 
-# Articles and demonstratives that signal prose rather than a table name after FROM.
+# Determiners cannot be SQL identifiers — FROM followed by one signals prose output.
 _PROSE_FROM_STOPWORDS = {"the", "a", "an", "this", "that", "these", "those"}
 
 
@@ -48,7 +47,6 @@ def extract_first_select(text: str) -> str | None:
         stmt = tail if semi == -1 else tail[: semi + 1]
         stmt = re.sub(r"(?im)^\s*sql\s*:\s*", "", stmt, count=1).strip()
 
-        # Reject statements where FROM is followed by prose rather than a table name.
         from_m = re.search(r"(?is)\bfrom\b", stmt)
         if not from_m:
             continue
@@ -81,8 +79,7 @@ def generate_sql_from_messages(
     import torch
     from transformers import StoppingCriteria, StoppingCriteriaList
 
-    class _StopOnSemicolon(StoppingCriteria):
-        """Stop at ';' so the model doesn't continue with explanations after the query."""
+    class _StopOnSemicolon(StoppingCriteria):  # https://discuss.huggingface.co/t/implementing-stoppingcriteria-for-code-generating-transformers/52922
         def __init__(self, tok: Any):
             ids = tok.encode(";", add_special_tokens=False)
             self._semi_id = ids[-1] if ids else None
@@ -92,18 +89,19 @@ def generate_sql_from_messages(
                 return False
             return input_ids[0, -1].item() == self._semi_id
 
+    # https://huggingface.co/docs/transformers/en/chat_templating
     input_ids = tokenizer.apply_chat_template(
         messages,
         tokenize=True,
         add_generation_prompt=True,
         return_tensors="pt",
     ).to(model.device)
-    attention_mask = torch.ones_like(input_ids)
+    attention_mask = torch.ones_like(input_ids)  # https://discuss.huggingface.co/t/clarification-on-the-attention-mask/1538
 
-    pad_token_id = getattr(tokenizer, "pad_token_id", None) or getattr(tokenizer, "eos_token_id", None)
+    pad_token_id = getattr(tokenizer, "pad_token_id", None) or getattr(tokenizer, "eos_token_id", None)  # https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct/discussions/40
     eos_token_id = getattr(tokenizer, "eos_token_id", None)
 
-    # HuggingFace warns if temperature/top_p are set when greedy decoding is used.
+    # greedy decoding: suppress HF temperature warning https://github.com/huggingface/transformers/issues/31839
     effective_temperature = float(temperature) if do_sample else 1.0
     effective_top_p = float(top_p) if do_sample else 1.0
 
@@ -121,7 +119,6 @@ def generate_sql_from_messages(
     with torch.no_grad():
         out = model.generate(input_ids, attention_mask=attention_mask, **gen_kwargs)
 
-    # Slice off the input prompt; decode only the tokens the model generated.
     gen_ids = out[0][input_ids.shape[-1]:]
     gen_text = tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
 

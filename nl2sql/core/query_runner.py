@@ -25,8 +25,6 @@ def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-# Single authoritative DML blocklist — imported by eval.py and sql_guardrails.py
-# so all safety checks stay in sync without copying the list.
 DEFAULT_FORBIDDEN_TOKENS = [
     "drop ", "delete ", "truncate ", "alter ", "create ",
     "update ", "insert ", "grant ", "revoke ",
@@ -66,6 +64,12 @@ class QueryResult:
 
 
 class QueryRunner:
+    """Safe, logged SQL executor: check_sql_safety → safe_connection → execute → QueryResult.
+
+    Single execution path — safety and logging cannot be bypassed by any caller.
+    https://docs.sqlalchemy.org/en/20/core/connections.html
+    """
+
     def __init__(self, engine: Engine, *, max_rows: int = 1000, forbidden_tokens: Optional[list[str]] = None):
         self.engine = engine
         self.max_rows = max_rows
@@ -89,7 +93,7 @@ class QueryRunner:
             with safe_connection(self.engine) as conn:
                 result = conn.execute(sqlalchemy.text(sql), params or {})
                 cols = list(result.keys())
-                # Fetch one extra row to detect truncation without materialising everything.
+                # +1 to detect truncation without materialising full result.
                 rows = result.fetchmany(self.max_rows + 1)
                 truncated = len(rows) > self.max_rows
                 if truncated:
