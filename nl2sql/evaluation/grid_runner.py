@@ -17,7 +17,7 @@ from typing import Any
 import pandas as pd
 from sqlalchemy.engine import Engine
 
-from ..core.db import create_engine_with_connector
+from ..infra.db import create_engine_with_connector
 from ..evaluation.eval import EvalRunConfig, eval_run
 
 

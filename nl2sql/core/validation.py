@@ -1,9 +1,4 @@
-"""
-Validation helpers for generated SQL.
-
-Parses schema text from the prompt context and checks that table names,
-column names, and SQL safety constraints are satisfied before execution.
-"""
+"""Pre-execution SQL validation."""
 
 from __future__ import annotations
 
@@ -34,7 +29,7 @@ def parse_schema_text(schema_text: str) -> tuple[set[str], dict[str, set[str]]]:
     return tables, table_cols
 
 
-# SELECT * blocked: wildcard results never match gold SQL naming specific columns.
+# Block SELECT * so predictions stay close to the expected column set.
 _SELECT_STAR_RE = re.compile(r"(?is)\bselect\s+([a-zA-Z_][\w$]*\.)?\*")
 
 
@@ -51,9 +46,7 @@ def schema_validate(
     sql_low = (sql or "").lower()
     for m in re.finditer(r"(?is)\b(from|join)\s+([a-zA-Z_][\w$]*)", sql_low):
         table = m.group(2)
-        # Peek at the character immediately after the identifier. If it is "(",
-        # the "table" is actually a subquery alias (FROM (SELECT ...) AS t) — not
-        # a real table name, so skip it rather than rejecting a valid query.
+        # Skip subqueries like FROM (SELECT ...) AS t.
         after = sql_low[m.end(): m.end() + 1]
         if after == "(" or table in tables:
             continue
@@ -67,7 +60,6 @@ def validate_sql(
     schema_text: Optional[str] = None,
 ) -> dict:
     """Validate SQL formatting + schema references without executing."""
-    # catch obvious formatting/schema errors before hitting the database.
     if not sql or not sql.strip():
         return {"valid": False, "reason": "empty_sql"}
 
@@ -81,7 +73,7 @@ def validate_sql(
     if not schema_text:
         return {"valid": False, "reason": "schema_missing"}
 
-    # Table-name presence only — column-level checks are out of scope [22].
+    # Only check table names here. Column checks are intentionally omitted.
     tables, _ = parse_schema_text(schema_text)
     if not tables:
         return {"valid": False, "reason": "schema_missing"}

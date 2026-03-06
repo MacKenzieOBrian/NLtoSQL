@@ -1,9 +1,4 @@
-"""
-Safe query executor.
-
-Wraps SQLAlchemy to run model-generated SQL in a read-only, row-limited,
-safety-checked manner. Every execution is logged as an immutable QueryResult.
-"""
+"""Read-only SQL execution helper used by eval and the agent loop."""
 
 from __future__ import annotations
 
@@ -14,7 +9,7 @@ from typing import Any, Optional
 import sqlalchemy
 from sqlalchemy.engine import Engine
 
-from .db import safe_connection
+from ..infra.db import safe_connection
 
 
 class QueryExecutionError(Exception):
@@ -44,7 +39,7 @@ def check_sql_safety(sql: str, forbidden_tokens: Optional[list[str]] = None) -> 
 
 @dataclass(frozen=True)
 class QueryResult:
-    """Immutable record of one execution — frozen so it cannot be altered after scoring."""
+    """Store the result of one query execution."""
     sql: str
     params: Optional[dict[str, Any]]
     timestamp: str
@@ -64,11 +59,7 @@ class QueryResult:
 
 
 class QueryRunner:
-    """Safe, logged SQL executor: check_sql_safety → safe_connection → execute → QueryResult.
-
-    Single execution path — safety and logging cannot be bypassed by any caller.
-    https://docs.sqlalchemy.org/en/20/core/connections.html
-    """
+    """Run SQL through one safe execution path and store the result."""
 
     def __init__(self, engine: Engine, *, max_rows: int = 1000, forbidden_tokens: Optional[list[str]] = None):
         self.engine = engine
@@ -77,14 +68,14 @@ class QueryRunner:
         self.forbidden_tokens = forbidden_tokens or list(DEFAULT_FORBIDDEN_TOKENS)
 
     def _safety_check(self, sql: str) -> None:
-        # Re-raises as QueryExecutionError so run() callers get one exception type.
+        # Re-wrap safety errors so callers handle one exception type.
         try:
             check_sql_safety(sql, self.forbidden_tokens)
         except ValueError as exc:
             raise QueryExecutionError(str(exc)) from exc
 
     def run(self, sql: str, *, params: Optional[dict[str, Any]] = None) -> QueryResult:
-        """Execute sql and return a QueryResult. KEY METHOD — used by eval and ReAct loop."""
+        """Execute SQL and return a QueryResult."""
         timestamp = now_utc_iso()
         try:
             self._safety_check(sql)

@@ -1,11 +1,4 @@
-"""
-Evaluation pipeline for VA / EM / EX / TS metrics.
-
-Primary path: prompt → generate → score with no post-processing (model-only raw).
-Extension path: optional guardrails/postprocess layers enabled via EvalRunConfig.
-
-Related benchmarks: Spider [22], distilled test suites [21], text-to-SQL surveys [3, 23].
-"""
+"""Evaluation helpers for VA, EM, EX, and TS."""
 
 from __future__ import annotations
 
@@ -21,7 +14,7 @@ from typing import Any, Callable, Optional
 import sqlalchemy
 from sqlalchemy.engine import Engine
 
-from ..core.db import safe_connection
+from ..infra.db import safe_connection
 from ..core.llm import generate_sql_from_messages
 from ..core.postprocess import guarded_postprocess, normalize_sql as _normalize_sql
 from ..core.prompting import make_few_shot_messages
@@ -36,7 +29,7 @@ def _clean_sql(
     apply_sql_guardrails: bool,
     apply_postprocess: bool,
 ) -> str:
-    # Optional cleanup layer — disabled for primary runs, enabled only in extension runs.
+    # Optional cleanup layer for runs that enable guardrails or post-processing.
     out = (sql_text or "").strip()
 
     if apply_sql_guardrails:
@@ -116,11 +109,11 @@ def execution_accuracy(
     if not pred_ok:
         return False, pred_err, gold_err
 
-    return Counter(pred_rows) == Counter(gold_rows), None, None  # bag equality — Spider EX [22]
+    return Counter(pred_rows) == Counter(gold_rows), None, None
 
 
 def _coerce_cell(x: Any) -> Any:
-    # IEEE 754 NaN != NaN; sentinel + rounding prevents false Counter mismatches. https://docs.python.org/3/library/math.html#math.isnan
+    # Normalize floats so row comparisons stay stable.
     if x is None:
         return None
     if isinstance(x, float):
@@ -151,7 +144,7 @@ def test_suite_accuracy_for_item(
     max_rows: int = 2000,
 ) -> int:
     """Return 1 if pred_sql matches gold_sql on every usable perturbed database, else 0."""
-    # ORDER BY queries need order-sensitive comparison; others use Counter (bag equality).
+    # ORDER BY queries need order-sensitive comparison; others can use bag equality.
     ordered = bool(re.search(r"(?i)\border\s+by\b", gold_sql or ""))
     usable = 0
     for db in suite_db_names:
@@ -178,7 +171,7 @@ def _build_item_pool(
 ) -> list[dict[str, Any]]:
     """Exclude the current test item from the exemplar pool to prevent leakage.
 
-    Both nlq AND sql must match — nlq alone would drop valid paraphrases.
+    Match on both nlq and sql so paraphrases are not removed by mistake.
     """
     pool = exemplar_pool if exemplar_pool is not None else test_set
     if not avoid_exemplar_leakage:
@@ -200,7 +193,7 @@ def _sample_exemplars(*, rng: random.Random, pool: list[dict[str, Any]], k: int)
     return rng.sample(pool, k)
 
 
-@dataclass(frozen=True)  # https://docs.python.org/3/library/dataclasses.html
+@dataclass(frozen=True)
 class EvalRunConfig:
     """Generation flags for eval_run(). All False = model-only raw (primary path)."""
     max_new_tokens: int = 128
@@ -309,9 +302,9 @@ def eval_run(
     run_metadata: Optional[dict[str, Any]] = None,
     config: EvalRunConfig | None = None,
 ) -> list[EvalItem]:
-    """KEY FUNCTION — run one complete evaluation grid cell and return per-item results."""
+    """Run one evaluation setting and return per-item results."""
     cfg = config or EvalRunConfig()
-    rng = random.Random(seed)  # https://docs.python.org/3/library/random.html#random.Random
+    rng = random.Random(seed)
     items = test_set[:limit] if limit else test_set
 
     qr = QueryRunner(engine, max_rows=cfg.max_rows)
@@ -403,3 +396,26 @@ def categorize_failure(item: dict) -> str:
     if "intent_mismatch" in err:
         return "intent_mismatch"
     return "semantic_mismatch"
+
+
+def save_failure_profile(
+    *,
+    items: list[dict[str, Any]],
+    quick_limit: int | None,
+    ts_n: int,
+    config_name: str,
+    out_path: str | Path,
+) -> tuple[dict[str, int], Path]:
+    """Persist EX failure category counts for notebook diagnostics."""
+    counts = Counter(categorize_failure(r) for r in items)
+    path = Path(out_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "counts": dict(counts),
+        "n_items": len(items),
+        "quick_limit": quick_limit,
+        "ts_n": ts_n,
+        "config_name": config_name,
+    }
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return dict(counts), path

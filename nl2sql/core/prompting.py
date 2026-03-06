@@ -1,14 +1,8 @@
-"""
-Prompt builders for the baseline few-shot evaluation.
-
-Assembles schema context, few-shot NLQ→SQL examples, and the target
-question into a chat message list for the model.
-"""
+"""Prompt builders for the baseline notebooks."""
 
 from __future__ import annotations
 
 
-# https://huggingface.co/docs/transformers/en/chat_templating
 SYSTEM_INSTRUCTIONS = """You are a MySQL analyst.
 Write one SQL SELECT query for the user question.
 
@@ -20,18 +14,13 @@ Rules:
 """
 
 
-# KEY FUNCTION — builds the prompt for every baseline and ReAct evaluation call.
 def make_few_shot_messages(
     *,
     schema: str,
     exemplars: list[dict],
     nlq: str,
 ) -> list[dict[str, str]]:
-    """Build a schema-grounded few-shot prompt for chat-template models.
-
-    Schema precedes exemplars so table names are in context before the model reads
-    the examples. https://huggingface.co/docs/transformers/en/chat_templating
-    """
+    """Build a chat prompt with schema, examples, and the new question."""
     msgs: list[dict[str, str]] = [
         {"role": "system", "content": SYSTEM_INSTRUCTIONS},
         {"role": "user", "content": "Schema Details:\n" + schema},

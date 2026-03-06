@@ -1,12 +1,8 @@
-"""
-HuggingFace model loading helpers.
-
-4-bit NF4 quantized load with optional PeftModel adapter.
-https://huggingface.co/docs/transformers/main/quantization/bitsandbytes
-"""
+"""Model loading helpers for the notebook workflows."""
 
 from __future__ import annotations
 
+import gc
 import re
 from pathlib import Path
 from typing import Any
@@ -20,6 +16,21 @@ def _compute_dtype() -> torch.dtype:
         major, _ = torch.cuda.get_device_capability(0)
         return torch.bfloat16 if major >= 8 else torch.float16
     return torch.float32
+
+
+def build_4bit_quant_config() -> tuple[Any, torch.dtype, bool]:
+    """Return (BitsAndBytesConfig, compute_dtype, use_bf16)."""
+    from transformers import BitsAndBytesConfig
+
+    compute_dtype = _compute_dtype()
+    use_bf16 = bool(compute_dtype == torch.bfloat16)
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=compute_dtype,
+    )
+    return bnb_config, compute_dtype, use_bf16
 
 
 def load_quantized_model(
@@ -65,7 +76,7 @@ def load_quantized_model(
             token=token,
         )
 
-    # Greedy decoding defaults — avoids HF sampling-parameter warnings.
+    # Keep generation defaults deterministic.
     model.generation_config.do_sample = False
     model.generation_config.temperature = 1.0
     model.generation_config.top_p = 1.0
@@ -95,4 +106,53 @@ def resolve_adapter_dir(path_str: str) -> Path:
     raise FileNotFoundError(f"No adapter found under: {p}")
 
 
-__all__ = ["load_quantized_model", "resolve_adapter_dir"]
+def load_eval_adapter_model(
+    *,
+    model_id: str,
+    adapter_path: str,
+    bnb_config: Any,
+    compute_dtype: torch.dtype,
+    token: str | None = None,
+    offload_dir: str | Path = "/content/offload",
+) -> tuple[Any, Path]:
+    """Load a base model plus local adapter for evaluation."""
+    from peft import PeftModel
+    from transformers import AutoModelForCausalLM
+
+    resolved_adapter = resolve_adapter_dir(adapter_path)
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    offload_dir = Path(offload_dir)
+    offload_dir.mkdir(parents=True, exist_ok=True)
+
+    eval_base = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        quantization_config=bnb_config,
+        device_map="auto",
+        torch_dtype=compute_dtype,
+        low_cpu_mem_usage=True,
+        max_memory={0: "10GiB", "cpu": "64GiB"},
+        offload_folder=str(offload_dir),
+        token=token if token else True,
+    )
+    eval_model = PeftModel.from_pretrained(
+        eval_base,
+        str(resolved_adapter),
+        is_trainable=False,
+        local_files_only=True,
+    )
+    eval_model.eval()
+    eval_model.generation_config.do_sample = False
+    eval_model.generation_config.temperature = 1.0
+    eval_model.generation_config.top_p = 1.0
+    return eval_model, resolved_adapter
+
+
+__all__ = [
+    "build_4bit_quant_config",
+    "load_eval_adapter_model",
+    "load_quantized_model",
+    "resolve_adapter_dir",
+]

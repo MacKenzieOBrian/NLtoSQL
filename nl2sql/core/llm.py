@@ -1,9 +1,4 @@
-"""
-Model generation helpers.
-
-Wraps HuggingFace transformers for chat-template models and handles SQL
-extraction from raw model output.
-"""
+"""Helpers for generation and SQL extraction."""
 
 from __future__ import annotations
 
@@ -13,7 +8,7 @@ from typing import Any
 
 SQL_START_RE = re.compile(r"(?im)^\s*(?:sql\s*:\s*)?select\b")
 
-# Determiners cannot be SQL identifiers — FROM followed by one signals prose output.
+# If FROM is followed by one of these words, the model probably wrote prose.
 _PROSE_FROM_STOPWORDS = {"the", "a", "an", "this", "that", "these", "those"}
 
 
@@ -75,11 +70,11 @@ def generate_sql_from_messages(
     stop_on_semicolon: bool = False,
     **_kwargs: Any,  # compatibility with older call sites
 ) -> str:
-    """Run the model and return SQL (or raw text if no SELECT found). KEY FUNCTION."""
+    """Run the model and return SQL, or raw text if no SELECT is found."""
     import torch
     from transformers import StoppingCriteria, StoppingCriteriaList
 
-    class _StopOnSemicolon(StoppingCriteria):  # https://discuss.huggingface.co/t/implementing-stoppingcriteria-for-code-generating-transformers/52922
+    class _StopOnSemicolon(StoppingCriteria):
         def __init__(self, tok: Any):
             ids = tok.encode(";", add_special_tokens=False)
             self._semi_id = ids[-1] if ids else None
@@ -89,19 +84,18 @@ def generate_sql_from_messages(
                 return False
             return input_ids[0, -1].item() == self._semi_id
 
-    # https://huggingface.co/docs/transformers/en/chat_templating
     input_ids = tokenizer.apply_chat_template(
         messages,
         tokenize=True,
         add_generation_prompt=True,
         return_tensors="pt",
     ).to(model.device)
-    attention_mask = torch.ones_like(input_ids)  # https://discuss.huggingface.co/t/clarification-on-the-attention-mask/1538
+    attention_mask = torch.ones_like(input_ids)
 
-    pad_token_id = getattr(tokenizer, "pad_token_id", None) or getattr(tokenizer, "eos_token_id", None)  # https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct/discussions/40
+    pad_token_id = getattr(tokenizer, "pad_token_id", None) or getattr(tokenizer, "eos_token_id", None)
     eos_token_id = getattr(tokenizer, "eos_token_id", None)
 
-    # greedy decoding: suppress HF temperature warning https://github.com/huggingface/transformers/issues/31839
+    # Keep greedy decoding parameters simple when sampling is off.
     effective_temperature = float(temperature) if do_sample else 1.0
     effective_top_p = float(top_p) if do_sample else 1.0
 

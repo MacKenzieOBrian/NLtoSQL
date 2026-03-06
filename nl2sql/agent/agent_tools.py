@@ -1,9 +1,4 @@
-"""
-Shared runtime context for ReAct-style notebook workflows.
-
-Related literature: ReAct-style reasoning and acting [19] and LLM text-to-SQL
-survey coverage [9, 12].
-"""
+"""Shared runtime context for the agent notebook."""
 
 from __future__ import annotations
 
@@ -16,7 +11,7 @@ from ..core.schema import build_schema_summary
 
 
 def _safe_str(obj: Any, key: str) -> str:
-    """Returns '' rather than raising when schema cache entries are missing or malformed."""
+    """Return an empty string instead of failing on bad schema entries."""
     return str(obj.get(key) or "").strip() if isinstance(obj, dict) else ""
 
 
@@ -49,7 +44,7 @@ def get_agent_context() -> AgentContext:
 
 
 def schema_to_text(schema_cache: dict[str, Any] | None) -> str:
-    """Serialise a structured schema cache to the compact prompt format: table(col1, col2, ...)."""
+    """Turn a schema dict into simple prompt text."""
     if not isinstance(schema_cache, dict):
         return ""
 
@@ -78,7 +73,7 @@ def schema_to_text(schema_cache: dict[str, Any] | None) -> str:
 
 
 def ensure_schema_text(ctx: AgentContext) -> str:
-    """Return schema text, preferring cached text, then cached struct, then a live DB query."""
+    """Return schema text, using cached data first when available."""
     if isinstance(ctx.schema_text_cache, str) and ctx.schema_text_cache.strip():
         return ctx.schema_text_cache
 

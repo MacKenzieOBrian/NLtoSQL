@@ -1,0 +1,385 @@
+"""Notebook orchestration helpers shared across the experiment notebooks."""
+
+from __future__ import annotations
+
+import json
+import re
+import shutil
+import subprocess
+from dataclasses import asdict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable, Optional
+
+from sqlalchemy.engine import Engine
+
+
+def model_alias_from_id(model_id: str) -> str:
+    """Convert a model id into a filesystem-safe alias."""
+    tail = (model_id or "model").split("/")[-1]
+    alias = re.sub(r"[^a-z0-9]+", "_", tail.lower()).strip("_")
+    return alias or "model"
+
+
+def git_short_commit(default: str = "unknown") -> str:
+    """Return the current short git hash."""
+    try:
+        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
+    except Exception:
+        return default
+
+
+def build_run_metadata(
+    *,
+    model_id: str,
+    model_alias: str,
+    method: str,
+    notebook: str,
+    adapter_dir: str | None = None,
+    commit: str | None = None,
+) -> dict[str, Any]:
+    """Build consistent run metadata payloads for JSON result files."""
+    payload: dict[str, Any] = {
+        "commit": commit or git_short_commit(),
+        "model_id": model_id,
+        "model_alias": model_alias,
+        "notebook": notebook,
+        "method": method,
+    }
+    if adapter_dir:
+        payload["adapter_dir"] = adapter_dir
+    return payload
+
+
+QLORA_EXPERIMENT_PRESETS: dict[str, dict[str, Any]] = {
+    "llama3_8b": {
+        "label": "Llama-3-8B QLoRA",
+        "model_id": "meta-llama/Meta-Llama-3-8B-Instruct",
+        "adapter_output_dir": "results/adapters/qlora_llama3_8b_classicmodels",
+        "lora_r": 32,
+        "lora_alpha": 64,
+        "lora_dropout": 0.05,
+        "target_modules": ["q_proj", "v_proj"],
+        "train_batch_size": 1,
+        "grad_accum_steps": 8,
+        "learning_rate": 1e-4,
+        "num_train_epochs": 3,
+        "warmup_ratio": 0.05,
+        "max_seq_length": 1024,
+        "save_steps": 200,
+        "save_total_limit": 2,
+    },
+    "qwen2_5_7b": {
+        "label": "Qwen2.5-7B QLoRA",
+        "model_id": "Qwen/Qwen2.5-7B-Instruct",
+        "adapter_output_dir": "results/adapters/qlora_qwen2_5_7b_classicmodels",
+        "lora_r": 32,
+        "lora_alpha": 64,
+        "lora_dropout": 0.05,
+        "target_modules": ["q_proj", "v_proj"],
+        "train_batch_size": 1,
+        "grad_accum_steps": 8,
+        "learning_rate": 1e-4,
+        "num_train_epochs": 3,
+        "warmup_ratio": 0.05,
+        "max_seq_length": 1024,
+        "save_steps": 200,
+        "save_total_limit": 2,
+    },
+}
+
+
+def train_qlora_adapter(
+    *,
+    model: Any,
+    tokenizer: Any,
+    train_dataset: Any,
+    experiment_config: dict[str, Any],
+    output_dir: str | Path,
+    use_bf16: bool,
+) -> dict[str, Any]:
+    """Train one QLoRA adapter and save a simple run card."""
+    from trl import SFTTrainer
+    from transformers import TrainingArguments
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    cfg = experiment_config
+    training_args = TrainingArguments(
+        output_dir=str(output_dir),
+        per_device_train_batch_size=cfg["train_batch_size"],
+        gradient_accumulation_steps=cfg["grad_accum_steps"],
+        learning_rate=cfg["learning_rate"],
+        num_train_epochs=cfg["num_train_epochs"],
+        warmup_ratio=cfg["warmup_ratio"],
+        logging_steps=10,
+        save_steps=cfg["save_steps"],
+        save_total_limit=cfg["save_total_limit"],
+        bf16=use_bf16,
+        fp16=(not use_bf16),
+        optim="paged_adamw_8bit",
+        report_to=[],
+    )
+
+    trainer = SFTTrainer(
+        model=model,
+        tokenizer=tokenizer,
+        train_dataset=train_dataset,
+        dataset_text_field="text",
+        args=training_args,
+        max_seq_length=cfg["max_seq_length"],
+    )
+    trainer.train()
+    trainer.model.save_pretrained(str(output_dir))
+    tokenizer.save_pretrained(str(output_dir))
+
+    run_card = {
+        **cfg,
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "precision": "bf16" if use_bf16 else "fp16",
+    }
+    (output_dir / "run_card.json").write_text(json.dumps(run_card, indent=2), encoding="utf-8")
+    return run_card
+
+
+def run_model_grid_notebook_eval(
+    *,
+    test_set: list[dict[str, Any]],
+    schema_summary: str,
+    model: Any,
+    tokenizer: Any,
+    engine: Any,
+    instance_connection_name: str,
+    db_user: str,
+    db_pass: str,
+    model_id: str,
+    method: str,
+    notebook: str,
+    run_tag: str,
+    runs_dir: str,
+    canonical_dir: str,
+    k_values: list[int],
+    seeds: list[int],
+    model_alias: str | None = None,
+    adapter_dir: str | None = None,
+    limit: int | None = None,
+    copy_canonical: bool = False,
+    enable_ts: bool = True,
+    ts_for_k_values: list[int] | None = None,
+    ts_n: int = 10,
+    ts_prefix: str = "classicmodels_ts",
+    ts_max_rows: int = 500,
+    max_new_tokens: int | None = None,
+) -> tuple[Any, Any, Path]:
+    """Run the shared eval grid with common notebook settings."""
+    from nl2sql.evaluation.grid_runner import run_eval_grid
+
+    resolved_alias = model_alias or model_alias_from_id(model_id)
+    run_metadata = build_run_metadata(
+        model_id=model_id,
+        model_alias=resolved_alias,
+        method=method,
+        notebook=notebook,
+        adapter_dir=adapter_dir,
+    )
+    return run_eval_grid(
+        test_set=test_set,
+        schema_summary=schema_summary,
+        model=model,
+        tokenizer=tokenizer,
+        engine=engine,
+        instance_connection_name=instance_connection_name,
+        db_user=db_user,
+        db_pass=db_pass,
+        k_values=k_values,
+        seeds=seeds,
+        run_tag=run_tag,
+        runs_dir=runs_dir,
+        run_metadata=run_metadata,
+        limit=limit,
+        copy_canonical=copy_canonical,
+        canonical_dir=canonical_dir,
+        enable_ts_for_k=set(ts_for_k_values or []) if enable_ts else None,
+        ts_n=ts_n,
+        ts_prefix=ts_prefix,
+        ts_max_rows=ts_max_rows,
+        max_new_tokens=max_new_tokens,
+    )
+
+
+def evaluate_react_ablation(
+    *,
+    test_set: list[dict[str, Any]],
+    engine: Engine,
+    config: Any,
+    limit: int | None = None,
+    ts_suite_db_names: Optional[list[str]] = None,
+    ts_make_engine_fn: Optional[Callable[[str], Engine]] = None,
+    ts_max_rows: int = 500,
+    progress_every: int = 20,
+    run_metadata: Optional[dict[str, Any]] = None,
+    save_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Run ReAct over a split and return a report dict."""
+    from nl2sql.agent.react_pipeline import run_react_pipeline
+    from nl2sql.agent.agent_tools import get_agent_context
+    from nl2sql.core.postprocess import normalize_sql
+    from nl2sql.core.query_runner import now_utc_iso
+    from nl2sql.evaluation.eval import execution_accuracy, test_suite_accuracy_for_item
+
+    ctx = get_agent_context()
+    items = test_set[:limit] if limit else list(test_set)
+    out_items: list[dict[str, Any]] = []
+
+    for i, item in enumerate(items):
+        nlq = item.get("nlq", "")
+        gold_sql = item.get("sql", "")
+        pred_sql, trace = run_react_pipeline(nlq=nlq, config=config)
+
+        if pred_sql:
+            meta = ctx.runner.run(pred_sql)
+            va = bool(meta.success)
+            pred_err = meta.error
+        else:
+            va = False
+            pred_err = "no_prediction"
+
+        em = bool(normalize_sql(pred_sql) == normalize_sql(gold_sql)) if pred_sql else False
+        ex, ex_pred_err, ex_gold_err = execution_accuracy(
+            engine=engine,
+            pred_sql=pred_sql if pred_sql else "SELECT 1;",
+            gold_sql=gold_sql,
+            max_compare_rows=10000,
+        )
+        if not pred_sql:
+            ex = False
+
+        ts: Optional[int] = None
+        if va and pred_sql and ts_suite_db_names and ts_make_engine_fn:
+            ts = test_suite_accuracy_for_item(
+                make_engine_fn=ts_make_engine_fn,
+                suite_db_names=ts_suite_db_names,
+                gold_sql=gold_sql,
+                pred_sql=pred_sql,
+                max_rows=ts_max_rows,
+            )
+
+        out_items.append({
+            "i": i, "nlq": nlq, "gold_sql": gold_sql,
+            "raw_sql": pred_sql, "pred_sql": pred_sql,
+            "va": bool(va), "em": bool(em), "ex": bool(ex), "ts": ts,
+            "error": pred_err or ex_pred_err, "gold_error": ex_gold_err,
+            "trace": trace,
+        })
+
+        if progress_every and ((i + 1) % progress_every == 0 or (i + 1) == len(items)):
+            n_ = max(len(out_items), 1)
+            print(
+                f"ReAct progress {i + 1}/{len(items)} | "
+                f"VA={sum(int(x['va']) for x in out_items)/n_:.3f} "
+                f"EM={sum(int(x['em']) for x in out_items)/n_:.3f} "
+                f"EX={sum(int(x['ex']) for x in out_items)/n_:.3f}"
+            )
+
+    n = len(out_items)
+    va_rate = sum(int(x["va"]) for x in out_items) / max(n, 1)
+    em_rate = sum(int(x["em"]) for x in out_items) / max(n, 1)
+    ex_rate = sum(int(x["ex"]) for x in out_items) / max(n, 1)
+    ts_values = [int(x["ts"]) for x in out_items if x.get("ts") is not None]
+    ts_rate = (sum(ts_values) / len(ts_values)) if ts_values else None
+
+    report: dict[str, Any] = {
+        "timestamp": now_utc_iso(),
+        "method": "react",
+        "config": asdict(config),
+        "n": n,
+        "va_rate": va_rate, "em_rate": em_rate, "ex_rate": ex_rate,
+        "ts_rate": ts_rate, "ts_n": len(ts_values),
+        "items": out_items,
+    }
+    if run_metadata:
+        report["run_metadata"] = run_metadata
+    if save_path:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        save_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return report
+
+
+def run_react_notebook_eval(
+    *,
+    test_set: list[dict[str, Any]],
+    engine: Any,
+    config: Any,
+    model_id: str,
+    adapter_path: str,
+    quick_limit: int | None,
+    ts_n: int,
+    ts_prefix: str,
+    ts_max_rows: int,
+    ts_make_engine_fn: Any,
+    notebook: str,
+    out_root: str | Path = "results/agent/runs",
+    canonical_path: str | Path = "results/agent/results_react_200.json",
+) -> tuple[dict[str, Any], list[dict[str, Any]], Path]:
+    """Run ReAct eval and manage the notebook output paths."""
+    run_tag = f"react_{config.name}"
+    run_ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%SZ")
+    run_dir = Path(out_root) / f"{run_tag}_{run_ts}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    out_path = run_dir / "results_react_eval.json"
+
+    suite_dbs = [f"{ts_prefix}_{i:02d}" for i in range(1, ts_n + 1)] if ts_n and ts_n > 0 else []
+    run_metadata = {
+        "commit": git_short_commit(),
+        "notebook": notebook,
+        "model_id": model_id,
+        "adapter_path": adapter_path,
+        "config_name": config.name,
+        "quick_limit": quick_limit,
+        "ts_n": ts_n,
+    }
+
+    report = evaluate_react_ablation(
+        test_set=test_set,
+        engine=engine,
+        config=config,
+        limit=quick_limit,
+        ts_suite_db_names=suite_dbs if suite_dbs else None,
+        ts_make_engine_fn=ts_make_engine_fn if suite_dbs else None,
+        ts_max_rows=ts_max_rows,
+        progress_every=20,
+        run_metadata=run_metadata,
+        save_path=out_path,
+    )
+
+    if quick_limit is None:
+        canonical = Path(canonical_path)
+        canonical.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(out_path, canonical)
+    return report, report.get("items", []), out_path
+
+
+def print_eval_rates(label: str, report: dict[str, Any]) -> None:
+    """Compact metric summary for notebook output."""
+    ts_rate = report.get("ts_rate")
+    print(
+        label,
+        "VA=", round(report.get("va_rate", 0.0), 3),
+        "EM=", round(report.get("em_rate", 0.0), 3),
+        "EX=", round(report.get("ex_rate", 0.0), 3),
+        "TS=", "NA" if ts_rate is None else round(ts_rate, 3),
+    )
+
+
+__all__ = [
+    "build_run_metadata",
+    "evaluate_react_ablation",
+    "git_short_commit",
+    "model_alias_from_id",
+    "QLORA_EXPERIMENT_PRESETS",
+    "print_eval_rates",
+    "run_model_grid_notebook_eval",
+    "run_react_notebook_eval",
+    "train_qlora_adapter",
+]

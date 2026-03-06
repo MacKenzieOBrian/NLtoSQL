@@ -1,8 +1,4 @@
-"""
-Schema inspection helpers.
-
-Queries INFORMATION_SCHEMA and builds the compact table(col, ...) text used in all prompts.
-"""
+"""Helpers for reading the DB schema and turning it into prompt text."""
 
 from __future__ import annotations
 
@@ -12,10 +8,10 @@ import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from .db import safe_connection
+from ..infra.db import safe_connection
 
 
-# Schema-linking heuristic (Lin et al. [2]): PK and identifier columns surfaced first.
+# Put obvious identifier columns first to make the prompt easier for the model.
 NAME_LIKE_RE = re.compile(r"name|id|line|code|number", re.IGNORECASE)
 
 
@@ -35,7 +31,7 @@ def get_table_columns(engine: Engine, *, db_name: str, table_name: str) -> pd.Da
         """
     )
     with safe_connection(engine) as conn:
-        # pandas.read_sql has adapter issues in some Colab environments; use raw execution.
+        # Raw execution is more reliable here than pandas.read_sql in Colab.
         result = conn.execute(query, {"db": db_name, "table": table_name})
         rows = result.fetchall()
 
@@ -46,11 +42,7 @@ def get_table_columns(engine: Engine, *, db_name: str, table_name: str) -> pd.Da
 
 
 def build_schema_summary(engine: Engine, *, db_name: str, max_cols_per_table: int = 50) -> str:
-    """Build compact schema text for model prompts: table(col1, col2, ...).
-
-    Primary-key and name-like columns are listed first to surface join-relevant
-    identifiers early in the token stream. Schema-linking motivation: Lin et al. [2].
-    """
+    """Build simple schema text for prompts: table(col1, col2, ...)."""
     chunks: list[str] = []
     for table in list_tables(engine):
         cols_df = get_table_columns(engine, db_name=db_name, table_name=table)

@@ -1,9 +1,8 @@
-"""
-NL->SQL package used by the dissertation notebooks.
+"""Small NL-to-SQL package used by the notebooks.
 
-How to read this package:
-1) `core/` holds model, prompt, DB, query-runner, and schema utilities.
-2) `evaluation/` holds model-only VA/EM/EX/TS evaluation helpers.
-3) `agent/` holds the custom execution-guided NL->SQL loop.
-4) `experiment_helpers.py` holds small shared notebook helpers.
+Folder guide:
+1) `core/` has the main pipeline helpers.
+2) `evaluation/` has scoring and analysis helpers.
+3) `agent/` has the ReAct-style loop.
+4) `infra/` has notebook setup code.
 """

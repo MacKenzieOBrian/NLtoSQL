@@ -1,18 +1,10 @@
-"""
-Prompt constants for the SQL generation and repair loop.
-
-Related work: ReAct prompting [19] and LLM-agent survey context [26].
-"""
+"""Prompt strings for generation and repair."""
 
 from __future__ import annotations
 
 
-# Disclosure (Item 4 confound): SQL_GENERATOR_SYSTEM_PROMPT differs from the
-# baseline SYSTEM_INSTRUCTIONS used in eval.py/prompting.py.  The baseline
-# prompt was designed before the ReAct loop and has different wording and
-# constraints.  This inconsistency is a known confound: any performance
-# difference between baseline and ReAct partly reflects different system prompts,
-# not only the ReAct loop itself.  Must be disclosed in the dissertation.
+# This prompt is slightly stricter than the baseline prompt because the agent
+# loop relies on repair and execution feedback.
 SQL_GENERATOR_SYSTEM_PROMPT = """You are a MySQL analyst.
 Return exactly one executable SQL SELECT statement.
 
@@ -27,7 +19,7 @@ Rules:
 """
 
 
-# Zero-shot repair aligned with DIN-SQL self-correction [5].
+# Repair prompt used after validation or execution errors.
 SQL_REPAIR_SYSTEM_PROMPT = """You fix faulty MySQL SELECT statements.
 Return exactly one corrected SQL SELECT statement.
 

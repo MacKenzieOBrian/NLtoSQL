@@ -1,8 +1,9 @@
 """
-SQL text cleanup helpers.
+Markdown fence stripping and forbidden-token rejection for raw model output.
 
-Turns raw model output into one executable SELECT statement by stripping
-markdown fences and rejecting non-SELECT output.
+Extension-path layer — disabled for primary model-only runs, enabled for
+optional reliability comparisons. Chat models routinely wrap SQL in fenced
+code blocks (```sql ... ```) which must be stripped before execution.
 """
 
 from __future__ import annotations
