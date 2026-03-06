@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import subprocess
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -89,6 +88,88 @@ QLORA_EXPERIMENT_PRESETS: dict[str, dict[str, Any]] = {
         "save_total_limit": 2,
     },
 }
+
+
+@dataclass(frozen=True)
+class GridPlan:
+    """Small notebook-level plan for one baseline/QLoRA rerun."""
+
+    eval_profile: str = EVAL_PROFILE_MODEL_ONLY_RAW
+    k_values: list[int] = field(default_factory=lambda: [0, 3])
+    seeds: list[int] = field(default_factory=lambda: [7, 17, 27])
+    enable_ts: bool = True
+    ts_for_k_values: list[int] = field(default_factory=lambda: [3])
+    ts_n: int = 10
+    ts_prefix: str = "classicmodels_ts"
+    ts_max_rows: int = 500
+    max_new_tokens: int | None = None
+
+
+def primary_grid_plan(*, max_new_tokens: int | None = None) -> GridPlan:
+    """Return the default dissertation rerun settings."""
+    return GridPlan(max_new_tokens=max_new_tokens)
+
+
+def print_grid_plan(run_tag: str, plan: GridPlan, *, extra: str | None = None) -> None:
+    """Print one short line that explains the grid run settings."""
+    suffix = f" | {extra}" if extra else ""
+    print(
+        f"Run: {run_tag} | profile={plan.eval_profile} | "
+        f"k={plan.k_values} | seeds={plan.seeds} | "
+        f"TS_k={plan.ts_for_k_values if plan.enable_ts else 'off'}{suffix}"
+    )
+
+
+def print_grid_run_report(report: dict[str, Any]) -> None:
+    """Print the saved paths and simple per-run rows for a grid report."""
+    print("Saved run dir:", report["run_dir"])
+    print("Saved run report:", report["report_path"])
+    print("Per-run metric rows:")
+    for row in report["runs"]:
+        print(row)
+
+
+@dataclass(frozen=True)
+class ReactEvalPlan:
+    """Small notebook-level plan for one ReAct rerun."""
+
+    quick_limit: int | None = None
+    ts_n: int = 10
+    ts_prefix: str = "classicmodels_ts"
+    ts_max_rows: int = 500
+
+
+def primary_react_eval_plan(
+    *,
+    quick_limit: int | None = None,
+    ts_n: int = 10,
+    ts_prefix: str = "classicmodels_ts",
+    ts_max_rows: int = 500,
+) -> ReactEvalPlan:
+    """Return the default ReAct notebook run settings."""
+    return ReactEvalPlan(
+        quick_limit=quick_limit,
+        ts_n=ts_n,
+        ts_prefix=ts_prefix,
+        ts_max_rows=ts_max_rows,
+    )
+
+
+def print_react_plan(config_name: str, plan: ReactEvalPlan) -> None:
+    """Print one short line that explains the ReAct notebook settings."""
+    print({
+        "config": config_name,
+        "quick_limit": plan.quick_limit,
+        "ts_n": plan.ts_n,
+        "ts_prefix": plan.ts_prefix,
+        "ts_max_rows": plan.ts_max_rows,
+    })
+
+
+def print_react_run_report(label: str, report: dict[str, Any], out_path: Path) -> None:
+    """Print the compact metric summary and saved path for a ReAct run."""
+    print_eval_rates(label, report)
+    print("Saved report:", out_path)
 
 
 def configure_react_notebook(
@@ -207,22 +288,12 @@ def run_model_grid_notebook_eval(
     notebook: str,
     run_tag: str,
     runs_dir: str,
-    canonical_dir: str,
-    k_values: list[int],
-    seeds: list[int],
+    grid_plan: GridPlan,
     model_alias: str | None = None,
     adapter_dir: str | None = None,
     limit: int | None = None,
-    copy_canonical: bool = False,
-    enable_ts: bool = True,
-    ts_for_k_values: list[int] | None = None,
-    ts_n: int = 10,
-    ts_prefix: str = "classicmodels_ts",
-    ts_max_rows: int = 500,
-    max_new_tokens: int | None = None,
-    eval_profile: str = EVAL_PROFILE_MODEL_ONLY_RAW,
-) -> tuple[Any, Any, Path]:
-    """Run the shared eval grid with common notebook settings."""
+) -> dict[str, Any]:
+    """Run the shared eval grid and return a plain run report."""
     from nl2sql.evaluation.grid_runner import run_eval_grid
 
     resolved_db = db_config or {}
@@ -240,7 +311,7 @@ def run_model_grid_notebook_eval(
         notebook=notebook,
         adapter_dir=adapter_dir,
     )
-    resolved_max_new_tokens = 128 if max_new_tokens is None else int(max_new_tokens)
+    resolved_max_new_tokens = 128 if grid_plan.max_new_tokens is None else int(grid_plan.max_new_tokens)
     return run_eval_grid(
         test_set=test_set,
         schema_summary=schema_summary,
@@ -250,20 +321,18 @@ def run_model_grid_notebook_eval(
         instance_connection_name=instance_connection_name,
         db_user=db_user,
         db_pass=db_pass,
-        k_values=k_values,
-        seeds=seeds,
+        k_values=grid_plan.k_values,
+        seeds=grid_plan.seeds,
         run_tag=run_tag,
         runs_dir=runs_dir,
         run_metadata=run_metadata,
         limit=limit,
-        copy_canonical=copy_canonical,
-        canonical_dir=canonical_dir,
-        enable_ts_for_k=set(ts_for_k_values or []) if enable_ts else None,
-        ts_n=ts_n,
-        ts_prefix=ts_prefix,
-        ts_max_rows=ts_max_rows,
+        enable_ts_for_k=set(grid_plan.ts_for_k_values) if grid_plan.enable_ts else None,
+        ts_n=grid_plan.ts_n,
+        ts_prefix=grid_plan.ts_prefix,
+        ts_max_rows=grid_plan.ts_max_rows,
         max_new_tokens=resolved_max_new_tokens,
-        eval_profile=eval_profile,
+        eval_profile=grid_plan.eval_profile,
     )
 
 
@@ -394,51 +463,46 @@ def run_react_notebook_eval(
     config: Any,
     model_id: str,
     adapter_path: str,
-    quick_limit: int | None,
-    ts_n: int,
-    ts_prefix: str,
-    ts_max_rows: int,
+    react_plan: ReactEvalPlan,
     ts_make_engine_fn: Any,
     notebook: str,
     out_root: str | Path = "results/agent/runs",
-    canonical_path: str | Path = "results/agent/results_react_200.json",
 ) -> tuple[dict[str, Any], list[dict[str, Any]], Path]:
-    """Run ReAct eval and manage the notebook output paths."""
+    """Run ReAct eval and save one report file in a timestamped run folder."""
     run_tag = f"react_{config.name}"
     run_ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%SZ")
     run_dir = Path(out_root) / f"{run_tag}_{run_ts}"
     run_dir.mkdir(parents=True, exist_ok=True)
-    run_filename = "results_react_200.json" if quick_limit is None else "results_react_eval.json"
+    run_filename = "results_react_200.json" if react_plan.quick_limit is None else "results_react_eval.json"
     out_path = run_dir / run_filename
 
-    suite_dbs = [f"{ts_prefix}_{i:02d}" for i in range(1, ts_n + 1)] if ts_n and ts_n > 0 else []
+    suite_dbs = (
+        [f"{react_plan.ts_prefix}_{i:02d}" for i in range(1, react_plan.ts_n + 1)]
+        if react_plan.ts_n and react_plan.ts_n > 0
+        else []
+    )
     run_metadata = {
         "commit": git_short_commit(),
         "notebook": notebook,
         "model_id": model_id,
         "adapter_path": adapter_path,
         "config_name": config.name,
-        "quick_limit": quick_limit,
-        "ts_n": ts_n,
+        "quick_limit": react_plan.quick_limit,
+        "ts_n": react_plan.ts_n,
     }
 
     report = evaluate_react_ablation(
         test_set=test_set,
         engine=engine,
         config=config,
-        limit=quick_limit,
+        limit=react_plan.quick_limit,
         ts_suite_db_names=suite_dbs if suite_dbs else None,
         ts_make_engine_fn=ts_make_engine_fn if suite_dbs else None,
-        ts_max_rows=ts_max_rows,
+        ts_max_rows=react_plan.ts_max_rows,
         progress_every=20,
         run_metadata=run_metadata,
         save_path=out_path,
     )
-
-    if quick_limit is None:
-        canonical = Path(canonical_path)
-        canonical.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(out_path, canonical)
     return report, report.get("items", []), out_path
 
 
@@ -459,8 +523,16 @@ __all__ = [
     "configure_react_notebook",
     "evaluate_react_ablation",
     "git_short_commit",
+    "GridPlan",
+    "primary_react_eval_plan",
     "model_alias_from_id",
+    "primary_grid_plan",
+    "print_grid_plan",
+    "print_grid_run_report",
+    "print_react_plan",
+    "print_react_run_report",
     "QLORA_EXPERIMENT_PRESETS",
+    "ReactEvalPlan",
     "print_eval_rates",
     "run_model_grid_notebook_eval",
     "run_react_notebook_eval",
