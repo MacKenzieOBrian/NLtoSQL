@@ -19,7 +19,10 @@ def _compute_dtype() -> torch.dtype:
 
 
 def build_4bit_quant_config() -> tuple[Any, torch.dtype, bool]:
-    """Return (BitsAndBytesConfig, compute_dtype, use_bf16)."""
+    """Return (BitsAndBytesConfig, compute_dtype, use_bf16).
+
+    Inspired by the usual QLoRA-style 4-bit NF4 loading setup.
+    """
     from transformers import BitsAndBytesConfig
 
     compute_dtype = _compute_dtype()
@@ -90,6 +93,40 @@ def load_quantized_model(
     return model, tok
 
 
+def build_trainable_qlora_model(
+    *,
+    experiment_config: dict[str, Any],
+    token: str | None = None,
+) -> tuple[Any, Any, Any, torch.dtype, bool]:
+    """Load the base model, attach LoRA layers, and return training-ready objects.
+
+    Inspired by the common QLoRA recipe: load a 4-bit base model, prepare it for
+    k-bit training, then add LoRA adapters on top.
+    """
+    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA required. Runtime -> Change runtime type -> GPU.")
+
+    model_id = experiment_config["model_id"]
+    bnb_config, compute_dtype, use_bf16 = build_4bit_quant_config()
+    base_model, tok = load_quantized_model(model_id, token=token)
+    # This follows the usual "prepare k-bit base first, then add LoRA adapters" order.
+    base_model = prepare_model_for_kbit_training(base_model)
+
+    lora_config = LoraConfig(
+        r=experiment_config["lora_r"],
+        lora_alpha=experiment_config["lora_alpha"],
+        lora_dropout=experiment_config["lora_dropout"],
+        target_modules=experiment_config["target_modules"],
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+    model = get_peft_model(base_model, lora_config)
+    model.print_trainable_parameters()
+    return model, tok, bnb_config, compute_dtype, use_bf16
+
+
 def resolve_adapter_dir(path_str: str) -> Path:
     """Return the path to the latest adapter checkpoint under path_str."""
     p = Path(path_str).expanduser()
@@ -151,6 +188,7 @@ def load_eval_adapter_model(
 
 
 __all__ = [
+    "build_trainable_qlora_model",
     "build_4bit_quant_config",
     "load_eval_adapter_model",
     "load_quantized_model",

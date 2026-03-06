@@ -13,6 +13,8 @@ from typing import Any, Callable, Optional
 
 from sqlalchemy.engine import Engine
 
+from ..evaluation.eval import EVAL_PROFILE_MODEL_ONLY_RAW
+
 
 def model_alias_from_id(model_id: str) -> str:
     """Convert a model id into a filesystem-safe alias."""
@@ -89,6 +91,53 @@ QLORA_EXPERIMENT_PRESETS: dict[str, dict[str, Any]] = {
 }
 
 
+def configure_react_notebook(
+    *,
+    engine: Any,
+    db_name: str,
+    model: Any,
+    tokenizer: Any,
+    exemplar_pool: list[dict[str, Any]],
+    name: str = "react_barebones_notebook",
+    use_repair_policy: bool = True,
+    max_repairs: int = 2,
+    max_steps: int = 8,
+    few_shot_k: int = 3,
+    few_shot_seed: int = 7,
+    max_new_tokens: int = 256,
+    do_sample: bool = False,
+    temperature: float = 0.2,
+    top_p: float = 0.9,
+) -> Any:
+    """Set the shared agent context and return the matching ReAct config."""
+    from nl2sql.agent.agent_tools import AgentContext, set_agent_context
+    from nl2sql.agent.react_pipeline import ReactAblationConfig
+    from nl2sql.core.query_runner import QueryRunner
+
+    set_agent_context(
+        AgentContext(
+            engine=engine,
+            db_name=db_name,
+            model=model,
+            tok=tokenizer,
+            runner=QueryRunner(engine),
+            exemplar_pool=exemplar_pool,
+        )
+    )
+    return ReactAblationConfig(
+        name=name,
+        use_repair_policy=use_repair_policy,
+        max_repairs=max_repairs,
+        max_steps=max_steps,
+        few_shot_k=few_shot_k,
+        few_shot_seed=few_shot_seed,
+        max_new_tokens=max_new_tokens,
+        do_sample=do_sample,
+        temperature=temperature,
+        top_p=top_p,
+    )
+
+
 def train_qlora_adapter(
     *,
     model: Any,
@@ -149,9 +198,10 @@ def run_model_grid_notebook_eval(
     model: Any,
     tokenizer: Any,
     engine: Any,
-    instance_connection_name: str,
-    db_user: str,
-    db_pass: str,
+    db_config: dict[str, Any] | None = None,
+    instance_connection_name: str | None = None,
+    db_user: str | None = None,
+    db_pass: str | None = None,
     model_id: str,
     method: str,
     notebook: str,
@@ -170,9 +220,17 @@ def run_model_grid_notebook_eval(
     ts_prefix: str = "classicmodels_ts",
     ts_max_rows: int = 500,
     max_new_tokens: int | None = None,
+    eval_profile: str = EVAL_PROFILE_MODEL_ONLY_RAW,
 ) -> tuple[Any, Any, Path]:
     """Run the shared eval grid with common notebook settings."""
     from nl2sql.evaluation.grid_runner import run_eval_grid
+
+    resolved_db = db_config or {}
+    instance_connection_name = instance_connection_name or resolved_db.get("instance_connection_name")
+    db_user = db_user or resolved_db.get("db_user")
+    db_pass = db_pass or resolved_db.get("db_pass")
+    if not instance_connection_name or not db_user or not db_pass:
+        raise ValueError("Provide db_config or explicit instance_connection_name/db_user/db_pass values.")
 
     resolved_alias = model_alias or model_alias_from_id(model_id)
     run_metadata = build_run_metadata(
@@ -182,6 +240,7 @@ def run_model_grid_notebook_eval(
         notebook=notebook,
         adapter_dir=adapter_dir,
     )
+    resolved_max_new_tokens = 128 if max_new_tokens is None else int(max_new_tokens)
     return run_eval_grid(
         test_set=test_set,
         schema_summary=schema_summary,
@@ -203,8 +262,51 @@ def run_model_grid_notebook_eval(
         ts_n=ts_n,
         ts_prefix=ts_prefix,
         ts_max_rows=ts_max_rows,
-        max_new_tokens=max_new_tokens,
+        max_new_tokens=resolved_max_new_tokens,
+        eval_profile=eval_profile,
     )
+
+
+def _react_progress_rates(items: list[dict[str, Any]]) -> tuple[float, float, float]:
+    n_items = max(len(items), 1)
+    return (
+        sum(int(x["va"]) for x in items) / n_items,
+        sum(int(x["em"]) for x in items) / n_items,
+        sum(int(x["ex"]) for x in items) / n_items,
+    )
+
+
+def _react_report(
+    *,
+    config: Any,
+    out_items: list[dict[str, Any]],
+    run_metadata: dict[str, Any] | None,
+    save_path: str | Path | None,
+) -> dict[str, Any]:
+    from nl2sql.core.query_runner import now_utc_iso
+
+    n = len(out_items)
+    va_rate, em_rate, ex_rate = _react_progress_rates(out_items)
+    ts_values = [int(x["ts"]) for x in out_items if x.get("ts") is not None]
+    report: dict[str, Any] = {
+        "timestamp": now_utc_iso(),
+        "method": "react",
+        "config": asdict(config),
+        "n": n,
+        "va_rate": va_rate,
+        "em_rate": em_rate,
+        "ex_rate": ex_rate,
+        "ts_rate": (sum(ts_values) / len(ts_values)) if ts_values else None,
+        "ts_n": len(ts_values),
+        "items": out_items,
+    }
+    if run_metadata:
+        report["run_metadata"] = run_metadata
+    if save_path:
+        save_target = Path(save_path)
+        save_target.parent.mkdir(parents=True, exist_ok=True)
+        save_target.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return report
 
 
 def evaluate_react_ablation(
@@ -224,7 +326,6 @@ def evaluate_react_ablation(
     from nl2sql.agent.react_pipeline import run_react_pipeline
     from nl2sql.agent.agent_tools import get_agent_context
     from nl2sql.core.postprocess import normalize_sql
-    from nl2sql.core.query_runner import now_utc_iso
     from nl2sql.evaluation.eval import execution_accuracy, test_suite_accuracy_for_item
 
     ctx = get_agent_context()
@@ -273,37 +374,17 @@ def evaluate_react_ablation(
         })
 
         if progress_every and ((i + 1) % progress_every == 0 or (i + 1) == len(items)):
-            n_ = max(len(out_items), 1)
+            va_rate, em_rate, ex_rate = _react_progress_rates(out_items)
             print(
                 f"ReAct progress {i + 1}/{len(items)} | "
-                f"VA={sum(int(x['va']) for x in out_items)/n_:.3f} "
-                f"EM={sum(int(x['em']) for x in out_items)/n_:.3f} "
-                f"EX={sum(int(x['ex']) for x in out_items)/n_:.3f}"
+                f"VA={va_rate:.3f} EM={em_rate:.3f} EX={ex_rate:.3f}"
             )
-
-    n = len(out_items)
-    va_rate = sum(int(x["va"]) for x in out_items) / max(n, 1)
-    em_rate = sum(int(x["em"]) for x in out_items) / max(n, 1)
-    ex_rate = sum(int(x["ex"]) for x in out_items) / max(n, 1)
-    ts_values = [int(x["ts"]) for x in out_items if x.get("ts") is not None]
-    ts_rate = (sum(ts_values) / len(ts_values)) if ts_values else None
-
-    report: dict[str, Any] = {
-        "timestamp": now_utc_iso(),
-        "method": "react",
-        "config": asdict(config),
-        "n": n,
-        "va_rate": va_rate, "em_rate": em_rate, "ex_rate": ex_rate,
-        "ts_rate": ts_rate, "ts_n": len(ts_values),
-        "items": out_items,
-    }
-    if run_metadata:
-        report["run_metadata"] = run_metadata
-    if save_path:
-        save_path = Path(save_path)
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        save_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    return report
+    return _react_report(
+        config=config,
+        out_items=out_items,
+        run_metadata=run_metadata,
+        save_path=save_path,
+    )
 
 
 def run_react_notebook_eval(
@@ -327,7 +408,8 @@ def run_react_notebook_eval(
     run_ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%SZ")
     run_dir = Path(out_root) / f"{run_tag}_{run_ts}"
     run_dir.mkdir(parents=True, exist_ok=True)
-    out_path = run_dir / "results_react_eval.json"
+    run_filename = "results_react_200.json" if quick_limit is None else "results_react_eval.json"
+    out_path = run_dir / run_filename
 
     suite_dbs = [f"{ts_prefix}_{i:02d}" for i in range(1, ts_n + 1)] if ts_n and ts_n > 0 else []
     run_metadata = {
@@ -374,6 +456,7 @@ def print_eval_rates(label: str, report: dict[str, Any]) -> None:
 
 __all__ = [
     "build_run_metadata",
+    "configure_react_notebook",
     "evaluate_react_ablation",
     "git_short_commit",
     "model_alias_from_id",

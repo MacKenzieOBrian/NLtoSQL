@@ -13,27 +13,7 @@ from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
-
-
-def _load_json(path: str | Path) -> Any:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
-
-
-def _load_jsonl(path: str | Path) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        rows.append(json.loads(line))
-    return rows
-
-
-def _ensure_train_shape(train_records: list[dict[str, Any]]) -> None:
-    for idx, row in enumerate(train_records[:5]):
-        if "nlq" not in row or "sql" not in row:
-            raise ValueError(f"Missing keys at row {idx}: {row}")
-
+from .notebook_utils import load_test_set, load_train_records
 
 def filter_training_records(
     *,
@@ -92,9 +72,8 @@ def run_training_set_validation(
     train_path: str | Path,
     engine: Engine,
 ) -> dict[str, Any]:
-    test_items = _load_json(test_path)
-    train_records = _load_jsonl(train_path)
-    _ensure_train_shape(train_records)
+    test_items = load_test_set(test_path)
+    train_records = load_train_records(train_path)
     test_nlqs = {str(item["nlq"]).strip() for item in test_items}
 
     filtered = filter_training_records(train_records=train_records, test_nlqs=test_nlqs)

@@ -8,7 +8,6 @@ plus aggregated grid_summary CSVs to a timestamped run directory.
 from __future__ import annotations
 
 import shutil
-import subprocess
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -18,7 +17,53 @@ import pandas as pd
 from sqlalchemy.engine import Engine
 
 from ..infra.db import create_engine_with_connector
-from ..evaluation.eval import EvalRunConfig, eval_run
+from ..evaluation.eval import (
+    EVAL_PROFILE_MODEL_ONLY_RAW,
+    build_eval_run_config,
+    eval_run,
+)
+
+
+def _build_ts_suite_names(ts_enabled_k: set[int], ts_prefix: str, ts_n: int) -> list[str] | None:
+    if not ts_enabled_k or ts_n <= 0:
+        return None
+    return [f"{ts_prefix}_{i:02d}" for i in range(1, ts_n + 1)]
+
+
+def _summarize_items(items: list[Any]) -> dict[str, Any]:
+    n = len(items)
+    ts_values = [int(x.ts) for x in items if getattr(x, "ts", None) is not None]
+    return {
+        "n": n,
+        "va_rate": sum(int(x.va) for x in items) / max(n, 1),
+        "em_rate": sum(int(x.em) for x in items) / max(n, 1),
+        "ex_rate": sum(int(x.ex) for x in items) / max(n, 1),
+        "ts_rate": (sum(ts_values) / len(ts_values)) if ts_values else None,
+        "ts_n": len(ts_values),
+    }
+
+
+def _copy_canonical_result(*, save_path: Path, canonical_dir: str | Path, k: int) -> None:
+    name = "results_zero_shot_200.json" if k == 0 else "results_few_shot_k3_200.json"
+    target = Path(canonical_dir) / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(save_path, target)
+    print(f"Updated canonical: {target}")
+
+
+def _write_grid_summaries(rows: list[dict[str, Any]], run_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+    df = pd.DataFrame(rows).sort_values(["k", "seed"]).reset_index(drop=True)
+    df.to_csv(run_dir / "grid_summary.csv", index=False)
+
+    agg = df.groupby(["k"], as_index=False).agg(
+        runs=("seed", "count"),
+        va_mean=("va_rate", "mean"), va_std=("va_rate", "std"),
+        em_mean=("em_rate", "mean"), em_std=("em_rate", "std"),
+        ex_mean=("ex_rate", "mean"), ex_std=("ex_rate", "std"),
+        ts_mean=("ts_rate", "mean"), ts_std=("ts_rate", "std"),
+    )
+    agg.to_csv(run_dir / "grid_summary_by_k.csv", index=False)
+    return df, agg
 
 
 def run_eval_grid(
@@ -44,6 +89,7 @@ def run_eval_grid(
     ts_prefix: str = "classicmodels_ts",
     ts_max_rows: int = 500,
     max_new_tokens: int = 128,
+    eval_profile: str = EVAL_PROFILE_MODEL_ONLY_RAW,
 ) -> tuple[pd.DataFrame, pd.DataFrame, Path]:
     """Run a (k × seed) evaluation grid and write results to runs_dir.
 
@@ -57,11 +103,7 @@ def run_eval_grid(
     run_dir.mkdir(parents=True, exist_ok=True)
 
     ts_enabled_k: set[int] = set(enable_ts_for_k or set())
-    ts_suite_db_names = (
-        [f"{ts_prefix}_{i:02d}" for i in range(1, ts_n + 1)]
-        if ts_enabled_k and ts_n > 0
-        else None
-    )
+    ts_suite_db_names = _build_ts_suite_names(ts_enabled_k, ts_prefix, ts_n)
 
     ts_connectors: dict[str, Any] = {}
 
@@ -89,6 +131,7 @@ def run_eval_grid(
                     "run_tag": run_tag,
                     "k": k,
                     "seed": seed,
+                    "eval_profile": eval_profile,
                     "exemplar_pool_size": len(test_set),
                     "ts_enabled": k in ts_enabled_k,
                     "ts_n": ts_n if ts_suite_db_names else 0,
@@ -106,39 +149,26 @@ def run_eval_grid(
                     schema_summary=schema_summary,
                     save_path=str(save_path),
                     run_metadata=run_meta,
-                    config=EvalRunConfig(
+                    config=build_eval_run_config(
+                        eval_profile=eval_profile,
                         max_new_tokens=max_new_tokens,
                         avoid_exemplar_leakage=True,
-                        generation_extract_select=True,
-                        generation_stop_on_semicolon=True,
-                        apply_sql_guardrails=True,
-                        apply_postprocess=True,
                         ts_suite_db_names=ts_suite_db_names if k in ts_enabled_k else None,
                         ts_make_engine_fn=_make_engine_cached if k in ts_enabled_k else None,
                         ts_max_rows=ts_max_rows,
                     ),
                 )
 
-                n = len(items)
-                va = sum(int(x.va) for x in items) / max(n, 1)
-                em = sum(int(x.em) for x in items) / max(n, 1)
-                ex = sum(int(x.ex) for x in items) / max(n, 1)
-                ts_values = [int(x.ts) for x in items if getattr(x, "ts", None) is not None]
-                ts_rate = (sum(ts_values) / len(ts_values)) if ts_values else None
-
                 rows.append({
-                    "run_tag": run_tag, "k": k, "seed": seed, "n": n,
-                    "va_rate": va, "em_rate": em, "ex_rate": ex,
-                    "ts_rate": ts_rate, "ts_n": len(ts_values),
+                    "run_tag": run_tag,
+                    "k": k,
+                    "seed": seed,
+                    **_summarize_items(items),
                     "json_path": str(save_path),
                 })
 
                 if copy_canonical and seed == primary_seed and k in {0, 3} and canonical_dir:
-                    name = "results_zero_shot_200.json" if k == 0 else "results_few_shot_k3_200.json"
-                    target = Path(canonical_dir) / name
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(save_path, target)
-                    print(f"Updated canonical: {target}")
+                    _copy_canonical_result(save_path=save_path, canonical_dir=canonical_dir, k=k)
 
     finally:
         for conn in ts_connectors.values():
@@ -147,19 +177,9 @@ def run_eval_grid(
             except Exception:
                 pass
 
-    df = pd.DataFrame(rows).sort_values(["k", "seed"]).reset_index(drop=True)
-    df.to_csv(run_dir / "grid_summary.csv", index=False)
+    df, agg = _write_grid_summaries(rows, run_dir)
 
-    agg = df.groupby(["k"], as_index=False).agg(
-        runs=("seed", "count"),
-        va_mean=("va_rate", "mean"), va_std=("va_rate", "std"),
-        em_mean=("em_rate", "mean"), em_std=("em_rate", "std"),
-        ex_mean=("ex_rate", "mean"), ex_std=("ex_rate", "std"),
-        ts_mean=("ts_rate", "mean"), ts_std=("ts_rate", "std"),
-    )
-    agg.to_csv(run_dir / "grid_summary_by_k.csv", index=False)
-
-    print("Saved grid run to:", run_dir)
+    print("Saved grid run to:", run_dir, "| eval_profile:", eval_profile)
     return df, agg, run_dir
 
 

@@ -22,6 +22,14 @@ from ..core.query_runner import check_sql_safety, now_utc_iso, QueryRunner
 from ..core.sql_guardrails import clean_candidate_with_reason
 
 
+EVAL_PROFILE_MODEL_ONLY_RAW = "model_only_raw"
+EVAL_PROFILE_OPTIONAL_RELIABILITY = "optional_reliability_layer"
+EVAL_PROFILE_CHOICES = (
+    EVAL_PROFILE_MODEL_ONLY_RAW,
+    EVAL_PROFILE_OPTIONAL_RELIABILITY,
+)
+
+
 def _clean_sql(
     *,
     sql_text: str,
@@ -101,6 +109,7 @@ def execution_accuracy(
     gold_sql: str,
     max_compare_rows: int = 10000,
 ) -> tuple[bool, str | None, str | None]:
+    # Inspired by the usual text-to-SQL EX check: run both queries and compare result rows.
     pred_ok, _, pred_rows, pred_err = execute_fetch(engine=engine, sql=pred_sql, max_rows=max_compare_rows)
     gold_ok, _, gold_rows, gold_err = execute_fetch(engine=engine, sql=gold_sql, max_rows=max_compare_rows)
 
@@ -143,7 +152,12 @@ def test_suite_accuracy_for_item(
     pred_sql: str,
     max_rows: int = 2000,
 ) -> int:
-    """Return 1 if pred_sql matches gold_sql on every usable perturbed database, else 0."""
+    """Return 1 only if pred_sql matches gold_sql on every checked perturbed database.
+
+    If the gold query itself fails on any replica, this helper returns 0 rather than
+    skipping that replica. That keeps the scoring rule strict and easy to explain.
+    """
+    # Inspired by test-suite accuracy: check the same SQL pair on several database variants.
     # ORDER BY queries need order-sensitive comparison; others can use bag equality.
     ordered = bool(re.search(r"(?i)\border\s+by\b", gold_sql or ""))
     usable = 0
@@ -209,21 +223,58 @@ class EvalRunConfig:
     ts_max_rows: int = 500
 
 
-def _evaluate_item(
+def build_eval_run_config(
     *,
-    i: int,
-    item: dict[str, Any],
+    eval_profile: str = EVAL_PROFILE_MODEL_ONLY_RAW,
+    max_new_tokens: int = 128,
+    max_rows: int = 50,
+    max_compare_rows: int = 10000,
+    avoid_exemplar_leakage: bool = True,
+    ts_suite_db_names: Optional[list[str]] = None,
+    ts_make_engine_fn: Optional[Callable[[str], Engine]] = None,
+    ts_max_rows: int = 500,
+) -> EvalRunConfig:
+    """Build one named evaluation profile so notebook reruns use an explicit policy."""
+    if eval_profile == EVAL_PROFILE_MODEL_ONLY_RAW:
+        return EvalRunConfig(
+            max_new_tokens=max_new_tokens,
+            max_rows=max_rows,
+            max_compare_rows=max_compare_rows,
+            avoid_exemplar_leakage=avoid_exemplar_leakage,
+            generation_extract_select=False,
+            generation_stop_on_semicolon=False,
+            apply_sql_guardrails=False,
+            apply_postprocess=False,
+            ts_suite_db_names=ts_suite_db_names,
+            ts_make_engine_fn=ts_make_engine_fn,
+            ts_max_rows=ts_max_rows,
+        )
+    if eval_profile == EVAL_PROFILE_OPTIONAL_RELIABILITY:
+        return EvalRunConfig(
+            max_new_tokens=max_new_tokens,
+            max_rows=max_rows,
+            max_compare_rows=max_compare_rows,
+            avoid_exemplar_leakage=avoid_exemplar_leakage,
+            generation_extract_select=True,
+            generation_stop_on_semicolon=True,
+            apply_sql_guardrails=True,
+            apply_postprocess=True,
+            ts_suite_db_names=ts_suite_db_names,
+            ts_make_engine_fn=ts_make_engine_fn,
+            ts_max_rows=ts_max_rows,
+        )
+    raise ValueError(f"Unsupported eval_profile: {eval_profile}")
+
+
+def _generate_candidate_sql(
+    *,
+    nlq: str,
     exemplars: list[dict[str, Any]],
     schema_summary: str,
     model: Any,
     tokenizer: Any,
-    qr: QueryRunner,
-    engine: Engine,
     config: EvalRunConfig,
-) -> EvalItem:
-    nlq = item["nlq"]
-    gold_sql = item["sql"]
-
+) -> tuple[str, str]:
     messages = make_few_shot_messages(
         schema=schema_summary,
         exemplars=exemplars,
@@ -243,7 +294,35 @@ def _evaluate_item(
         apply_sql_guardrails=config.apply_sql_guardrails,
         apply_postprocess=config.apply_postprocess,
     )
+    return raw_sql, pred_sql
 
+
+def _maybe_test_suite_score(
+    *,
+    meta: Any,
+    pred_sql: str,
+    gold_sql: str,
+    config: EvalRunConfig,
+) -> Optional[int]:
+    if not (bool(meta.success) and config.ts_suite_db_names and config.ts_make_engine_fn and pred_sql):
+        return None
+    return test_suite_accuracy_for_item(
+        make_engine_fn=config.ts_make_engine_fn,
+        suite_db_names=config.ts_suite_db_names,
+        gold_sql=gold_sql,
+        pred_sql=pred_sql,
+        max_rows=config.ts_max_rows,
+    )
+
+
+def _score_prediction(
+    *,
+    pred_sql: str,
+    gold_sql: str,
+    qr: QueryRunner,
+    engine: Engine,
+    config: EvalRunConfig,
+) -> dict[str, Any]:
     meta = qr.run(pred_sql)
     em = _normalize_sql(pred_sql) == _normalize_sql(gold_sql)
     ex, ex_pred_err, ex_gold_err = execution_accuracy(
@@ -252,16 +331,46 @@ def _evaluate_item(
         gold_sql=gold_sql,
         max_compare_rows=config.max_compare_rows,
     )
+    return {
+        "meta": meta,
+        "em": bool(em),
+        "ex": bool(ex),
+        "ts": _maybe_test_suite_score(meta=meta, pred_sql=pred_sql, gold_sql=gold_sql, config=config),
+        "error": meta.error or ex_pred_err,
+        "gold_error": ex_gold_err,
+    }
 
-    ts: Optional[int] = None
-    if bool(meta.success) and config.ts_suite_db_names and config.ts_make_engine_fn and pred_sql:
-        ts = test_suite_accuracy_for_item(
-            make_engine_fn=config.ts_make_engine_fn,
-            suite_db_names=config.ts_suite_db_names,
-            gold_sql=gold_sql,
-            pred_sql=pred_sql,
-            max_rows=config.ts_max_rows,
-        )
+
+def _evaluate_item(
+    *,
+    i: int,
+    item: dict[str, Any],
+    exemplars: list[dict[str, Any]],
+    schema_summary: str,
+    model: Any,
+    tokenizer: Any,
+    qr: QueryRunner,
+    engine: Engine,
+    config: EvalRunConfig,
+) -> EvalItem:
+    nlq = item["nlq"]
+    gold_sql = item["sql"]
+
+    raw_sql, pred_sql = _generate_candidate_sql(
+        nlq=nlq,
+        exemplars=exemplars,
+        schema_summary=schema_summary,
+        model=model,
+        tokenizer=tokenizer,
+        config=config,
+    )
+    scores = _score_prediction(
+        pred_sql=pred_sql,
+        gold_sql=gold_sql,
+        qr=qr,
+        engine=engine,
+        config=config,
+    )
 
     return EvalItem(
         i=i,
@@ -269,12 +378,12 @@ def _evaluate_item(
         gold_sql=gold_sql,
         raw_sql=raw_sql,
         pred_sql=pred_sql,
-        va=bool(meta.success),
-        em=bool(em),
-        ex=bool(ex),
-        ts=ts,
-        error=meta.error or ex_pred_err,
-        gold_error=ex_gold_err,
+        va=bool(scores["meta"].success),
+        em=bool(scores["em"]),
+        ex=bool(scores["ex"]),
+        ts=scores["ts"],
+        error=scores["error"],
+        gold_error=scores["gold_error"],
     )
 
 
@@ -285,6 +394,52 @@ def _summarize_eval(out: list[EvalItem]) -> tuple[float, float, float, float | N
     ts_values = [int(r.ts) for r in out if r.ts is not None]
     ts_rate = (sum(ts_values) / len(ts_values)) if ts_values else None
     return va_rate, em_rate, ex_rate, ts_rate, ts_values
+
+
+def _eval_profile_name(config: EvalRunConfig) -> str:
+    optional_reliability_enabled = any((
+        config.generation_extract_select,
+        config.generation_stop_on_semicolon,
+        config.apply_sql_guardrails,
+        config.apply_postprocess,
+    ))
+    return "optional_reliability_layer" if optional_reliability_enabled else "model_only_raw"
+
+
+def _build_eval_payload(
+    *,
+    out: list[EvalItem],
+    k: int,
+    seed: int,
+    limit: int | None,
+    exemplar_pool: list[dict[str, Any]] | None,
+    config: EvalRunConfig,
+    run_metadata: Optional[dict[str, Any]],
+) -> dict[str, Any]:
+    va_rate, em_rate, ex_rate, ts_rate, ts_values = _summarize_eval(out)
+    payload: dict[str, Any] = {
+        "timestamp": now_utc_iso(),
+        "k": k,
+        "seed": seed,
+        "limit": limit,
+        "n": len(out),
+        "va_rate": va_rate,
+        "em_rate": em_rate,
+        "ex_rate": ex_rate,
+        "ts_rate": ts_rate,
+        "ts_n": len(ts_values),
+        "eval_profile": _eval_profile_name(config),
+        "exemplar_policy": "custom_pool" if exemplar_pool is not None else "benchmark_pool",
+        "avoid_exemplar_leakage": bool(config.avoid_exemplar_leakage),
+        "generation_extract_select": bool(config.generation_extract_select),
+        "generation_stop_on_semicolon": bool(config.generation_stop_on_semicolon),
+        "sql_guardrails": "enabled" if config.apply_sql_guardrails else "disabled",
+        "postprocess": "guarded_postprocess" if config.apply_postprocess else "none",
+        "results": [r.to_jsonable() for r in out],
+    }
+    if run_metadata:
+        payload["run_metadata"] = run_metadata
+    return payload
 
 
 def eval_run(
@@ -339,37 +494,15 @@ def eval_run(
     if save_path:
         save_path = Path(save_path)
         save_path.parent.mkdir(parents=True, exist_ok=True)
-        optional_reliability_enabled = any((
-            cfg.generation_extract_select,
-            cfg.generation_stop_on_semicolon,
-            cfg.apply_sql_guardrails,
-            cfg.apply_postprocess,
-        ))
-        eval_profile = "optional_reliability_layer" if optional_reliability_enabled else "model_only_raw"
-
-        payload: dict[str, Any] = {
-            "timestamp": now_utc_iso(),
-            "k": k,
-            "seed": seed,
-            "limit": limit,
-            "n": len(out),
-            "va_rate": va_rate,
-            "em_rate": em_rate,
-            "ex_rate": ex_rate,
-            "ts_rate": ts_rate,
-            "ts_n": len(ts_values),
-            "eval_profile": eval_profile,
-            "exemplar_policy": "custom_pool" if exemplar_pool is not None else "benchmark_pool",
-            "avoid_exemplar_leakage": bool(cfg.avoid_exemplar_leakage),
-            "generation_extract_select": bool(cfg.generation_extract_select),
-            "generation_stop_on_semicolon": bool(cfg.generation_stop_on_semicolon),
-            "sql_guardrails": "enabled" if cfg.apply_sql_guardrails else "disabled",
-            "postprocess": "guarded_postprocess" if cfg.apply_postprocess else "none",
-            "results": [r.to_jsonable() for r in out],
-        }
-        if run_metadata:
-            payload["run_metadata"] = run_metadata
-
+        payload = _build_eval_payload(
+            out=out,
+            k=k,
+            seed=seed,
+            limit=limit,
+            exemplar_pool=exemplar_pool,
+            config=cfg,
+            run_metadata=run_metadata,
+        )
         save_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         print("Saved:", str(save_path))
 

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import os
 from contextlib import contextmanager
+from functools import lru_cache
 from getpass import getpass
-from typing import Iterator
+from typing import Callable, Iterator
 
 import sqlalchemy
 from google.cloud.sql.connector import Connector
@@ -88,9 +89,40 @@ def connect_notebook_db(
     return engine, connector, config
 
 
+def make_cached_engine_factory(
+    *,
+    connector: Connector,
+    instance_connection_name: str,
+    user: str,
+    password: str,
+    maxsize: int = 32,
+) -> Callable[[str], Engine]:
+    """Return a cached helper that builds one Engine per database name.
+
+    Useful for test-suite scoring where the notebook needs the same connection
+    pattern across many replica databases.
+    """
+
+    @lru_cache(maxsize=maxsize)
+    def _make_engine(db_name: str) -> Engine:
+        def getconn_for_db():
+            return connector.connect(
+                instance_connection_name,
+                "pymysql",
+                user=user,
+                password=password,
+                db=db_name,
+            )
+
+        return sqlalchemy.create_engine("mysql+pymysql://", creator=getconn_for_db, future=True)
+
+    return _make_engine
+
+
 __all__ = [
     "connect_notebook_db",
     "create_engine_with_connector",
     "load_db_config_from_env_or_prompt",
+    "make_cached_engine_factory",
     "safe_connection",
 ]
