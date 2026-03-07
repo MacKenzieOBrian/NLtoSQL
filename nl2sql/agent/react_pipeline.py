@@ -1,4 +1,8 @@
-"""Simple ReAct-style loop for the agent notebook."""
+"""Simple ReAct-style loop for the agent notebook.
+
+This agent-layer module handles the algorithmic loop for one question:
+generate SQL, validate it, execute it, and repair it when needed.
+"""
 
 from __future__ import annotations
 
@@ -17,6 +21,12 @@ from .prompts import SQL_GENERATOR_SYSTEM_PROMPT, SQL_REPAIR_SYSTEM_PROMPT
 
 @dataclass(frozen=True)
 class ReactAblationConfig:
+    """Fixed configuration for one ReAct evaluation recipe.
+
+    A dataclass keeps the notebook-facing options explicit and stable instead
+    of passing a long chain of loosely related keyword arguments.
+    """
+
     name: str = "react_core"
     use_repair_policy: bool = True
     max_repairs: int = 2
@@ -30,10 +40,12 @@ class ReactAblationConfig:
 
 
 def core_react_config(name: str = "react_core") -> ReactAblationConfig:
+    """Return the default ReAct configuration used in the dissertation notebook."""
     return ReactAblationConfig(name=name)
 
 
 def _clean_sql_candidate(sql: str) -> str:
+    """Normalize raw model text into one semicolon-terminated SQL candidate."""
     sql = extract_first_select(str(sql)) or str(sql or "").strip()
     if sql and not sql.endswith(";"):
         sql += ";"
@@ -60,6 +72,7 @@ def _build_prompt_messages(
     config: ReactAblationConfig,
     final_user_content: str | None = None,
 ) -> list[dict[str, str]]:
+    """Build the few-shot prompt used for generation or repair."""
     ctx = get_agent_context()
     exemplars: list[dict[str, Any]] = []
     pool = list(ctx.exemplar_pool or [])
@@ -84,6 +97,7 @@ def _build_prompt_messages(
 
 
 def _repair_hint(error: str) -> str:
+    """Return a short task-specific hint for common validation failures."""
     if error.startswith("validate_sql:"):
         reason = error.split(":", 1)[1]
         if reason == "select_star_forbidden":
@@ -95,7 +109,7 @@ def _repair_hint(error: str) -> str:
 
 
 def generate_sql(nlq: str, schema_text: str, config: ReactAblationConfig | None = None) -> str:
-    """Generate one SQL candidate for the NLQ."""
+    """Generate the first SQL attempt for one natural-language question."""
     ctx = get_agent_context()
     cfg = config or core_react_config()
     if ctx.model is None or ctx.tok is None:
@@ -122,7 +136,7 @@ def generate_sql(nlq: str, schema_text: str, config: ReactAblationConfig | None 
 
 
 def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str, config: ReactAblationConfig | None = None) -> str:
-    """Try to repair SQL using the question, bad SQL, and error message."""
+    """Try to repair a failed SQL candidate using the question and observed error."""
     ctx = get_agent_context()
     cfg = config or core_react_config()
     if ctx.model is None or ctx.tok is None:
@@ -138,7 +152,7 @@ def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str, config: Rea
         repair_prompt += f"\n{hint}\n"
     repair_prompt += "\nReturn one corrected SQL SELECT."
 
-    # Keep repair prompt simple: schema + broken SQL + error.
+    # Keep repair zero-shot and simple: schema + broken SQL + observed error.
     messages = [
         {"role": "system", "content": SQL_REPAIR_SYSTEM_PROMPT},
         {"role": "user", "content": "Schema Details:\n" + schema_text},
@@ -160,6 +174,7 @@ def repair_sql(nlq: str, bad_sql: str, error: str, schema_text: str, config: Rea
 
 @dataclass
 class _ReactState:
+    """Mutable loop state for one question while the agent is running."""
     step: int = 0
     trace: list[dict[str, Any]] = field(default_factory=list)
     current_sql: str | None = None
@@ -174,6 +189,7 @@ def _add_trace(
     reason: str | None = None,
     payload: dict[str, Any] | None = None,
 ) -> None:
+    """Append one structured trace step for later inspection and failure analysis."""
     state.trace.append(
         {
             "step": state.step,
@@ -195,6 +211,7 @@ def _stop_with(
     reason: str,
     observation: dict[str, Any],
 ) -> tuple[str, list[dict[str, Any]]]:
+    """Record the stop reason and return the final SQL plus trace."""
     state.trace.append(
         {
             "step": state.step,
@@ -249,6 +266,7 @@ def _repair_or_stop(
     stop_action: str,
     stop_reason: str,
 ) -> bool:
+    """Spend one shared repair attempt or stop the loop if the budget is exhausted."""
     if not cfg.use_repair_policy or state.repairs_used >= cfg.max_repairs or state.step >= cfg.max_steps:
         _stop_with(
             state,
@@ -259,6 +277,7 @@ def _repair_or_stop(
         return False
 
     state.step += 1
+    # Validation errors and execution errors both feed into the same repair budget.
     state.current_sql = repair_sql(nlq, state.current_sql or "", error, schema_text, cfg)
     state.repairs_used += 1
     _add_trace(
@@ -275,13 +294,14 @@ def run_react_pipeline(
     nlq: str,
     config: ReactAblationConfig | None = None,
 ) -> tuple[str, list[dict[str, Any]]]:
-    """Run the agent loop for one question and return (sql, trace)."""
+    """Run the ReAct loop for one question and return the final SQL plus trace."""
     # Inspired by a simple ReAct loop: generate -> validate -> run -> repair.
     cfg = config or core_react_config()
     ctx = get_agent_context()
     state = _ReactState()
     schema_text = ensure_schema_text(ctx)
 
+    # 1. Record the schema context the model is allowed to use.
     state.step += 1
     _add_trace(
         state,
@@ -289,11 +309,13 @@ def run_react_pipeline(
         observation=_schema_observation(schema_text),
     )
 
+    # 2. Generate the first SQL candidate from the question and schema.
     state.step += 1
     state.current_sql = generate_sql(nlq, schema_text, cfg)
     _add_trace(state, "generate_sql", observation={"sql": state.current_sql})
 
     while state.step < cfg.max_steps:
+        # 3. Validate before execution so obviously bad SQL fails fast and explainably.
         state.step += 1
         sql_check = _validate_current_sql(state, schema_text)
         if not sql_check.get("valid"):
@@ -308,6 +330,7 @@ def run_react_pipeline(
                 return state.current_sql or "", state.trace
             continue
 
+        # 4. Execute only after validation succeeds.
         state.step += 1
         meta = _run_current_sql(ctx, state)
         if meta.success:
@@ -318,6 +341,7 @@ def run_react_pipeline(
                 observation={"sql": state.current_sql},
             )
 
+        # 5. Feed runtime failures back into the same repair path.
         if not _repair_or_stop(
             state, cfg,
             nlq=nlq,

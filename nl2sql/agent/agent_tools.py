@@ -17,6 +17,12 @@ def _safe_str(obj: Any, key: str) -> str:
 
 @dataclass
 class AgentContext:
+    """Shared runtime objects needed by the ReAct notebook and loop.
+
+    This bundles the live DB connection, model, tokenizer, runner, and cached
+    schema/exemplar data so the agent helpers do not need long argument lists.
+    """
+
     engine: Engine
     db_name: str
     model: Any
@@ -31,11 +37,13 @@ _AGENT_CONTEXT: AgentContext | None = None
 
 
 def set_agent_context(ctx: AgentContext) -> None:
+    """Store the current agent context for later helper calls."""
     global _AGENT_CONTEXT
     _AGENT_CONTEXT = ctx
 
 
 def get_agent_context() -> AgentContext:
+    """Return the current agent context or fail loudly if it was never set."""
     if _AGENT_CONTEXT is None:
         raise RuntimeError(
             "Agent context is not set. Call set_agent_context(AgentContext(...)) first."

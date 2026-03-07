@@ -13,10 +13,12 @@ from ..infra.db import safe_connection
 
 
 class QueryExecutionError(Exception):
+    """Single exception type for safety-check failures before execution."""
     pass
 
 
 def now_utc_iso() -> str:
+    """Return a UTC timestamp in the same format used in saved artifacts."""
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
@@ -36,7 +38,8 @@ def check_sql_safety(sql: str, forbidden_tokens: Optional[list[str]] = None) -> 
         if token in lowered:
             raise ValueError(f"Destructive SQL token detected: {token.strip()}")
 
-
+# Frozen dataclasses make accidental post-hoc mutation fail loudly:
+# https://docs.python.org/3/library/dataclasses.html
 @dataclass(frozen=True)
 class QueryResult:
     """Store the result of one query execution."""

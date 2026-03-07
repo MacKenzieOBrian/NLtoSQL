@@ -1,55 +1,26 @@
-"""Notebook orchestration helpers shared across the experiment notebooks."""
+"""ReAct setup and QLoRA training helpers for notebooks and fixed scripts.
+
+Baseline and QLoRA grid execution now call ``run_eval_grid()`` directly. This
+module keeps only the parts that still have distinct orchestration logic.
+"""
 
 from __future__ import annotations
 
 import json
-import re
 import subprocess
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
 from sqlalchemy.engine import Engine
 
-from ..evaluation.eval import EVAL_PROFILE_MODEL_ONLY_RAW
-
-
-def model_alias_from_id(model_id: str) -> str:
-    """Convert a model id into a filesystem-safe alias."""
-    tail = (model_id or "model").split("/")[-1]
-    alias = re.sub(r"[^a-z0-9]+", "_", tail.lower()).strip("_")
-    return alias or "model"
-
-
-def git_short_commit(default: str = "unknown") -> str:
+def _git_short_commit(default: str = "unknown") -> str:
     """Return the current short git hash."""
     try:
         return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
     except Exception:
         return default
-
-
-def build_run_metadata(
-    *,
-    model_id: str,
-    model_alias: str,
-    method: str,
-    notebook: str,
-    adapter_dir: str | None = None,
-    commit: str | None = None,
-) -> dict[str, Any]:
-    """Build consistent run metadata payloads for JSON result files."""
-    payload: dict[str, Any] = {
-        "commit": commit or git_short_commit(),
-        "model_id": model_id,
-        "model_alias": model_alias,
-        "notebook": notebook,
-        "method": method,
-    }
-    if adapter_dir:
-        payload["adapter_dir"] = adapter_dir
-    return payload
 
 
 QLORA_EXPERIMENT_PRESETS: dict[str, dict[str, Any]] = {
@@ -89,87 +60,9 @@ QLORA_EXPERIMENT_PRESETS: dict[str, dict[str, Any]] = {
     },
 }
 
-
-@dataclass(frozen=True)
-class GridPlan:
-    """Small notebook-level plan for one baseline/QLoRA rerun."""
-
-    eval_profile: str = EVAL_PROFILE_MODEL_ONLY_RAW
-    k_values: list[int] = field(default_factory=lambda: [0, 3])
-    seeds: list[int] = field(default_factory=lambda: [7, 17, 27])
-    enable_ts: bool = True
-    ts_for_k_values: list[int] = field(default_factory=lambda: [3])
-    ts_n: int = 10
-    ts_prefix: str = "classicmodels_ts"
-    ts_max_rows: int = 500
-    max_new_tokens: int | None = None
-
-
-def primary_grid_plan(*, max_new_tokens: int | None = None) -> GridPlan:
-    """Return the default dissertation rerun settings."""
-    return GridPlan(max_new_tokens=max_new_tokens)
-
-
-def print_grid_plan(run_tag: str, plan: GridPlan, *, extra: str | None = None) -> None:
-    """Print one short line that explains the grid run settings."""
-    suffix = f" | {extra}" if extra else ""
-    print(
-        f"Run: {run_tag} | profile={plan.eval_profile} | "
-        f"k={plan.k_values} | seeds={plan.seeds} | "
-        f"TS_k={plan.ts_for_k_values if plan.enable_ts else 'off'}{suffix}"
-    )
-
-
-def print_grid_run_report(report: dict[str, Any]) -> None:
-    """Print the saved paths and simple per-run rows for a grid report."""
-    print("Saved run dir:", report["run_dir"])
-    print("Saved run report:", report["report_path"])
-    print("Per-run metric rows:")
-    for row in report["runs"]:
-        print(row)
-
-
-@dataclass(frozen=True)
-class ReactEvalPlan:
-    """Small notebook-level plan for one ReAct rerun."""
-
-    quick_limit: int | None = None
-    ts_n: int = 10
-    ts_prefix: str = "classicmodels_ts"
-    ts_max_rows: int = 500
-
-
-def primary_react_eval_plan(
-    *,
-    quick_limit: int | None = None,
-    ts_n: int = 10,
-    ts_prefix: str = "classicmodels_ts",
-    ts_max_rows: int = 500,
-) -> ReactEvalPlan:
-    """Return the default ReAct notebook run settings."""
-    return ReactEvalPlan(
-        quick_limit=quick_limit,
-        ts_n=ts_n,
-        ts_prefix=ts_prefix,
-        ts_max_rows=ts_max_rows,
-    )
-
-
-def print_react_plan(config_name: str, plan: ReactEvalPlan) -> None:
-    """Print one short line that explains the ReAct notebook settings."""
-    print({
-        "config": config_name,
-        "quick_limit": plan.quick_limit,
-        "ts_n": plan.ts_n,
-        "ts_prefix": plan.ts_prefix,
-        "ts_max_rows": plan.ts_max_rows,
-    })
-
-
-def print_react_run_report(label: str, report: dict[str, Any], out_path: Path) -> None:
-    """Print the compact metric summary and saved path for a ReAct run."""
-    print_eval_rates(label, report)
-    print("Saved report:", out_path)
+_PRIMARY_REACT_TS_N = 10
+_PRIMARY_REACT_TS_PREFIX = "classicmodels_ts"
+_PRIMARY_REACT_TS_MAX_ROWS = 500
 
 
 def configure_react_notebook(
@@ -179,18 +72,8 @@ def configure_react_notebook(
     model: Any,
     tokenizer: Any,
     exemplar_pool: list[dict[str, Any]],
-    name: str = "react_barebones_notebook",
-    use_repair_policy: bool = True,
-    max_repairs: int = 2,
-    max_steps: int = 8,
-    few_shot_k: int = 3,
-    few_shot_seed: int = 7,
-    max_new_tokens: int = 256,
-    do_sample: bool = False,
-    temperature: float = 0.2,
-    top_p: float = 0.9,
 ) -> Any:
-    """Set the shared agent context and return the matching ReAct config."""
+    """Set the shared agent context and return the fixed dissertation ReAct config."""
     from nl2sql.agent.agent_tools import AgentContext, set_agent_context
     from nl2sql.agent.react_pipeline import ReactAblationConfig
     from nl2sql.core.query_runner import QueryRunner
@@ -206,16 +89,16 @@ def configure_react_notebook(
         )
     )
     return ReactAblationConfig(
-        name=name,
-        use_repair_policy=use_repair_policy,
-        max_repairs=max_repairs,
-        max_steps=max_steps,
-        few_shot_k=few_shot_k,
-        few_shot_seed=few_shot_seed,
-        max_new_tokens=max_new_tokens,
-        do_sample=do_sample,
-        temperature=temperature,
-        top_p=top_p,
+        name="react_barebones_notebook",
+        use_repair_policy=True,
+        max_repairs=2,
+        max_steps=8,
+        few_shot_k=3,
+        few_shot_seed=7,
+        max_new_tokens=256,
+        do_sample=False,
+        temperature=0.2,
+        top_p=0.9,
     )
 
 
@@ -272,70 +155,6 @@ def train_qlora_adapter(
     return run_card
 
 
-def run_model_grid_notebook_eval(
-    *,
-    test_set: list[dict[str, Any]],
-    schema_summary: str,
-    model: Any,
-    tokenizer: Any,
-    engine: Any,
-    db_config: dict[str, Any] | None = None,
-    instance_connection_name: str | None = None,
-    db_user: str | None = None,
-    db_pass: str | None = None,
-    model_id: str,
-    method: str,
-    notebook: str,
-    run_tag: str,
-    runs_dir: str,
-    grid_plan: GridPlan,
-    model_alias: str | None = None,
-    adapter_dir: str | None = None,
-    limit: int | None = None,
-) -> dict[str, Any]:
-    """Run the shared eval grid and return a plain run report."""
-    from nl2sql.evaluation.grid_runner import run_eval_grid
-
-    resolved_db = db_config or {}
-    instance_connection_name = instance_connection_name or resolved_db.get("instance_connection_name")
-    db_user = db_user or resolved_db.get("db_user")
-    db_pass = db_pass or resolved_db.get("db_pass")
-    if not instance_connection_name or not db_user or not db_pass:
-        raise ValueError("Provide db_config or explicit instance_connection_name/db_user/db_pass values.")
-
-    resolved_alias = model_alias or model_alias_from_id(model_id)
-    run_metadata = build_run_metadata(
-        model_id=model_id,
-        model_alias=resolved_alias,
-        method=method,
-        notebook=notebook,
-        adapter_dir=adapter_dir,
-    )
-    resolved_max_new_tokens = 128 if grid_plan.max_new_tokens is None else int(grid_plan.max_new_tokens)
-    return run_eval_grid(
-        test_set=test_set,
-        schema_summary=schema_summary,
-        model=model,
-        tokenizer=tokenizer,
-        engine=engine,
-        instance_connection_name=instance_connection_name,
-        db_user=db_user,
-        db_pass=db_pass,
-        k_values=grid_plan.k_values,
-        seeds=grid_plan.seeds,
-        run_tag=run_tag,
-        runs_dir=runs_dir,
-        run_metadata=run_metadata,
-        limit=limit,
-        enable_ts_for_k=set(grid_plan.ts_for_k_values) if grid_plan.enable_ts else None,
-        ts_n=grid_plan.ts_n,
-        ts_prefix=grid_plan.ts_prefix,
-        ts_max_rows=grid_plan.ts_max_rows,
-        max_new_tokens=resolved_max_new_tokens,
-        eval_profile=grid_plan.eval_profile,
-    )
-
-
 def _react_progress_rates(items: list[dict[str, Any]]) -> tuple[float, float, float]:
     n_items = max(len(items), 1)
     return (
@@ -378,7 +197,7 @@ def _react_report(
     return report
 
 
-def evaluate_react_ablation(
+def _evaluate_react_ablation(
     *,
     test_set: list[dict[str, Any]],
     engine: Engine,
@@ -463,7 +282,6 @@ def run_react_notebook_eval(
     config: Any,
     model_id: str,
     adapter_path: str,
-    react_plan: ReactEvalPlan,
     ts_make_engine_fn: Any,
     notebook: str,
     out_root: str | Path = "results/agent/runs",
@@ -473,32 +291,30 @@ def run_react_notebook_eval(
     run_ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%SZ")
     run_dir = Path(out_root) / f"{run_tag}_{run_ts}"
     run_dir.mkdir(parents=True, exist_ok=True)
-    run_filename = "results_react_200.json" if react_plan.quick_limit is None else "results_react_eval.json"
-    out_path = run_dir / run_filename
+    out_path = run_dir / "results_react_200.json"
 
     suite_dbs = (
-        [f"{react_plan.ts_prefix}_{i:02d}" for i in range(1, react_plan.ts_n + 1)]
-        if react_plan.ts_n and react_plan.ts_n > 0
+        [f"{_PRIMARY_REACT_TS_PREFIX}_{i:02d}" for i in range(1, _PRIMARY_REACT_TS_N + 1)]
+        if _PRIMARY_REACT_TS_N > 0
         else []
     )
     run_metadata = {
-        "commit": git_short_commit(),
+        "commit": _git_short_commit(),
         "notebook": notebook,
         "model_id": model_id,
         "adapter_path": adapter_path,
         "config_name": config.name,
-        "quick_limit": react_plan.quick_limit,
-        "ts_n": react_plan.ts_n,
+        "ts_n": _PRIMARY_REACT_TS_N,
     }
 
-    report = evaluate_react_ablation(
+    report = _evaluate_react_ablation(
         test_set=test_set,
         engine=engine,
         config=config,
-        limit=react_plan.quick_limit,
+        limit=None,
         ts_suite_db_names=suite_dbs if suite_dbs else None,
         ts_make_engine_fn=ts_make_engine_fn if suite_dbs else None,
-        ts_max_rows=react_plan.ts_max_rows,
+        ts_max_rows=_PRIMARY_REACT_TS_MAX_ROWS,
         progress_every=20,
         run_metadata=run_metadata,
         save_path=out_path,
@@ -506,35 +322,9 @@ def run_react_notebook_eval(
     return report, report.get("items", []), out_path
 
 
-def print_eval_rates(label: str, report: dict[str, Any]) -> None:
-    """Compact metric summary for notebook output."""
-    ts_rate = report.get("ts_rate")
-    print(
-        label,
-        "VA=", round(report.get("va_rate", 0.0), 3),
-        "EM=", round(report.get("em_rate", 0.0), 3),
-        "EX=", round(report.get("ex_rate", 0.0), 3),
-        "TS=", "NA" if ts_rate is None else round(ts_rate, 3),
-    )
-
-
 __all__ = [
-    "build_run_metadata",
     "configure_react_notebook",
-    "evaluate_react_ablation",
-    "git_short_commit",
-    "GridPlan",
-    "primary_react_eval_plan",
-    "model_alias_from_id",
-    "primary_grid_plan",
-    "print_grid_plan",
-    "print_grid_run_report",
-    "print_react_plan",
-    "print_react_run_report",
     "QLORA_EXPERIMENT_PRESETS",
-    "ReactEvalPlan",
-    "print_eval_rates",
-    "run_model_grid_notebook_eval",
     "run_react_notebook_eval",
     "train_qlora_adapter",
 ]

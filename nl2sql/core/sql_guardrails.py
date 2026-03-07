@@ -1,9 +1,7 @@
-"""
-Markdown fence stripping and forbidden-token rejection for raw model output.
+"""Sanitize raw model text into one executable SQL candidate.
 
-Extension-path layer — disabled for primary model-only runs, enabled for
-optional reliability comparisons. Chat models routinely wrap SQL in fenced
-code blocks (```sql ... ```) which must be stripped before execution.
+This core-layer helper strips obvious chat-output noise and rejects dangerous
+tokens. It is not a full SQL validator and does not attempt semantic repair.
 """
 
 from __future__ import annotations
@@ -15,10 +13,9 @@ from .llm import extract_first_select as _extract_first_select
 from .query_runner import DEFAULT_FORBIDDEN_TOKENS
 
 
-# extension path: guardrails are optional and excluded from primary model-only claims.
 def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
     """
-    Extract a single safe SELECT statement.
+    Extract one safe-looking SELECT statement from raw model output.
 
     Returns:
       (sql, "ok") on success
@@ -29,9 +26,10 @@ def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
 
     text = raw
 
-    # Chat models often wrap output in fenced blocks; strip before extraction.
+    # Chat models often wrap SQL in fenced blocks; remove that presentation noise first.
     text = re.sub(r"```(.*?)```", r"\1", text, flags=re.S).strip()
 
+    # This only extracts the first SELECT-like statement; deeper validation happens elsewhere.
     sql = _extract_first_select(text)
     if not sql:
         return None, "no_select"

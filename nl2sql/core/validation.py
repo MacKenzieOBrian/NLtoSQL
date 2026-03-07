@@ -10,6 +10,7 @@ from .sql_guardrails import clean_candidate_with_reason
 
 
 def parse_schema_text(schema_text: str) -> tuple[set[str], dict[str, set[str]]]:
+    """Parse compact schema text into table and column lookup structures."""
     tables: set[str] = set()
     table_cols: dict[str, set[str]] = {}
     if not schema_text:

@@ -21,6 +21,9 @@ def create_engine_with_connector(
     password: str,
     db_name: str,
 ) -> tuple[Engine, Connector]:
+    """Build a SQLAlchemy engine backed by the Cloud SQL Python connector."""
+    # SQLAlchemy's `creator=` hook is the clean way to hand off connection creation:
+    # https://docs.sqlalchemy.org/en/20/core/engines.html#sqlalchemy.create_engine
     connector = Connector()
 
     def getconn():
@@ -41,6 +44,9 @@ def create_engine_with_connector(
 
 @contextmanager
 def safe_connection(engine: Engine) -> Iterator[sqlalchemy.engine.Connection]:
+    """Yield one DB connection and guarantee it closes afterwards."""
+    # Lightweight context-manager pattern from Python stdlib:
+    # https://docs.python.org/3/library/contextlib.html#contextlib.contextmanager
     conn = engine.connect()
     try:
         yield conn

@@ -20,6 +20,7 @@ def filter_training_records(
     train_records: list[dict[str, Any]],
     test_nlqs: set[str],
 ) -> dict[str, Any]:
+    """Remove obvious leakage and low-quality rows before QLoRA training."""
     overlap: list[tuple[int, str]] = []
     non_select: list[tuple[int, str, str]] = []
     deduped: list[dict[str, str]] = []
@@ -29,14 +30,17 @@ def filter_training_records(
         nlq = str(row["nlq"]).strip()
         sql = str(row["sql"]).strip()
 
+        # Exact NLQ overlap with the held-out benchmark would make later results hard to defend.
         if nlq in test_nlqs:
             overlap.append((idx, nlq))
             continue
 
+        # Keep the training set focused on the same SELECT-only task as evaluation.
         if not sql.lower().lstrip().startswith("select"):
             non_select.append((idx, nlq, sql[:120]))
             continue
 
+        # Deduplicate by NLQ so the model is not overexposed to repeated prompts.
         if nlq in seen:
             continue
         seen.add(nlq)
@@ -54,6 +58,7 @@ def validate_training_queries(
     engine: Engine,
     records: list[dict[str, str]],
 ) -> list[tuple[int, str, str, str]]:
+    """Check whether the filtered training SQL still executes against the live DB."""
     failed: list[tuple[int, str, str, str]] = []
     with engine.connect() as conn:
         for idx, row in enumerate(records):
@@ -72,6 +77,7 @@ def run_training_set_validation(
     train_path: str | Path,
     engine: Engine,
 ) -> dict[str, Any]:
+    """Load train/test data, apply filtering, and run executability checks."""
     test_items = load_test_set(test_path)
     train_records = load_train_records(train_path)
     test_nlqs = {str(item["nlq"]).strip() for item in test_items}
@@ -129,6 +135,7 @@ def print_training_set_validation_summary(result: dict[str, Any]) -> None:
 
 
 def build_training_validation_report(result: dict[str, Any]) -> dict[str, Any]:
+    """Convert the notebook validation result into one small JSON report."""
     test_items = result["test_items"]
     train_records = result["train_records"]
     overlap = result["overlap"]
@@ -157,6 +164,7 @@ def save_training_validation_report(
     *,
     out_path: str | Path = "results/training_set_validation/validation_report.json",
 ) -> Path:
+    """Persist the training-set validation summary to disk."""
     path = Path(out_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2), encoding="utf-8")
