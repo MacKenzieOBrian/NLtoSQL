@@ -16,50 +16,20 @@ from sqlalchemy.engine import Engine
 
 from ..infra.db import safe_connection
 from ..core.llm import generate_sql_from_messages
-from ..core.postprocess import guarded_postprocess, normalize_sql as _normalize_sql
+from ..core.postprocess import normalize_sql as _normalize_sql
 from ..core.prompting import make_few_shot_messages
 from ..core.query_runner import check_sql_safety, now_utc_iso, QueryRunner
-from ..core.sql_guardrails import clean_candidate_with_reason
 
-
-EVAL_PROFILE_MODEL_ONLY_RAW = "model_only_raw"
-EVAL_PROFILE_OPTIONAL_RELIABILITY = "optional_reliability_layer"
-EVAL_PROFILE_CHOICES = (
-    EVAL_PROFILE_MODEL_ONLY_RAW,
-    EVAL_PROFILE_OPTIONAL_RELIABILITY,
-)
-
-
-def _clean_sql(
-    *,
-    sql_text: str,
-    nlq: str,
-    apply_sql_guardrails: bool,
-    apply_postprocess: bool,
-) -> str:
-    # Optional cleanup layer for runs that enable guardrails or post-processing.
-    out = (sql_text or "").strip()
-
-    if apply_sql_guardrails:
-        cleaned, reason = clean_candidate_with_reason(out)
-        if cleaned:
-            out = cleaned
-        elif reason == "empty":
-            out = ""
-
-    if apply_postprocess and out:
-        out = guarded_postprocess(out, nlq)
-
-    return out.strip()
-
-
+# Frozen dataclasses keep scored records immutable after construction:
+# https://docs.python.org/3/library/dataclasses.html
 @dataclass(frozen=True)
 class EvalItem:
+    """Scored output for one benchmark item within one evaluation run."""
     i: int
     nlq: str
     gold_sql: str
     raw_sql: str      # exact model output before any post-processing
-    pred_sql: str     # SQL actually scored (may differ from raw_sql if reliability layer is on)
+    pred_sql: str     # SQL actually scored (kept separate so later analysis can stay explicit)
     va: bool
     em: bool
     ex: bool
@@ -89,6 +59,7 @@ def execute_fetch(
     sql: str,
     max_rows: int = 10000,
 ) -> tuple[bool, list[str] | None, list[tuple] | None, str | None]:
+    """Execute one query for EX comparison and return rows or an error string."""
     try:
         check_sql_safety(sql)
         with safe_connection(engine) as conn:
@@ -109,7 +80,10 @@ def execution_accuracy(
     gold_sql: str,
     max_compare_rows: int = 10000,
 ) -> tuple[bool, str | None, str | None]:
+    """Return whether predicted and gold SQL produce the same result rows."""
     # Inspired by the usual text-to-SQL EX check: run both queries and compare result rows.
+    # `Counter` is the stdlib multiset helper used for bag equality:
+    # https://docs.python.org/3/library/collections.html#collections.Counter
     pred_ok, _, pred_rows, pred_err = execute_fetch(engine=engine, sql=pred_sql, max_rows=max_compare_rows)
     gold_ok, _, gold_rows, gold_err = execute_fetch(engine=engine, sql=gold_sql, max_rows=max_compare_rows)
 
@@ -200,24 +174,23 @@ def _build_item_pool(
 
 
 def _sample_exemplars(*, rng: random.Random, pool: list[dict[str, Any]], k: int) -> list[dict[str, Any]]:
+    # Separate `Random` instances keep run sampling isolated from global RNG state:
+    # https://docs.python.org/3/library/random.html#random.Random
     if k <= 0:
         return []
     if len(pool) < k:
         raise ValueError(f"Exemplar pool too small: k={k} but pool has {len(pool)} items")
     return rng.sample(pool, k)
 
-
+# Frozen dataclasses keep scored configs immutable after construction:
+# https://docs.python.org/3/library/dataclasses.html
 @dataclass(frozen=True)
 class EvalRunConfig:
-    """Generation flags for eval_run(). All False = model-only raw (primary path)."""
+    """Settings for one raw-model evaluation run."""
     max_new_tokens: int = 128
     max_rows: int = 50
     max_compare_rows: int = 10000
     avoid_exemplar_leakage: bool = True
-    generation_extract_select: bool = False
-    generation_stop_on_semicolon: bool = False
-    apply_sql_guardrails: bool = False
-    apply_postprocess: bool = False
     ts_suite_db_names: Optional[list[str]] = None
     ts_make_engine_fn: Optional[Callable[[str], Engine]] = None
     ts_max_rows: int = 500
@@ -225,7 +198,6 @@ class EvalRunConfig:
 
 def build_eval_run_config(
     *,
-    eval_profile: str = EVAL_PROFILE_MODEL_ONLY_RAW,
     max_new_tokens: int = 128,
     max_rows: int = 50,
     max_compare_rows: int = 10000,
@@ -234,36 +206,16 @@ def build_eval_run_config(
     ts_make_engine_fn: Optional[Callable[[str], Engine]] = None,
     ts_max_rows: int = 500,
 ) -> EvalRunConfig:
-    """Build one named evaluation profile so notebook reruns use an explicit policy."""
-    if eval_profile == EVAL_PROFILE_MODEL_ONLY_RAW:
-        return EvalRunConfig(
-            max_new_tokens=max_new_tokens,
-            max_rows=max_rows,
-            max_compare_rows=max_compare_rows,
-            avoid_exemplar_leakage=avoid_exemplar_leakage,
-            generation_extract_select=False,
-            generation_stop_on_semicolon=False,
-            apply_sql_guardrails=False,
-            apply_postprocess=False,
-            ts_suite_db_names=ts_suite_db_names,
-            ts_make_engine_fn=ts_make_engine_fn,
-            ts_max_rows=ts_max_rows,
-        )
-    if eval_profile == EVAL_PROFILE_OPTIONAL_RELIABILITY:
-        return EvalRunConfig(
-            max_new_tokens=max_new_tokens,
-            max_rows=max_rows,
-            max_compare_rows=max_compare_rows,
-            avoid_exemplar_leakage=avoid_exemplar_leakage,
-            generation_extract_select=True,
-            generation_stop_on_semicolon=True,
-            apply_sql_guardrails=True,
-            apply_postprocess=True,
-            ts_suite_db_names=ts_suite_db_names,
-            ts_make_engine_fn=ts_make_engine_fn,
-            ts_max_rows=ts_max_rows,
-        )
-    raise ValueError(f"Unsupported eval_profile: {eval_profile}")
+    """Build the single raw-output evaluation config used by this project."""
+    return EvalRunConfig(
+        max_new_tokens=max_new_tokens,
+        max_rows=max_rows,
+        max_compare_rows=max_compare_rows,
+        avoid_exemplar_leakage=avoid_exemplar_leakage,
+        ts_suite_db_names=ts_suite_db_names,
+        ts_make_engine_fn=ts_make_engine_fn,
+        ts_max_rows=ts_max_rows,
+    )
 
 
 def _generate_candidate_sql(
@@ -285,15 +237,10 @@ def _generate_candidate_sql(
         tokenizer=tokenizer,
         messages=messages,
         max_new_tokens=config.max_new_tokens,
-        extract_select=config.generation_extract_select,
-        stop_on_semicolon=config.generation_stop_on_semicolon,
+        extract_select=False,
+        stop_on_semicolon=False,
     )
-    pred_sql = _clean_sql(
-        sql_text=raw_sql,
-        nlq=nlq,
-        apply_sql_guardrails=config.apply_sql_guardrails,
-        apply_postprocess=config.apply_postprocess,
-    )
+    pred_sql = (raw_sql or "").strip()
     return raw_sql, pred_sql
 
 
@@ -396,16 +343,6 @@ def _summarize_eval(out: list[EvalItem]) -> tuple[float, float, float, float | N
     return va_rate, em_rate, ex_rate, ts_rate, ts_values
 
 
-def _eval_profile_name(config: EvalRunConfig) -> str:
-    optional_reliability_enabled = any((
-        config.generation_extract_select,
-        config.generation_stop_on_semicolon,
-        config.apply_sql_guardrails,
-        config.apply_postprocess,
-    ))
-    return "optional_reliability_layer" if optional_reliability_enabled else "model_only_raw"
-
-
 def _build_eval_payload(
     *,
     out: list[EvalItem],
@@ -428,13 +365,8 @@ def _build_eval_payload(
         "ex_rate": ex_rate,
         "ts_rate": ts_rate,
         "ts_n": len(ts_values),
-        "eval_profile": _eval_profile_name(config),
         "exemplar_policy": "custom_pool" if exemplar_pool is not None else "benchmark_pool",
         "avoid_exemplar_leakage": bool(config.avoid_exemplar_leakage),
-        "generation_extract_select": bool(config.generation_extract_select),
-        "generation_stop_on_semicolon": bool(config.generation_stop_on_semicolon),
-        "sql_guardrails": "enabled" if config.apply_sql_guardrails else "disabled",
-        "postprocess": "guarded_postprocess" if config.apply_postprocess else "none",
         "results": [r.to_jsonable() for r in out],
     }
     if run_metadata:
@@ -534,8 +466,6 @@ def categorize_failure(item: dict) -> str:
 def save_failure_profile(
     *,
     items: list[dict[str, Any]],
-    quick_limit: int | None,
-    ts_n: int,
     config_name: str,
     out_path: str | Path,
 ) -> tuple[dict[str, int], Path]:
@@ -546,8 +476,6 @@ def save_failure_profile(
     payload = {
         "counts": dict(counts),
         "n_items": len(items),
-        "quick_limit": quick_limit,
-        "ts_n": ts_n,
         "config_name": config_name,
     }
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
