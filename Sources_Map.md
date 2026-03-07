@@ -113,11 +113,6 @@
 **Source**: [Python Docs — collections.Counter](https://docs.python.org/3/library/collections.html#collections.Counter)
 **What it covers**: `Counter` is a dict subclass that counts hashable elements, equivalent to a mathematical multiset. Two `Counter` objects are equal if every element has the same count in both — order-insensitive, which is what the Spider EX metric requires. The docs describe Counter as "similar to bags or multisets in other languages".
 
-### `with warnings.catch_warnings():`
-**File**: `nl2sql/evaluation/research_stats.py`
-**Source**: [Python Docs — warnings.catch_warnings](https://docs.python.org/3/library/warnings.html#warnings.catch_warnings)
-**What it covers**: `catch_warnings()` creates a temporary warnings filter scope. Here it is used with `warnings.simplefilter("ignore")` so repeated Shapiro-Wilk warnings do not flood notebook output during the comparison workflow.
-
 ### `math.isnan(x)` → sentinel `"NaN"`
 **File**: `nl2sql/evaluation/eval.py`
 **Source**: [Python Docs — math.isnan](https://docs.python.org/3/library/math.html#math.isnan)
@@ -128,10 +123,10 @@
 **Source**: [PEP 563 — Postponed Evaluation of Annotations](https://peps.python.org/pep-0563/)
 **What it covers**: Makes all type annotations in the module lazy (evaluated as strings rather than at import time). This allows forward references and the `X | None` union syntax in Python versions below 3.10, which is important for Colab compatibility where the Python version may lag.
 
-### `Path.write_text()` / `Path.read_text()` / `.rglob()`
-**File**: `nl2sql/evaluation/eval.py`, `nl2sql/evaluation/research_runs.py`, `nl2sql/evaluation/research_comparison.py`
+### `Path.write_text()` / `Path.read_text()` / `.glob()`
+**File**: `nl2sql/evaluation/eval.py`, `nl2sql/evaluation/final_pack.py`, `scripts/build_final_analysis.py`
 **Source**: [Python Docs — pathlib.Path](https://docs.python.org/3/library/pathlib.html)
-**What it covers**: `pathlib` provides object-oriented filesystem paths. `write_text()` writes a string to a file in one call (no open/close). `rglob("*.json")` recursively finds files matching a pattern — used in the run-discovery helper to discover result JSON files across nested run directories.
+**What it covers**: `pathlib` provides object-oriented filesystem paths. `write_text()` writes a string to a file in one call (no open/close). `glob("*.json")` is used in the manual-pack loader to read only the explicitly selected JSON files placed in the final evidence folder.
 
 ### `re.compile(r"...", re.IGNORECASE)`
 **File**: `nl2sql/core/sql_guardrails.py`, `nl2sql/core/postprocess.py`, `nl2sql/core/validation.py`
@@ -143,21 +138,11 @@
 ## SciPy / Statistical Testing
 
 ### `scipy.stats.wilcoxon(diffs, zero_method='wilcox')`
-**File**: `nl2sql/evaluation/research_stats.py`
+**File**: `nl2sql/evaluation/simple_stats.py`
 **Source**: [SciPy Docs — scipy.stats.wilcoxon](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.wilcoxon.html)
 **What it covers**: The Wilcoxon signed-rank test tests whether the distribution of paired differences is symmetric about zero — a non-parametric alternative to the paired t-test. The docs explain `zero_method='wilcox'` (the Wilcoxon 1945 original method, which discards zero differences). This is the primary test in the dissertation because binary 0/1 metrics violate the normality assumption required by the t-test.
 
-### `scipy.stats.ttest_rel(a, b)`
-**File**: `nl2sql/evaluation/research_stats.py`
-**Source**: [SciPy Docs — scipy.stats.ttest_rel](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.ttest_rel.html)
-**What it covers**: The paired t-test. Used as a corroborating test alongside Wilcoxon. At n≥600 paired observations, the Central Limit Theorem justifies its use even with binary metric distributions. The docs describe the test statistic and degrees of freedom (n-1) used for the confidence interval calculation.
-
-### `scipy.stats.shapiro(diffs)`
-**File**: `nl2sql/evaluation/research_stats.py`
-**Source**: [SciPy Docs — scipy.stats.shapiro](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html)
-**What it covers**: Shapiro-Wilk normality test on the paired differences. Run on every comparison pair to document whether normality looks plausible before reading the paired t-test. The warnings context is used to keep repeated range-zero warnings out of the notebook output.
-
 ### `_bh_fdr_adjust(pvalues)`
-**File**: `nl2sql/evaluation/research_stats.py`
+**File**: `nl2sql/evaluation/simple_stats.py`
 **Source**: [Statsmodels Docs — multipletests](https://www.statsmodels.org/dev/generated/statsmodels.stats.multitest.multipletests.html)
 **What it covers**: Applies multiple comparison correction to a family of p-values. `method='fdr_bh'` is the Benjamini-Hochberg procedure, which controls the False Discovery Rate rather than the Family-Wise Error Rate. The project now uses a small local helper that follows the same adjustment rule rather than importing `statsmodels`.

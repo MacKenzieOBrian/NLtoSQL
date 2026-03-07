@@ -18,12 +18,11 @@ Suites', EMNLP 2020. doi: 10.18653/v1/2020.emnlp-main.29.
 **[24]** R. Dror et al., 'The Hitchhiker's Guide to Testing Statistical Significance in Natural
 Language Processing', ACL 2018. doi: 10.18653/v1/P18-1128.
 → Justifies the choice of non-parametric Wilcoxon test over parametric t-test as primary,
-  and BH-FDR correction for multiple comparisons, in `nl2sql/evaluation/research_stats.py`.
+  and BH-FDR correction for multiple comparisons, in `nl2sql/evaluation/simple_stats.py`.
 
 **[29]** P. Virtanen et al., 'SciPy 1.0: Fundamental Algorithms for Scientific Computing in
 Python', Nature Methods, vol. 17, pp. 261–272, 2020. doi: 10.1038/s41592-020-0772-5.
-→ Provides `shapiro`, `wilcoxon`, and `ttest_rel` used in
-  `nl2sql/evaluation/research_stats.py`.
+→ Provides `wilcoxon` used in `nl2sql/evaluation/simple_stats.py`.
 
 
 ## Text-to-SQL Surveys and Benchmarks

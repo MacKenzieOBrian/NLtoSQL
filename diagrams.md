@@ -1,337 +1,215 @@
 # System Diagrams
 
-Six Mermaid diagrams that explain the project in a simple way.
-Paste each fenced block into your document tool or a Mermaid live renderer.
+Six Mermaid diagrams written to be easy to explain in a viva or demo.
+They keep the current code structure, but use plainer labels.
 
 ---
 
-## 1. ReAct Loop — `run_react_pipeline`
+## 1. ReAct Loop
 
-This is the main loop the agent follows for one question.
-Each box is one step saved into the JSON trace.
-`repairs_used` is one shared repair budget for both validation and execution fixes.
+This is the main ReAct-style loop for one question.
+The simple story is: get context, try SQL, check it, run it, repair if needed.
 
 ```mermaid
 flowchart TD
-    START([NLQ input]) --> SCHEMA[Step 1: get_schema\nensure_schema_text from AgentContext]
-    SCHEMA --> GEN[Step 2: generate_sql\nfew-shot prompt + model call + extract SELECT]
+    START([Natural-language question]) --> SCHEMA[Read schema context]
+    SCHEMA --> STEP{Steps left?}
 
-    GEN --> LOOP{step < max_steps=8?}
-    LOOP -- No --> EXHAUST([STOP: max_steps_exhausted\nreturn current_sql])
+    STEP -- No --> STOPMAX([Stop: step limit reached])
+    STEP -- Yes --> GEN[Generate SQL guess]
 
-    LOOP -- Yes --> VSQL[validate_sql\nSELECT present? table names in schema?]
+    GEN --> VALID[Check SQL before running it]
+    VALID -- Invalid --> FIX1{Repair budget left?}
+    FIX1 -- No --> STOPBAD([Stop: validation failed])
+    FIX1 -- Yes --> REPAIR1[Ask model to repair SQL]
+    REPAIR1 --> STEP
 
-    VSQL -- invalid --> VREPAIR{repairs_used\n< max_repairs=2?}
-    VREPAIR -- No --> VSTOP([STOP: validation_failed\nreturn current_sql])
-    VREPAIR -- Yes --> REP1[repair_sql\nrepair prompt\n+ schema + error hint]
-    REP1 --> INC1[repairs_used++]
-    INC1 --> LOOP
-
-    VSQL -- valid --> RUN[run_sql\nctx.runner.run — live DB execution]
-
-    RUN -- success --> SUCCESS([STOP: success\nreturn current_sql])
-
-    RUN -- runtime error --> RREPAIR{repairs_used\n< max_repairs=2?}
-    RREPAIR -- No --> RSTOP([STOP: execution_failed\nreturn current_sql])
-    RREPAIR -- Yes --> REP2[repair_sql\nuse execution error to try again]
-    REP2 --> INC2[repairs_used++]
-    INC2 --> LOOP
+    VALID -- Valid --> RUN[Run SQL on the database]
+    RUN -- Success --> DONE([Stop: success])
+    RUN -- Error --> FIX2{Repair budget left?}
+    FIX2 -- No --> STOPERR([Stop: execution failed])
+    FIX2 -- Yes --> REPAIR2[Repair SQL using the error message]
+    REPAIR2 --> STEP
 ```
 
 ---
 
-## 2. Evaluation Pipeline — `eval_run`
+## 2. Evaluation Flow
 
-One full pass over the benchmark items for one setting (model × k × seed).
+This is one full evaluation run for one condition, such as one model with one `k` and one seed.
 
 ```mermaid
 flowchart TD
-    INIT([model · tokenizer · k · seed\ntest_set · schema_summary · EvalRunConfig]) --> LOOP[For each selected item]
+    SETUP([Model + tokenizer + schema + test set + config]) --> LOOP[Pick next benchmark item]
 
-    LOOP --> POOL[_build_item_pool\nexclude current NLQ to prevent leakage]
-    POOL --> SAMPLE{k > 0?}
-    SAMPLE -- Yes\nfew-shot --> DRAW[_sample_exemplars\nsample k examples from the run RNG]
-    SAMPLE -- No\nzero-shot --> EMPTY[exemplars = empty list]
-    DRAW --> MSGS[make_few_shot_messages\nsystem prompt + k examples + NLQ]
-    EMPTY --> MSGS
+    LOOP --> POOL[Build exemplar pool]
+    POOL --> SHOTS{Few-shot or zero-shot?}
+    SHOTS -- Few-shot --> SAMPLE[Sample k examples]
+    SHOTS -- Zero-shot --> EMPTY[Use no examples]
 
-    MSGS --> GEN[generate_sql_from_messages\nbuild tokens + run model + decode\noptional extract_select / stop_on_semicolon]
+    SAMPLE --> PROMPT[Build prompt from schema + examples + question]
+    EMPTY --> PROMPT
 
-    GEN --> LAYER{guardrails or\npostprocess enabled?}
-    LAYER -- No --> PRED[pred_sql = raw_sql]
-    LAYER -- Yes --> OPT[_clean_sql\nsql_guardrails + guarded_postprocess]
-    OPT --> PRED
+    PROMPT --> MODEL[Generate raw model output]
+    MODEL --> CLEAN{Optional cleanup on?}
+    CLEAN -- No --> SQL[Use raw SQL]
+    CLEAN -- Yes --> FIXSQL[Apply guardrails and cleanup]
+    FIXSQL --> SQL
 
-    PRED --> VA[qr.run pred_sql\ncheck if the SQL runs]
-    PRED --> EM[normalize_sql comparison\nExact Match]
-    PRED --> EX[execution_accuracy\ncompare predicted rows with gold rows]
+    SQL --> SCORE[Score the prediction]
+    SCORE --> VA[VA: does it run?]
+    SCORE --> EM[EM: does the SQL text match?]
+    SCORE --> EX[EX: do the result rows match?]
+    VA --> TS{TS enabled and query valid?}
+    TS -- Yes --> TSRUN[Check perturbed databases]
+    TS -- No --> TSNONE[TS = none]
 
-    VA -- success AND ts_enabled --> TS[test_suite_accuracy_for_item\nN perturbed databases]
-    VA -- no TS --> TSN[ts = None]
+    VA --> SAVE[Save scored item]
+    EM --> SAVE
+    EX --> SAVE
+    TSRUN --> SAVE
+    TSNONE --> SAVE
 
-    VA --> ITEM[EvalItem\nva · em · ex · ts · raw_sql · pred_sql · error]
-    EM --> ITEM
-    EX --> ITEM
-    TS --> ITEM
-    TSN --> ITEM
-
-    ITEM --> NEXT{More items?}
-    NEXT -- Yes --> LOOP
-    NEXT -- No --> AGG[_summarize_eval + _build_eval_payload\nwork out final rates\nsave JSON report]
+    SAVE --> MORE{More items left?}
+    MORE -- Yes --> LOOP
+    MORE -- No --> REPORT[Save final JSON report]
 ```
 
 ---
 
-## 3. Module Architecture
+## 3. Project Structure
 
-High-level file map. Arrows show the main imports.
+This is the repo at a high level.
+The main mental model is: scripts are the official rerun path, notebooks mirror that path for walkthroughs, and one build script turns the manual final pack into the final CSV tables.
 
 ```mermaid
 graph LR
     subgraph Notebooks
-        NB02[02_baseline_prompting_eval]
-        NB03[03_agentic_eval]
-        NB04[04_build_training_set]
-        NB05[05_qlora_train_eval]
-        NB06[06_research_comparison]
+        NB[Runnable notebooks]
     end
 
-    subgraph scripts
-        SETUP[colab_setup.sh\nColab dependency install]
-        COLLECT[collect_research_tables.py\nbuild raw manifest + per-item table]
-        FORMAT[format_research_outputs.py\nbuild stats tables from per-item CSV]
-        GENCLI[generate_research_comparison.py\nall-in-one wrapper]
+    subgraph Infra
+        INFRA[infra/
+DB setup
+model loading
+training helpers
+ReAct setup]
     end
 
-    subgraph nl2sql/infra
-        IDB[infra/db.py\nconnect_notebook_db\ncreate_engine_with_connector]
-        IEXP[infra/experiment_helpers.py\nrun_model_grid_notebook_eval\nrun_react_notebook_eval\nconfigure_react_notebook]
-        IMOD[infra/model_loading.py\nload_quantized_model\nbuild_trainable_qlora_model\nload_eval_adapter_model]
-        INB[infra/notebook_utils.py\nauth helpers + load_test_set\nload_train_records]
-        ITRAIN[infra/training_set.py\ntraining-set validation helpers]
+    subgraph Core
+        CORE[core/
+prompting
+generation
+validation
+safe SQL run]
     end
 
-    subgraph nl2sql/evaluation
-        EVAL[eval.py\neval_run · execution_accuracy\ntest_suite_accuracy_for_item\nEvalRunConfig · EvalItem]
-        GRID[grid_runner.py\nrun_eval_grid]
-        RCOMP[research_comparison.py\ngenerate]
-        RRUNS[research_runs.py\ndiscover_all_runs\nbuild_tables_from_runs]
-        RSTATS[research_stats.py\ncompute_mean_median_std\ncompute_paired_tests]
-        APLOT[analysis_plots.py\ncomparison plots + failure breakdown]
+    subgraph Agent
+        AGENT[agent/
+ReAct loop]
     end
 
-    subgraph nl2sql/agent
-        REACT[react_pipeline.py\nrun_react_pipeline · generate_sql\nrepair_sql]
-        AT[agent_tools.py\nAgentContext · get_agent_context\nensure_schema_text · schema_to_text]
-        PROMPTS[prompts.py\nSQL_GENERATOR_SYSTEM_PROMPT\nSQL_REPAIR_SYSTEM_PROMPT]
+    subgraph Evaluation
+        EVAL[evaluation/
+scoring
+fixed grid
+manual final pack
+simple stats]
     end
 
-    subgraph nl2sql/core
-        LLM[llm.py\ngenerate_sql_from_messages\nextract_first_select]
-        SCHEMA[schema.py\nbuild_schema_summary]
-        PROMPT[prompting.py\nmake_few_shot_messages]
-        POST[postprocess.py\nguarded_postprocess · normalize_sql]
-        VAL[validation.py\nvalidate_sql · parse_schema_text]
-        QR[query_runner.py\nQueryRunner.run · check_sql_safety\nDEFAULT_FORBIDDEN_TOKENS · now_utc_iso]
-        GUARD[sql_guardrails.py\nclean_candidate_with_reason]
+    subgraph Scripts
+        SCRIPTS[scripts/
+fixed run scripts
+build_final_analysis.py]
     end
 
-    subgraph data
-        RESULTS[(results/**/*.json)]
-        MYSQL[(ClassicModels MySQL)]
+    subgraph Data
+        DB[(ClassicModels DB)]
+        RESULTS[(Saved JSON runs and CSV outputs)]
     end
 
-    NB02 --> SETUP
-    NB03 --> SETUP
-    NB05 --> SETUP
-
-    NB02 --> INB
-    NB02 --> IDB
-    NB02 --> IMOD
-    NB02 --> IEXP
-
-    NB03 --> INB
-    NB03 --> IDB
-    NB03 --> IMOD
-    NB03 --> IEXP
-
-    NB04 --> INB
-    NB04 --> IDB
-    NB04 --> ITRAIN
-
-    NB05 --> INB
-    NB05 --> IDB
-    NB05 --> IMOD
-    NB05 --> IEXP
-
-    NB06 --> COLLECT
-    NB06 --> FORMAT
-    NB06 --> APLOT
-
-    COLLECT --> RCOMP
-    FORMAT --> RCOMP
-    GENCLI --> RCOMP
-
-    IEXP --> GRID
-    IEXP --> EVAL
-    IEXP --> REACT
-    IEXP --> QR
-    ITRAIN --> INB
-
-    GRID --> EVAL
-    GRID --> IDB
-
-    RCOMP --> RRUNS
-    RCOMP --> RSTATS
-
-    EVAL --> LLM
-    EVAL --> PROMPT
-    EVAL --> QR
-    EVAL --> POST
-    EVAL --> GUARD
-    EVAL --> IDB
-
-    REACT --> LLM
-    REACT --> VAL
-    REACT --> POST
-    REACT --> PROMPT
-    REACT --> PROMPTS
-    REACT --> AT
-
-    AT --> SCHEMA
-
-    GUARD --> LLM
-    GUARD --> QR
-
-    SCHEMA --> IDB
-    QR --> IDB
-    IDB --> MYSQL
-
-    GRID --> RESULTS
-    IEXP --> RESULTS
-    RCOMP --> RESULTS
+    NB --> INFRA
+    INFRA --> CORE
+    INFRA --> AGENT
+    INFRA --> EVAL
+    CORE --> DB
+    AGENT --> DB
+    EVAL --> RESULTS
+    SCRIPTS --> EVAL
+    SCRIPTS --> RESULTS
+    NB --> RESULTS
 ```
 
 ---
 
-## 4. Two-Stage Analysis Pipeline
+## 4. Two-Stage Analysis
 
-How saved result files first become raw tables, and then become hypothesis-test outputs.
+This is the final analysis path.
+The key idea is: choose the official JSON files by hand, then let one script build the final CSV tables.
 
 ```mermaid
 flowchart TD
-    A1[results/baseline/runs + results/qlora/runs\nresults_k*_seed*.json] --> DISC[discover_primary_runs\nparse metadata\ninfer model_tag · method · k · seed\naccept full runs only]
-    A2[results/agent/runs\nresults_react_200.json or results_react_eval.json] --> RDISC[discover_react_runs\ninfer model_tag + few_shot_k + seed\naccept full runs only]
+    RUNS[Saved run JSON files from fixed scripts] --> PICK[Manually copy the official files]
+    PICK --> PACK[results/final_pack/]
+    PACK --> BUILD[python scripts/build_final_analysis.py]
 
-    DISC --> DEDUP[Keep newest run\none RunSpec per condition_id + seed]
-    RDISC --> DEDUP
-
-    DEDUP --> BUILD[build_tables_from_runs\nexpand items list per RunSpec\nextract va · em · ex · ts per example_id]
-    BUILD --> PREP[prepare_per_item_table\nturn va · em · ex · ts into numeric columns]
-
-    BUILD --> MCSV[run_manifest.csv\none row per run\ncondition_id · seed · source_json]
-    PREP --> PCSV[per_item_metrics_primary_raw.csv\none row per item per run\nrun_id · condition_id · seed · i · va · em · ex · ts]
-
-    PCSV --> STAGE2[Stage 2: format stats tables]
-    STAGE2 --> STATS[compute_mean_median_std\ngroup by run_id and metric\nmean · median · std · Shapiro-Wilk W + p]
-    STATS --> SCSV[stats_mean_median_std.csv]
-
-    STAGE2 --> PAIRS[planned_comparisons\nkeep only the comparison pairs that exist]
-
-    PAIRS --> JOIN[_join_pair\nmatch by seed + example_id\nfallback: seed + nlq]
-
-    JOIN --> WILCOX[Wilcoxon signed-rank\nmain hypothesis test]
-    JOIN --> TTEST[Paired t-test\nextra check on the same paired differences]
-    JOIN --> CI[95% CI on mean difference\nt-distribution df=n-1]
-    JOIN --> COHEN[Cohen's dz\nmean_diff / std_paired_diff]
-
-    WILCOX --> BH[BH-FDR correction\nadjust p-values inside each metric family]
-
-    BH --> TCSV[stats_paired_ttests.csv\nwilcoxon_p · ttest_p · bh_adj_p\nci_lower · ci_upper · cohens_d\ndecision_bh_fdr_alpha_0_05]
-    TTEST --> TCSV
-    CI --> TCSV
-    COHEN --> TCSV
+    BUILD --> MANIFEST[manifest.csv]
+    BUILD --> PERITEM[per_item.csv]
+    BUILD --> SUMMARY[summary_by_condition.csv]
+    BUILD --> TESTS[pairwise_tests.csv]
 ```
 
 ---
 
-## 5. Metric Scoring and Failure Taxonomy
+## 5. Metric Logic
 
-How VA, EM, EX, and TS are worked out for one prediction.
+This shows how one prediction is judged.
+VA is the easiest check, EM is the strict text check, EX is the main semantic check, and TS is the stricter robustness check.
 
 ```mermaid
 flowchart TD
-    SQL([pred_sql]) --> RUN[qr.run pred_sql\nrun the SQL on the live DB]
+    SQL([Predicted SQL]) --> RUN[Try to run the query]
 
-    RUN -- runtime error --> VA0[VA = 0]
-    VA0 --> FAIL1[[Syntax / Runtime Fail\nVA=0, EM=0, EX=0]]
+    RUN -- Error --> VA0[VA = 0]
+    VA0 --> FAIL[[Syntax or runtime failure]]
 
-    RUN -- success --> VA1[VA = 1]
+    RUN -- Success --> VA1[VA = 1]
+    VA1 --> EM[Compare predicted SQL text with gold SQL]
+    VA1 --> EX[Compare predicted result rows with gold result rows]
 
-    VA1 --> NRM[normalize_sql pred\nvs normalize_sql gold]
-    NRM -- equal --> EM1[EM = 1]
-    NRM -- not equal --> EM0[EM = 0]
+    EM --> EM1[EM = 1 or 0]
+    EX --> EX1[EX = 1 or 0]
 
-    VA1 --> EXC[execution_accuracy\ncompare predicted rows with gold rows\nusually order-insensitive]
-    EXC -- bags match --> EX1[EX = 1]
-    EXC -- bags differ --> EX0[EX = 0]
+    VA1 --> TS{TS enabled?}
+    TS -- Yes --> TSRUN[Compare on perturbed databases]
+    TS -- No --> TSNONE[TS = none]
 
-    EM1 --> EXACT[[Exact Match\nEM=1, EX=1]]
-    EX1 & EM0 --> NEAR[[Near Miss\nEX=1, EM=0\nright result, different SQL form]]
-    EX0 --> SEMFAIL[[Semantic Fail\nVA=1, EX=0\nexecutes but wrong result]]
-
-    VA1 --> TSCOND{ts_enabled AND\nts_suite_db_names set?}
-    TSCOND -- Yes --> TSRUN[test_suite_accuracy_for_item\npred + gold on N perturbed DBs\nTS=1 only if all checked replicas match]
-    TSCOND -- No --> TSNONE[TS = None]
-    TSRUN --> TSVAL[TS = 0 or 1]
+    EM1 --> OUTCOME[Final scored item]
+    EX1 --> OUTCOME
+    TSRUN --> OUTCOME
+    TSNONE --> OUTCOME
 ```
 
 ---
 
-## 6. Single NLQ Data Flow
+## 6. Single Question Path
 
-What happens to one benchmark question in the shared baseline/QLoRA evaluation path.
+This is the baseline or QLoRA path for one benchmark question.
+The short version is: build prompt, get SQL, clean it if needed, score it, save it.
 
 ```mermaid
 flowchart LR
-    NLQ([NLQ string\ngold_sql]) --> POOL[_build_item_pool\nfilter exemplar candidates]
-    POOL --> SHOT{k > 0?}
-    SHOT -- Yes --> SAMP[_sample_exemplars\nrng.sample pool k times]
-    SHOT -- No --> EMPTY[exemplars = empty list]
+    Q([Question + gold SQL]) --> EXAMPLES[Choose examples if k > 0]
+    EXAMPLES --> PROMPT[Build prompt from schema + examples + question]
+    PROMPT --> MODEL[Run model]
+    MODEL --> RAW[Get raw model text]
+    RAW --> SQL[Extract SQL]
 
-    SAMP --> MSGS[make_few_shot_messages\nsystem prompt + schema\n+ k example pairs + question]
-    EMPTY --> MSGS
+    SQL --> CLEAN{Optional cleanup on?}
+    CLEAN -- No --> FINALSQL[Use SQL as-is]
+    CLEAN -- Yes --> FIXED[Apply guardrails and cleanup]
+    FIXED --> FINALSQL
 
-    MSGS --> TEMPL[tokenizer.apply_chat_template\nturn prompt into token ids]
-    TEMPL --> MODEL[model.generate\nconfigured decode\noptional stop on semicolon]
-    MODEL --> DECODE[tokenizer.decode\nturn output tokens into raw_sql]
-
-    DECODE --> CLEAN{guardrails or\npostprocess enabled?}
-    CLEAN -- No --> PRED[pred_sql = raw_sql]
-    CLEAN -- Yes --> OPT[_clean_sql\nsql_guardrails + guarded_postprocess]
-    OPT --> PRED
-
-    PRED --> VA{qr.run\npred_sql}
-    VA -- OK --> VA1[VA = 1]
-    VA -- Error --> VA0[VA = 0]
-
-    PRED --> EM{normalize_sql\nequality check}
-    EM -- equal --> EM1[EM = 1]
-    EM -- not equal --> EM0[EM = 0]
-
-    PRED --> EX{execute_fetch\npred + gold\ncompare result rows}
-    EX -- match --> EX1[EX = 1]
-    EX -- differ --> EX0[EX = 0]
-
-    VA1 --> TSCOND{TS enabled?}
-    TSCOND -- Yes --> TSRUN[test_suite_accuracy_for_item\nN perturbed DBs]
-    TSCOND -- No --> TSNONE[TS = None]
-
-    VA0 --> ITEM([EvalItem\ni · nlq · raw_sql · pred_sql\nva · em · ex · ts · error])
-    EM1 --> ITEM
-    EM0 --> ITEM
-    EX1 --> ITEM
-    EX0 --> ITEM
-    TSRUN --> ITEM
-    TSNONE --> ITEM
+    FINALSQL --> RUN[Run and score]
+    RUN --> SAVE[Save EvalItem]
 ```

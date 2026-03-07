@@ -22,20 +22,20 @@ nl2sql/
 │   └── react_pipeline.py # generate → validate → execute → repair loop
 ├── evaluation/
 │   ├── eval.py                 # evaluation runner, metrics, and result serialisation
-│   ├── research_runs.py        # run discovery and manifest building
-│   ├── research_stats.py       # statistical tests and BH-FDR correction
-│   └── research_comparison.py  # top-level comparison-table generator
+│   ├── grid_runner.py          # fixed baseline/QLoRA grid execution
+│   ├── final_pack.py           # manual final-pack loader and table builder
+│   └── simple_stats.py         # VA/EX/TS summaries and EX-only Wilcoxon/BH-FDR tests
 └── infra/         # notebook-facing setup and orchestration helpers
     ├── db.py                # Cloud SQL connection and TS engine helpers
     ├── notebook_utils.py    # auth, paths, and dataset loading
     ├── model_loading.py     # quantised model and adapter loading
     ├── training_set.py      # training-set validation helpers
-    └── experiment_helpers.py# shared notebook wrappers and run metadata
+    └── experiment_helpers.py# ReAct setup and QLoRA training helpers
 ```
 
-The core layer holds the reusable NL-to-SQL building blocks: prompting, generation, validation, output cleaning, and safe query execution. The agent layer builds on core to implement the ReAct extension. The evaluation layer handles scoring, run discovery, and statistical comparison. The infra layer contains notebook-facing code such as DB/auth setup, model-loading wrappers, and shared notebook orchestration helpers. This separation keeps the experimental notebooks thin while still exposing a small number of named entry points for each workflow.
+The core layer holds the reusable NL-to-SQL building blocks: prompting, generation, validation, output cleaning, and safe query execution. The agent layer builds on core to implement the ReAct extension. The evaluation layer handles scoring, the fixed grid runner, manual evidence loading, and the final statistical comparison. The infra layer contains notebook-facing code such as DB/auth setup, model-loading wrappers, and the remaining reusable training/ReAct helpers. This separation keeps the experimental notebooks thin while still exposing a small number of named entry points for each workflow.
 
-Notebooks serve as the entry point that wires the layers together, loading models, creating database engines, and calling wrappers such as `run_model_grid_notebook_eval()` or `run_react_notebook_eval()`. They do not contain pipeline logic — they are configuration and orchestration only. In the final simplified version, each experiment notebook defines one small run-plan object (`GridPlan` for baseline and QLoRA, `ReactEvalPlan` for ReAct) and then passes that plan into a shared helper. This keeps the visible notebook code close to the dissertation mental model: choose settings, run the experiment, inspect the saved outputs.
+Notebooks still exist as readable walkthroughs, but the final dissertation rerun path now uses fixed scripts rather than notebook cells as the official execution surface. The baseline and QLoRA scripts call `run_eval_grid()` directly, while the ReAct scripts still use the small `run_react_notebook_eval()` helper because that path writes a distinct report format. The official story is therefore short: run the fixed scripts, manually select the cited JSON files, and build the final CSV tables from that manual pack.
 
 ---
 
@@ -121,16 +121,18 @@ A recurring pattern across the codebase is the use of Python's frozen dataclasse
 
 `EvalItem` is the scored record for one test item. It stores the raw model output, the processed prediction, and all four metric scores. Freezing it ensures that the object written to the results JSON is exactly the object that was scored — there is no code path that could update `ex=True` after writing to disk.
 
-`EvalRunConfig` bundles the eleven configuration parameters for an evaluation run. Before this dataclass was introduced, `eval_run()` accepted ten separate keyword arguments, and notebook call sites were difficult to read and prone to argument-order errors. Grouping parameters into a frozen config object provides two benefits: the call site becomes a single object (`config=EvalRunConfig(...)`), and the config cannot be accidentally mutated between two back-to-back evaluation runs that share the same config instance.
+`EvalRunConfig` bundles the small set of settings that still belong inside the evaluation layer itself. Before this dataclass was introduced, `eval_run()` accepted many separate keyword arguments, and the call sites were difficult to read and prone to argument-order errors. Grouping the remaining internal settings into a frozen config object keeps the lower-level evaluation code tidy while the fixed scripts and runnable notebook mirrors stay simple.
 
 ```python
 @dataclass(frozen=True)
 class EvalRunConfig:
     max_new_tokens: int = 128
+    max_rows: int = 50
+    max_compare_rows: int = 10000
     avoid_exemplar_leakage: bool = True
-    generation_extract_select: bool = False
-    apply_sql_guardrails: bool = False
-    apply_postprocess: bool = False
+    ts_suite_db_names: Optional[list[str]] = None
+    ts_make_engine_fn: Optional[Callable[[str], Engine]] = None
+    ts_max_rows: int = 500
     ...
 ```
 
@@ -204,7 +206,7 @@ The system prompt for the baseline evaluation was developed iteratively by ident
 - *"Output only SQL"* — without this instruction, both Llama and Qwen frequently prefaced their output with explanatory prose ("Here is the SQL query that answers your question:"), which broke downstream SQL extraction.
 - *"Exactly one statement starting with SELECT"* — some model configurations emitted two queries separated by a comment, or emitted a `WITH` clause followed by a `SELECT`.
 - *"Use only tables and columns in the provided schema"* — models consistently hallucinated plausible-sounding table names (`customer_orders`, `product_details`) that did not exist in the ClassicModels schema.
-- *"ORDER BY and LIMIT only when the question asks for ranking"* — this is an output-cleanliness rule rather than the main source of semantic correctness. Because EX uses bag equality, a spurious `ORDER BY` often does not change the EX score by itself. It was still retained as an optional post-processing rule in the reliability-layer profile because it reduces unnecessary variation in model outputs and makes qualitative error analysis easier.
+- *"ORDER BY and LIMIT only when the question asks for ranking"* — this is an output-cleanliness rule rather than the main source of semantic correctness. Because EX uses bag equality, a spurious `ORDER BY` often does not change the EX score by itself. In the final simplified rerun path, the primary evaluation keeps the raw model output rather than relying on a second cleanup profile, so this rule is best understood as prompt guidance rather than a downstream rescue step.
 
 Schema information is provided to the model before the few-shot examples, rather than after:
 
@@ -262,4 +264,4 @@ Every step in the loop appends to the `trace` list, recording the action taken, 
 
 **Reliability.** Frozen dataclasses prevent result mutation after scoring. All results are written to JSON immediately after each run with a UTC timestamp, so a notebook crash partway through a session does not lose completed results — each JSON file is a complete, self-contained record for that condition. The `QueryResult.history` list on `QueryRunner` provides a per-session audit of every attempted query, including failures, which was used during development to diagnose systematic extraction failures without re-running the full evaluation.
 
-**Reproducibility.** Beyond the seeded RNG described in Section 3.4, each results JSON records the full configuration under which it was produced: model ID, k, seed, limit, generation flags, and a UTC timestamp. The final analysis path was simplified into two explicit stages. First, `scripts/collect_research_tables.py` flattens saved run JSON files into `run_manifest.csv` and `per_item_metrics_primary_raw.csv`. Second, `scripts/format_research_outputs.py` turns that raw per-item table into the summary-statistics and paired-test outputs. The all-in-one wrapper `scripts/generate_research_comparison.py` still exists, but the two-stage version more closely matches the dissertation mental model: collect raw evidence first, then format it for hypothesis testing. This ensures that the statistical analysis is self-contained and auditable without relying on notebook state or hidden metadata.
+**Reproducibility.** Beyond the seeded RNG described in Section 3.4, each results JSON records the configuration under which it was produced: model ID, k, seed, limit, and a UTC timestamp. In the final dissertation workflow, reproducibility is enforced by a manual evidence pack rather than by recursively scanning the entire `results/` tree. After the fixed rerun scripts have produced their raw JSON files, only the selected official files are copied into `results/final_pack/` using canonical names such as `llama_base_k3_seed17.json`. The script `scripts/build_final_analysis.py` then reads only that folder and writes four CSV outputs under `results/final_analysis/`: a manifest, a flat per-item table, a per-condition summary, and an EX-only pairwise Wilcoxon test table with BH-FDR correction. This makes the cited evidence explicit and auditable: the dissertation claims are tied to a small folder of hand-selected JSON files rather than to a discovery layer that decides which archived runs to include.

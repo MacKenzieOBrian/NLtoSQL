@@ -10,7 +10,7 @@ and where AI use is documented.
 - Goal: evaluate NL-to-SQL performance on ClassicModels under constrained hardware.
 - Main comparison: base model vs QLoRA, and zero-shot (`k=0`) vs few-shot (`k=3`).
 - Primary evaluation mode: `model_only_raw` (no optional cleanup layers).
-- Primary metrics: VA, EM, EX, and optional TS when enabled.
+- Official analysis outputs: descriptive summaries for VA, EX, and TS, plus EX-only pairwise tests.
 
 
 2) Repository structure
@@ -20,40 +20,41 @@ Top-level layout:
   - `classicmodels_test_200.json`: fixed 200-item evaluation set.
   - `train/classicmodels_train_200.jsonl`: QLoRA training set.
 - root project documentation:
-  - `README.txt`, `REFERENCES.md`, `documentation.md`.
+  - `README.txt`, `REFERENCES.md`, `technical_description.md`.
 - `nl2sql/`
   - `core/`: prompt, generation, SQL cleanup, validation, query execution.
-  - `evaluation/`: scoring, run discovery, comparison statistics, analysis helpers.
+  - `evaluation/`: scoring, fixed grid execution, manual-pack loading, and simple statistics.
   - `agent/`: ReAct extension logic.
   - `infra/`: notebook setup, DB/auth helpers, and orchestration wrappers.
 - `notebooks/`
   - `02_baseline_prompting_eval.ipynb`: baseline experiments.
-  - `03_agentic_eval.ipynb`: extension path (agentic/reliability).
+  - `03_agentic_eval.ipynb`: ReAct extension path.
   - `04_build_training_set.ipynb`: train-set validation/build workflow.
   - `05_qlora_train_eval.ipynb`: QLoRA training + evaluation.
-  - `06_research_comparison.ipynb`: analysis notebook wrapper.
+  - `06_research_comparison.ipynb`: reporting-only notebook for the final CSV outputs.
 - `scripts/`
-  - `collect_research_tables.py`: flatten saved run JSON files into raw tables.
-  - `format_research_outputs.py`: turn the raw per-item table into stats outputs.
-  - `generate_research_comparison.py`: all-in-one wrapper for the two-stage analysis path.
+  - `run_baseline_llama.py`, `run_baseline_qwen.py`: fixed baseline campaigns.
+  - `run_qlora_llama.py`, `run_qlora_qwen.py`: fixed QLoRA campaigns.
+  - `run_react_llama.py`, `run_react_qwen.py`: fixed ReAct campaigns.
+  - `build_final_analysis.py`: official manual-pack analysis builder.
   - `colab_setup.sh`: Colab runtime dependency bootstrap.
 - `results/`
   - active hypothesis experiment artifacts and analysis outputs.
-  - see `results/README.txt` for the kept primary-result subset.
 
 Primary evidence folders:
 - `results/baseline/runs` (base model runs, Llama and Qwen)
 - `results/qlora/runs` (QLoRA runs, Llama and Qwen)
 - `results/agent/runs` (ReAct extension runs)
-- `results/analysis` (computed CSVs from the research comparison workflow)
+- `results/final_pack` (manually selected official JSON files for dissertation analysis)
+- `results/final_analysis` (official CSV outputs built from `final_pack`)
 
 
 3) Code ownership and provenance
 --------------------------------
 Own code (author-developed in this repository):
 - `nl2sql/core/*`, `nl2sql/evaluation/*`, `nl2sql/agent/*`, `nl2sql/infra/*`, and notebook orchestration.
-- `scripts/generate_research_comparison.py` as a CLI wrapper.
-- project notebook workflows and run plans.
+- `scripts/build_final_analysis.py` as the official dissertation analysis script.
+- project notebook workflows and wrappers.
 - result management and reporting scripts/files.
 
 Not own code (external dependencies/services):
@@ -82,43 +83,40 @@ drafting. Research decisions — hypothesis design, experiment scope, run
 selection, result interpretation, and dissertation conclusions — are my own.
 
 File-level disclosure:
-- `nl2sql/evaluation/research_runs.py`, `nl2sql/evaluation/research_stats.py`,
-  `nl2sql/evaluation/research_comparison.py`, and `scripts/generate_research_comparison.py`
+- `nl2sql/evaluation/final_pack.py`, `nl2sql/evaluation/simple_stats.py`,
+  and `scripts/build_final_analysis.py`
   - What this workflow does:
-    - discovers run JSON files under `results/**/results_k*_seed*.json` and ReAct runs
-      under `results/agent/runs/**/results_react_200.json` or `results_react_eval.json`.
-    - filters primary baseline/QLoRA runs to one explicit `primary_eval_profile`
-      (default: `model_only_raw`) so analysis does not silently mix raw and reliability-layer runs.
-    - normalizes run metadata into `condition_id` (`llama|qwen` x `base|qlora|react` x `k=0|3`).
-    - builds per-item analysis rows and run manifest rows.
-    - computes mean/median/std and paired-comparison statistics.
-    - applies Benjamini-Hochberg FDR correction within each metric family.
-    - writes analysis CSV outputs under `results/analysis/`.
-  - AI-assisted (plumbing): CLI scaffold, JSON/file ingestion, metadata normalization,
-    deduplication, pandas joins/grouping, Wilcoxon/t-test/CI/Cohen's d wrappers,
-    BH FDR helper, and CSV export wiring.
-  - Human decisions (research logic): source-of-truth run folder, supported matrix
-    (`llama`/`qwen`, `base`/`qlora`/`react`, `k in {0,3}`), primary eval profile
-    (`model_only_raw` for dissertation claims), predefined hypothesis comparisons,
-    choice of primary test (Wilcoxon), and interpretation of statistical results.
+    - reads only the manually selected JSON files placed in `results/final_pack/`.
+    - validates their canonical filenames and fixed raw-output policy.
+    - builds a manifest table and a flat per-item table.
+    - computes per-condition summaries, Wilcoxon tests, and
+      BH-FDR adjusted p-values.
+    - writes the official CSV outputs under `results/final_analysis/`.
+  - AI-assisted (plumbing): manual-pack loader scaffold, pandas reshaping,
+    Wilcoxon wrapper, BH-FDR helper, CSV export wiring, and CLI wrapper structure.
+  - Human decisions (research logic): canonical filename contract, supported matrix
+    (`llama`/`qwen`, `base`/`qlora`/`react`, `k in {0,3}`), raw-only primary policy,
+    fixed comparison list, and interpretation of the resulting statistics.
 
 - `scripts/colab_setup.sh`
   - AI-assisted: shell script boilerplate and install block structure.
   - Human decisions: pinned versions and runtime acceptance.
 
-- `scripts/collect_research_tables.py`, `scripts/format_research_outputs.py`,
-  `scripts/generate_research_comparison.py`,
+- `scripts/run_baseline_llama.py`, `scripts/run_baseline_qwen.py`,
+  `scripts/run_qlora_llama.py`, `scripts/run_qlora_qwen.py`,
+  `scripts/run_react_llama.py`, `scripts/run_react_qwen.py`,
+  `scripts/build_final_analysis.py`,
   `nl2sql/infra/experiment_helpers.py`, `nl2sql/infra/db.py`,
   `nl2sql/infra/notebook_utils.py`, `nl2sql/infra/model_loading.py`
   - AI-assisted: helper/orchestration boilerplate for notebook setup, run metadata,
-    DB/auth prompts, model-loading scaffolds, shared eval wrappers, and the
-    two-stage analysis scripts.
-  - Human decisions: experiment options, profile choices, run plans, and which
-    outputs count as the raw evidence versus the formatted analysis.
+    DB/auth prompts, model-loading scaffolds, fixed campaign scripts, and the
+    manual-pack analysis script.
+  - Human decisions: experiment settings, fixed rerun recipe, and which
+    outputs count as the official evidence.
 
 - `notebooks/02_baseline_prompting_eval.ipynb`
   - AI-assisted: repeated run-loop scaffolding and output wiring.
-  - Human decisions: seeds, `k` values, run plans, and ablation settings.
+  - Human decisions: seeds, `k` values, and the fixed rerun settings.
 
 - `notebooks/03_agentic_eval.ipynb` (extension/historical path)
   - AI-assisted: repeated evaluation cell structure and summary wiring.
@@ -128,17 +126,10 @@ File-level disclosure:
   - AI-assisted: training/evaluation loop scaffolding and output wiring.
   - Human decisions: model presets, adapter workflow, and run priorities.
 
-- `nl2sql/validation.py` and `nl2sql/*.py` wrappers
-  - AI-assisted: wrapper/re-export boilerplate.
-  - Human decisions: validation policy location and compatibility strategy.
-
 Concrete examples of boilerplate-style AI assistance:
-- research comparison plumbing:
-  `discover_primary_runs`, `discover_react_runs`, `build_tables_from_runs`,
-  `compute_mean_median_std`, `_bh_fdr_adjust`, `compute_paired_tests`,
-  `generate`, `main`.
-- notebook run-plan and grid-loop cells in baseline/QLoRA notebooks.
-- small helper modules and script wrappers around the raw-table and stats-table stages.
+- fixed run-script scaffolding and manual-pack CSV wiring.
+- notebook grid-loop scaffolding in the baseline/QLoRA notebooks.
+- small helper modules around the final-pack loader and EX-only statistics stage.
 
 Not AI-owned outcomes:
 - research framing and final evidence claims.
@@ -175,39 +166,51 @@ B) Colab setup (recommended for QLoRA)
    - `bash scripts/colab_setup.sh`
 2. Restart runtime once when prompted by the script output.
 
-C) Notebook execution order
-1. `notebooks/02_baseline_prompting_eval.ipynb` (base-model experiments)
-2. `notebooks/03_agentic_eval.ipynb` (agentic evaluation)
-3. `notebooks/04_build_training_set.ipynb` (if rebuilding training data)
-4. `notebooks/05_qlora_train_eval.ipynb` (QLoRA train/eval)
-5. `notebooks/06_research_comparison.ipynb` (analysis wrapper)
+C) Official rerun order
+1. `python scripts/run_baseline_llama.py`
+2. `python scripts/run_baseline_qwen.py`
+3. `python scripts/run_qlora_llama.py`
+4. `python scripts/run_qlora_qwen.py`
+5. `python scripts/run_react_llama.py` and/or `python scripts/run_react_qwen.py`
+6. manually copy the official JSON files into `results/final_pack/`
+7. `python scripts/build_final_analysis.py`
+8. `notebooks/06_research_comparison.ipynb` (reporting only)
 
-D) Scripted analysis build
-Run from repo root:
-- Stage 1 (raw tables): `python scripts/collect_research_tables.py --primary-eval-profile model_only_raw`
-- Stage 2 (stats tables): `python scripts/format_research_outputs.py`
-- Optional all-in-one wrapper: `python scripts/generate_research_comparison.py --primary-eval-profile model_only_raw`
+Runnable notebook mirrors:
+- `notebooks/02_baseline_prompting_eval.ipynb`
+- `notebooks/03_agentic_eval.ipynb`
+- `notebooks/05_qlora_train_eval.ipynb`
+- These mirror the fixed scripts for walkthrough/demo use, but they are not the authoritative evidence path.
 
-Outputs:
-- `results/analysis/per_item_metrics_primary_raw.csv`
-- `results/analysis/run_manifest.csv`
-- `results/analysis/stats_mean_median_std.csv`
-- `results/analysis/stats_paired_ttests.csv`
+D) Official analysis outputs
+- `results/final_analysis/manifest.csv`
+- `results/final_analysis/per_item.csv`
+- `results/final_analysis/summary_by_condition.csv`
+- `results/final_analysis/pairwise_tests.csv`
 
 
 7) Reproducibility and run-policy notes
 ---------------------------------------
-- Primary dissertation claims should use `model_only_raw` runs only.
-- If rerunning baseline or QLoRA notebooks, keep the notebook grid plan set to the
-  default raw-profile configuration and regenerate the analysis tables with
-  `--primary-eval-profile model_only_raw`.
-- Keep notebook run plans explicit and persist the generated JSON artifacts.
+- Freeze the source snapshot before reruns:
+  1. commit the current code/docs state
+  2. record the commit hash in dissertation notes
+  3. confirm `git status --short` shows no source changes before the rerun starts
+- The fixed dissertation rerun matrix is the fixed script set listed in Section 6C.
+- The notebooks remain as runnable mirrors of those same settings.
+- Persist the generated JSON artifacts from those fixed reruns.
+- Manually copy only the official JSON files into `results/final_pack/`.
 - The simplest mental model is:
-  1. notebooks save raw run JSON files
-  2. stage 1 scripts flatten them into raw tables
-  3. stage 2 scripts format those tables into hypothesis/statistics outputs
-- Do not mix extension/non-primary runs into primary hypothesis statistics.
-- When TS is required, ensure `enable_ts=True` and that TS databases are available.
+  1. fixed scripts save raw run JSON files
+  2. `final_pack/` holds the exact files cited in the dissertation
+  3. `build_final_analysis.py` turns those files into the official CSV tables
+- After rebuilding the analysis, inspect `results/final_analysis/manifest.csv`
+  and the summary/test CSVs before writing claims.
+- Do not mix extension/non-primary runs into the primary baseline/QLoRA matrix.
+- The fixed rerun recipe uses TS for `k=3` and for the full ReAct run, so the
+  perturbed TS databases must be available.
+- Full rerun and write-up checklists live in:
+  - `DISSERTATION_RERUN_PROTOCOL.md`
+  - `DISSERTATION_EVALUATION_TEMPLATE.md`
 
 
 8) Operational and security notes
@@ -221,5 +224,5 @@ Outputs:
 -----------------
 If picking this up fresh, read:
 - this file (`README.txt`)
-- `results/README.txt` (artifact folder policy)
 - `REFERENCES.md` (literature and method anchors)
+- `technical_description.md` (architecture and implementation narrative)
