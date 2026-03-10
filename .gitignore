@@ -5,6 +5,12 @@ data/train/README.md
 __pycache__/
 *.py[cod]
 
+# Claude / AI scaffolding files
+.claude/
+DISSERTATION_WRITING_GUIDE.md
+Sources_Map.md
+diagrams.md
+
 # Common notebook outputs/artifacts
 # Keep results in git for reproducibility (baseline/qlora/agent runs)
 # If you want to ignore large artifacts later, add explicit patterns (e.g., results/**/*.ckpt)

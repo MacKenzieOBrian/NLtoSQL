@@ -62,7 +62,7 @@ pp. 1877–1901.
 
 **[4]** Q. Yin et al., 'Deeper Insights Without Updates: The Power of In-Context Learning Over
 Fine-Tuning', Oct. 2024, arXiv: arXiv:2410.04691. doi: 10.48550/arXiv.2410.04691.
-→ Directly supports the core dissertation finding that ICL (k=3) outperforms QLoRA fine-tuning.
+→ Background context on the trade-off between in-context learning and fine-tuning; use as design context rather than as direct proof of the dissertation's final result.
 
 **[7]** M. Mosbach et al., 'Few-shot Fine-tuning vs. In-context Learning: A Fair Comparison and
 Evaluation', May 2023, arXiv: arXiv:2305.16938. doi: 10.48550/arXiv.2305.16938.
@@ -101,7 +101,7 @@ arXiv: arXiv:2305.14314. doi: 10.48550/arXiv.2305.14314.
 
 **[10]** D. Biderman et al., 'LoRA Learns Less and Forgets Less', Sep. 2024,
 arXiv: arXiv:2405.09673. doi: 10.48550/arXiv.2405.09673.
-→ Supports the finding that QLoRA may suppress ICL benefit (Llama QLoRA k0→k3 non-significant).
+→ Context on how parameter-efficient fine-tuning may change model behaviour; use as background for discussing fine-tuning trade-offs rather than as direct support for the final result.
 
 **[14]** J. Goswami et al., 'Parameter-efficient fine-tuning large language model approach for
 hospital discharge paper summarization', Applied Soft Computing, vol. 157, 2024.

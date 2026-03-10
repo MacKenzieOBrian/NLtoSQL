@@ -1,148 +1,118 @@
-NLtoSQL Dissertation Project - Handover README
-==============================================
+NLtoSQL Dissertation Project
+============================
 
-This covers project structure, code ownership, build/run steps,
-and where AI use is documented.
+This archive is the final project handover. It explains the repository layout,
+ownership/provenance of the code, how AI use was documented, and how to run the
+official experiment and analysis workflow.
 
 
 1) Project summary
 ------------------
-- Goal: evaluate NL-to-SQL performance on ClassicModels under constrained hardware.
-- Main comparison: base model vs QLoRA, and zero-shot (`k=0`) vs few-shot (`k=3`).
-- Primary evaluation mode: `model_only_raw` (no optional cleanup layers).
-- Official analysis outputs: descriptive summaries for VA, EX, and TS, plus EX-only pairwise tests.
+- Goal: evaluate NL-to-SQL performance on the ClassicModels database under
+  constrained hardware.
+- Main comparisons:
+  - base model vs QLoRA
+  - zero-shot (`k=0`) vs few-shot (`k=3`)
+  - optional ReAct extension
+- Official evidence path:
+  1. run the fixed scripts in `scripts/`
+  2. manually copy the chosen JSON outputs into `results/final_pack/`
+  3. run `python scripts/build_final_analysis.py`
+  4. inspect `results/final_analysis/*.csv`
 
 
 2) Repository structure
 -----------------------
-Top-level layout:
 - `data/`
-  - `classicmodels_test_200.json`: fixed 200-item evaluation set.
-  - `train/classicmodels_train_200.jsonl`: QLoRA training set.
-- root project documentation:
-  - `README.txt`, `REFERENCES.md`, `technical_description.md`.
-- `nl2sql/`
-  - `core/`: prompt, generation, SQL cleanup, validation, query execution.
-  - `evaluation/`: scoring, fixed grid execution, manual-pack loading, and simple statistics.
-  - `agent/`: ReAct extension logic.
-  - `infra/`: notebook setup, DB/auth helpers, and orchestration wrappers.
+  - fixed evaluation and training data
+- `nl2sql/core/`
+  - prompt construction, generation, validation, safe execution
+- `nl2sql/agent/`
+  - local ReAct loop and agent prompts
+- `nl2sql/evaluation/`
+  - scoring, fixed grid execution, manual-pack loading, simple statistics
+- `nl2sql/infra/`
+  - DB/model/notebook support code
 - `notebooks/`
-  - `02_baseline_prompting_eval.ipynb`: baseline experiments.
-  - `03_agentic_eval.ipynb`: ReAct extension path.
-  - `04_build_training_set.ipynb`: train-set validation/build workflow.
-  - `05_qlora_train_eval.ipynb`: QLoRA training + evaluation.
-  - `06_research_comparison.ipynb`: reporting-only notebook for the final CSV outputs.
+  - runnable mirrors for baseline, QLoRA, ReAct, and final reporting
 - `scripts/`
-  - `run_baseline_llama.py`, `run_baseline_qwen.py`: fixed baseline campaigns.
-  - `run_qlora_llama.py`, `run_qlora_qwen.py`: fixed QLoRA campaigns.
-  - `run_react_llama.py`, `run_react_qwen.py`: fixed ReAct campaigns.
-  - `build_final_analysis.py`: official manual-pack analysis builder.
-  - `colab_setup.sh`: Colab runtime dependency bootstrap.
-- `results/`
-  - active hypothesis experiment artifacts and analysis outputs.
-
-Primary evidence folders:
-- `results/baseline/runs` (base model runs, Llama and Qwen)
-- `results/qlora/runs` (QLoRA runs, Llama and Qwen)
-- `results/agent/runs` (ReAct extension runs)
-- `results/final_pack` (manually selected official JSON files for dissertation analysis)
-- `results/final_analysis` (official CSV outputs built from `final_pack`)
+  - fixed rerun entrypoints and final analysis builder
+- `results/final_pack/`
+  - manually selected official JSON evidence files
+- `results/final_analysis/`
+  - official CSV outputs built from `final_pack`
 
 
 3) Code ownership and provenance
 --------------------------------
-Own code (author-developed in this repository):
-- `nl2sql/core/*`, `nl2sql/evaluation/*`, `nl2sql/agent/*`, `nl2sql/infra/*`, and notebook orchestration.
-- `scripts/build_final_analysis.py` as the official dissertation analysis script.
-- project notebook workflows and wrappers.
-- result management and reporting scripts/files.
+Author-owned core research logic:
+- `nl2sql/core/*`
+- `nl2sql/agent/*`
+- `nl2sql/evaluation/eval.py`
+- `nl2sql/evaluation/grid_runner.py`
+- experiment design, metric definitions (`VA`, `EM`, `EX`, `TS`), run policy,
+  and interpretation of results
 
-Not own code (external dependencies/services):
-- Python libraries in `requirements.txt`, including but not limited to:
-  - `transformers`, `peft`, `bitsandbytes`, `accelerate`, `trl`, `datasets`
-  - `sqlalchemy`, `cloud-sql-python-connector`, `pymysql`
-  - `pandas`, `numpy`, `scipy`
-- model weights/tokenizers downloaded at runtime from Hugging Face model hubs
-  (for example Llama/Qwen checkpoints), not redistributed in this archive.
-- Cloud SQL connector and SQLAlchemy integration patterns are based on official
-  documentation; implementation is adapted into project code in `nl2sql/infra/db.py`.
+Author-directed support/orchestration code:
+- `nl2sql/infra/*`
+- `nl2sql/evaluation/final_pack.py`
+- `nl2sql/evaluation/simple_stats.py`
+- fixed scripts in `scripts/`
+- notebook orchestration in `notebooks/02`, `03`, `05`, and reporting notebook `06`
+
+External dependencies/services:
+- libraries in `requirements.txt`, including `transformers`, `peft`,
+  `bitsandbytes`, `trl`, `sqlalchemy`, `cloud-sql-python-connector`,
+  `pandas`, `numpy`, and `scipy`
+- model weights/tokenizers downloaded at runtime from Hugging Face hubs
+- official library/platform documentation used as implementation references,
+  especially for Transformers, SQLAlchemy, Python standard-library features,
+  and the Google Cloud SQL connector
 
 Third-party or supervisor source code:
-- No standalone third-party source files are vendored directly into this repository.
-- No supervisor-provided code files are included as direct source modules.
-
-Compatibility wrappers:
-- None are required in the current simplified layout.
-- The active code paths live under `nl2sql/core`, `nl2sql/agent`, `nl2sql/evaluation`, and `nl2sql/infra`.
+- no standalone third-party source files are vendored into this repository
+- no supervisor-provided source modules are included directly in the archive
 
 
 4) AI use documentation
 -----------------------
-AI was used for implementation scaffolding, boilerplate, and documentation
-drafting. Research decisions — hypothesis design, experiment scope, run
-selection, result interpretation, and dissertation conclusions — are my own.
+This README is the primary record of generative AI use for the submitted archive.
 
-File-level disclosure:
-- `nl2sql/evaluation/final_pack.py`, `nl2sql/evaluation/simple_stats.py`,
-  and `scripts/build_final_analysis.py`
-  - What this workflow does:
-    - reads only the manually selected JSON files placed in `results/final_pack/`.
-    - validates their canonical filenames and fixed raw-output policy.
-    - builds a manifest table and a flat per-item table.
-    - computes per-condition summaries, Wilcoxon tests, and
-      BH-FDR adjusted p-values.
-    - writes the official CSV outputs under `results/final_analysis/`.
-  - AI-assisted (plumbing): manual-pack loader scaffold, pandas reshaping,
-    Wilcoxon wrapper, BH-FDR helper, CSV export wiring, and CLI wrapper structure.
-  - Human decisions (research logic): canonical filename contract, supported matrix
-    (`llama`/`qwen`, `base`/`qlora`/`react`, `k in {0,3}`), raw-only primary policy,
-    fixed comparison list, and interpretation of the resulting statistics.
+AI was used mainly for:
+- scaffolding project structure and helper-module layout
+- refactoring repeated notebook logic into local support files
+- generating boilerplate for scripts, wrappers, and documentation drafts
+- small-scale typing assistance through editor/tab completion in some areas
 
-- `scripts/colab_setup.sh`
-  - AI-assisted: shell script boilerplate and install block structure.
-  - Human decisions: pinned versions and runtime acceptance.
+AI was not used to decide:
+- the research questions or dissertation objectives
+- the benchmark scope and comparison structure
+- the evaluation metrics or final run-selection policy
+- the interpretation of results or dissertation conclusions
 
-- `scripts/run_baseline_llama.py`, `scripts/run_baseline_qwen.py`,
-  `scripts/run_qlora_llama.py`, `scripts/run_qlora_qwen.py`,
-  `scripts/run_react_llama.py`, `scripts/run_react_qwen.py`,
-  `scripts/build_final_analysis.py`,
-  `nl2sql/infra/experiment_helpers.py`, `nl2sql/infra/db.py`,
-  `nl2sql/infra/notebook_utils.py`, `nl2sql/infra/model_loading.py`
-  - AI-assisted: helper/orchestration boilerplate for notebook setup, run metadata,
-    DB/auth prompts, model-loading scaffolds, fixed campaign scripts, and the
-    manual-pack analysis script.
-  - Human decisions: experiment settings, fixed rerun recipe, and which
-    outputs count as the official evidence.
+Areas with AI-assisted scaffolding or drafting:
+- `nl2sql/infra/*`
+- `scripts/*.py`
+- `nl2sql/evaluation/final_pack.py`
+- `nl2sql/evaluation/simple_stats.py`
+- `scripts/build_final_analysis.py`
+- notebook orchestration and project documentation
 
-- `notebooks/02_baseline_prompting_eval.ipynb`
-  - AI-assisted: repeated run-loop scaffolding and output wiring.
-  - Human decisions: seeds, `k` values, and the fixed rerun settings.
-
-- `notebooks/03_agentic_eval.ipynb` (extension/historical path)
-  - AI-assisted: repeated evaluation cell structure and summary wiring.
-  - Human decisions: agent settings and interpretation of extension outcomes.
-
-- `notebooks/05_qlora_train_eval.ipynb`
-  - AI-assisted: training/evaluation loop scaffolding and output wiring.
-  - Human decisions: model presets, adapter workflow, and run priorities.
-
-Concrete examples of boilerplate-style AI assistance:
-- fixed run-script scaffolding and manual-pack CSV wiring.
-- notebook grid-loop scaffolding in the baseline/QLoRA notebooks.
-- small helper modules around the final-pack loader and EX-only statistics stage.
-
-Not AI-owned outcomes:
-- research framing and final evidence claims.
-- final run inclusion/exclusion policy for primary vs extension results.
-- dissertation narrative and conclusions.
+Core research logic remained author-led:
+- `nl2sql/core/*`
+- `nl2sql/agent/*`
+- `nl2sql/evaluation/eval.py`
+- `nl2sql/evaluation/grid_runner.py`
+- experimental design, run policy, and interpretation
 
 
-5) Build prerequisites
-----------------------
-- Python 3.10+ (3.12 used in recent runs).
-- Access to a MySQL ClassicModels database (Cloud SQL in notebook defaults).
-- Hugging Face token for gated model access when required.
-- For QLoRA training: CUDA-capable environment (typically Colab GPU).
+5) Build and run
+----------------
+Prerequisites:
+- Python 3.10+
+- access to a ClassicModels MySQL database
+- Hugging Face token where required
+- CUDA-capable environment for QLoRA training (typically Colab GPU)
 
 Environment variables used by notebooks:
 - `INSTANCE_CONNECTION_NAME`
@@ -151,22 +121,16 @@ Environment variables used by notebooks:
 - `DB_NAME` (default `classicmodels`)
 - `HF_TOKEN` or `HUGGINGFACE_HUB_TOKEN`
 
+Local setup:
+1. `python -m venv .venv`
+2. `source .venv/bin/activate`
+3. `pip install -r requirements.txt`
 
-6) Build and run instructions
------------------------------
-A) Local setup
-1. Create environment:
-   - `python -m venv .venv`
-   - `source .venv/bin/activate`
-2. Install dependencies:
-   - `pip install -r requirements.txt`
+Colab setup (recommended for QLoRA):
+1. `bash scripts/colab_setup.sh`
+2. restart the runtime once if prompted
 
-B) Colab setup (recommended for QLoRA)
-1. Run:
-   - `bash scripts/colab_setup.sh`
-2. Restart runtime once when prompted by the script output.
-
-C) Official rerun order
+Official rerun order:
 1. `python scripts/run_baseline_llama.py`
 2. `python scripts/run_baseline_qwen.py`
 3. `python scripts/run_qlora_llama.py`
@@ -174,55 +138,30 @@ C) Official rerun order
 5. `python scripts/run_react_llama.py` and/or `python scripts/run_react_qwen.py`
 6. manually copy the official JSON files into `results/final_pack/`
 7. `python scripts/build_final_analysis.py`
-8. `notebooks/06_research_comparison.ipynb` (reporting only)
+8. open `notebooks/06_research_comparison.ipynb` for reporting only
 
-Runnable notebook mirrors:
-- `notebooks/02_baseline_prompting_eval.ipynb`
-- `notebooks/03_agentic_eval.ipynb`
-- `notebooks/05_qlora_train_eval.ipynb`
-- These mirror the fixed scripts for walkthrough/demo use, but they are not the authoritative evidence path.
-
-D) Official analysis outputs
+Official analysis outputs:
 - `results/final_analysis/manifest.csv`
 - `results/final_analysis/per_item.csv`
 - `results/final_analysis/summary_by_condition.csv`
 - `results/final_analysis/pairwise_tests.csv`
 
-
-7) Reproducibility and run-policy notes
----------------------------------------
-- Freeze the source snapshot before reruns:
-  1. commit the current code/docs state
-  2. record the commit hash in dissertation notes
-  3. confirm `git status --short` shows no source changes before the rerun starts
-- The fixed dissertation rerun matrix is the fixed script set listed in Section 6C.
-- The notebooks remain as runnable mirrors of those same settings.
-- Persist the generated JSON artifacts from those fixed reruns.
-- Manually copy only the official JSON files into `results/final_pack/`.
-- The simplest mental model is:
-  1. fixed scripts save raw run JSON files
-  2. `final_pack/` holds the exact files cited in the dissertation
-  3. `build_final_analysis.py` turns those files into the official CSV tables
-- After rebuilding the analysis, inspect `results/final_analysis/manifest.csv`
-  and the summary/test CSVs before writing claims.
-- Do not mix extension/non-primary runs into the primary baseline/QLoRA matrix.
-- The fixed rerun recipe uses TS for `k=3` and for the full ReAct run, so the
-  perturbed TS databases must be available.
-- Full rerun and write-up checklists live in:
-  - `DISSERTATION_RERUN_PROTOCOL.md`
-  - `DISSERTATION_EVALUATION_TEMPLATE.md`
+Runnable notebook mirrors:
+- `notebooks/02_baseline_prompting_eval.ipynb`
+- `notebooks/03_agentic_eval.ipynb`
+- `notebooks/05_qlora_train_eval.ipynb`
 
 
-8) Operational and security notes
----------------------------------
-- Do not hardcode DB credentials or tokens in notebooks/files.
-- Notebooks are designed to prompt via input/getpass when env vars are absent.
-- SQL execution includes safety controls in runtime code; still use least-privilege DB users.
+6) Reproducibility and handover notes
+-------------------------------------
+- commit the code/docs snapshot before reruns
+- confirm `git status --short` is clean before starting official runs
+- keep only the official cited JSON files in `results/final_pack/`
+- inspect `results/final_analysis/manifest.csv` before writing claims
+- use least-privilege DB credentials and do not hardcode secrets
 
-
-9) Where to start
------------------
-If picking this up fresh, read:
-- this file (`README.txt`)
-- `REFERENCES.md` (literature and method anchors)
-- `technical_description.md` (architecture and implementation narrative)
+Useful companion documents:
+- `REFERENCES.md`
+- `technical_description.md`
+- `DISSERTATION_RERUN_PROTOCOL.md`
+- `DISSERTATION_EVALUATION_TEMPLATE.md`
