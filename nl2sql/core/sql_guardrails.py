@@ -40,9 +40,9 @@ def clean_candidate_with_reason(raw: str) -> tuple[Optional[str], str]:
     else:
         sql = sql.rstrip(";") + ";"
 
-    # DEFAULT_FORBIDDEN_TOKENS tokens have trailing spaces ("drop "); strip for matching.
+    # Match the same token forms used by QueryRunner safety checks.
     low = sql.lower()
-    if any(tok.strip() in low for tok in DEFAULT_FORBIDDEN_TOKENS):
+    if any(tok in low for tok in DEFAULT_FORBIDDEN_TOKENS):
         return None, "forbidden_sql"
 
     return sql, "ok"

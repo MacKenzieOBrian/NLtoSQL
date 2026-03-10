@@ -163,5 +163,3 @@ Runnable notebook mirrors:
 Useful companion documents:
 - `REFERENCES.md`
 - `technical_description.md`
-- `DISSERTATION_RERUN_PROTOCOL.md`
-- `DISSERTATION_EVALUATION_TEMPLATE.md`

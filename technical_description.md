@@ -1,267 +1,252 @@
 # Technical Description
 
+This chapter explains the current delivered system and the main engineering decisions behind it. The project is best understood as an evaluation-first NL-to-SQL prototype rather than a polished end-user product. The main technical challenge was not building a user interface. It was building a reproducible and safe pipeline that could compare prompting, QLoRA, and a small ReAct-style extension on limited hardware.
+
 ---
 
-## 3.1 System Architecture
+## 3.1 Requirements Refinement and Design Constraints
 
-The system is structured as a four-layer Python library, housed under the `nl2sql/` package. Rather than writing evaluation logic and model calls in a single notebook, the codebase separates concerns across four distinct layers: `core/`, `agent/`, `evaluation/`, and `infra/`. This layering was a deliberate design decision made early in development, motivated by the need to test multiple conditions — different models, different shot counts, different scoring policies — without duplicating logic or risking inconsistency across runs.
+The project started from a simple user need: translate a natural language business question into SQL that can run on a real database. In practice, that broad aim had to be narrowed into a workable computing project. The final system was therefore shaped by five design constraints.
 
-```
+First, the system had to work with open-source models rather than proprietary APIs. This made the project more reproducible and better aligned with the dissertation goal of evaluating what could be achieved in a transparent setting.
+
+Second, the scope had to stay within one database schema. Supporting many schemas would have turned the project into a much larger schema-linking problem and would have made the evaluation harder to defend. The ClassicModels database gave a fixed target that was large enough to be non-trivial but still manageable.
+
+Third, the system had to run under constrained hardware. This affected almost every later decision, including the use of compact schema text, a small few-shot setting, QLoRA instead of full fine-tuning, and a limited ReAct loop.
+
+Fourth, safety and reproducibility were treated as core requirements rather than optional extras. Model-generated SQL cannot be trusted by default, so destructive statements had to be blocked. In the same way, experimental outputs had to be written in a form that could be rerun and audited later.
+
+Fifth, the project had to be evaluated systematically. That meant using a fixed experiment grid, fixed metrics, and a final evidence workflow that did not depend on manually remembering which notebook cells had been run.
+
+These constraints explain why some ideas were left out. A richer user interface, charts, natural-language answers, and cross-domain database support would all be interesting additions, but they were not central to the core technical question being tested here.
+
+---
+
+## 3.2 Architecture and High-Level Design
+
+Early development was notebook-heavy. That was useful for experimentation, but it quickly became difficult to maintain because the same logic started appearing in several places. The final version of the project moves most reusable logic into a local Python package, `nl2sql/`, and leaves the notebooks as thin workflow wrappers and reporting aids.
+
+The system is organised into four layers:
+
+```text
 nl2sql/
-├── core/          # reusable pipeline building blocks
-│   ├── schema.py  # schema introspection and serialisation
-│   ├── prompting.py      # few-shot message construction
-│   ├── llm.py            # model generation and SQL extraction
-│   ├── postprocess.py    # SQL normalisation and cleanup
-│   ├── sql_guardrails.py # raw output sanitisation
-│   ├── validation.py     # pre-execution schema validation
-│   └── query_runner.py   # safe SQL execution and audit logging
-├── agent/         # ReAct orchestration layer
-│   ├── agent_tools.py    # shared runtime context
-│   ├── prompts.py        # system prompts for generation and repair
-│   └── react_pipeline.py # generate → validate → execute → repair loop
-├── evaluation/
-│   ├── eval.py                 # evaluation runner, metrics, and result serialisation
-│   ├── grid_runner.py          # fixed baseline/QLoRA grid execution
-│   ├── final_pack.py           # manual final-pack loader and table builder
-│   └── simple_stats.py         # VA/EX/TS summaries and EX-only Wilcoxon/BH-FDR tests
-└── infra/         # notebook-facing setup and orchestration helpers
-    ├── db.py                # Cloud SQL connection and TS engine helpers
-    ├── notebook_utils.py    # auth, paths, and dataset loading
-    ├── model_loading.py     # quantised model and adapter loading
-    ├── training_set.py      # training-set validation helpers
-    └── experiment_helpers.py# ReAct setup and QLoRA training helpers
+├── core/        reusable NL-to-SQL building blocks
+├── agent/       ReAct-style repair loop
+├── evaluation/  scoring, fixed runs, and final analysis
+└── infra/       database, model-loading, and notebook helpers
 ```
 
-The core layer holds the reusable NL-to-SQL building blocks: prompting, generation, validation, output cleaning, and safe query execution. The agent layer builds on core to implement the ReAct extension. The evaluation layer handles scoring, the fixed grid runner, manual evidence loading, and the final statistical comparison. The infra layer contains notebook-facing code such as DB/auth setup, model-loading wrappers, and the remaining reusable training/ReAct helpers. This separation keeps the experimental notebooks thin while still exposing a small number of named entry points for each workflow.
+This architecture was chosen for maintainability. The core layer contains functions that should behave the same no matter which experiment is being run, such as prompt construction, SQL extraction, validation, and query execution. The agent layer contains the optional ReAct logic. The evaluation layer owns metrics and experiment control. The infra layer contains practical support code for loading models, connecting to the database, and running notebooks.
 
-Notebooks still exist as readable walkthroughs, but the final dissertation rerun path now uses fixed scripts rather than notebook cells as the official execution surface. The baseline and QLoRA scripts call `run_eval_grid()` directly, while the ReAct scripts still use the small `run_react_notebook_eval()` helper because that path writes a distinct report format. The official story is therefore short: run the fixed scripts, manually select the cited JSON files, and build the final CSV tables from that manual pack.
+The main alternative was to keep the project mainly inside notebooks. That was rejected because it made changes harder to track and increased the risk that different notebooks would quietly diverge. By moving the logic into modules, the same prompt builder, scorer, and safety checks are reused across all conditions.
+
+This is also a more professional software engineering structure. It separates concerns, reduces duplication, and makes the authoritative execution path much clearer.
 
 ---
 
-## 3.2 Database Access and the Safety-First Execution Path
+## 3.3 Core NL-to-SQL Pipeline
 
-All database access in the system flows through a single path defined in `query_runner.py`. This was a non-negotiable design requirement: model-generated SQL, by definition, cannot be trusted. The system had to be capable of rejecting destructive statements before they reached the database.
+At a high level, the baseline system follows the same sequence for every question:
 
-The safety check is implemented as a simple token-scan blocklist:
+1. read the database schema
+2. compress it into prompt text
+3. build a chat prompt
+4. generate SQL
+5. execute it through a guarded read-only runner
+6. score the result
 
-```python
-DEFAULT_FORBIDDEN_TOKENS = [
-    "drop ", "delete ", "truncate ", "alter ", "create ",
-    "update ", "insert ", "grant ", "revoke ",
-]
+This sounds simple, but each stage required design choices.
 
-def check_sql_safety(sql: str, ...) -> None:
-    lowered = (sql or "").strip().lower()
-    for token in tokens:
-        if token in lowered:
-            raise ValueError(f"Destructive SQL token detected: {token.strip()}")
-```
+### Schema representation
 
-The trailing space in each token (e.g. `"drop "`) is intentional: it prevents false positives on column names such as `drop_date` or `update_count` while still catching all relevant DML statements. A more sophisticated approach — parsing the SQL AST and checking statement types — was considered but rejected on the grounds of complexity. SQL parsing libraries like `sqlglot` introduce dependency overhead, and AST-based checks can fail on malformed SQL that a token scan would still correctly reject. For a read-only research environment where the only goal is preventing accidental writes, the token approach is sufficient.
+The system does not give the model raw database DDL. Instead, it builds a compact schema summary in the form `table(col1, col2, ...)`. This choice was made for two reasons. First, raw DDL is long and noisy. Second, the task only needs the model to know which tables and columns exist, not every storage detail.
 
-The blocklist is defined as a module-level constant in `query_runner.py` and imported by `sql_guardrails.py` and `eval.py`. Having a single authoritative list means that adding a new forbidden token propagates to all callers automatically — there is no risk of a caller maintaining its own out-of-sync copy.
+The summary is also ordered deliberately. Primary keys and identifier-like columns such as `name`, `id`, `code`, and `number` are placed first. This reflects the kinds of fields that are usually most useful in business questions and joins. Very wide tables are truncated so the schema summary stays usable inside the prompt budget.
 
-Connection management uses Python's `contextlib.contextmanager` (Python Software Foundation, 2024) to ensure connections are always closed, even when execution fails:
+The alternative was to include the entire schema in a more complete format. That was rejected because it would have consumed context length without clearly helping the model make better SQL decisions.
 
-```python
-@contextmanager
-def safe_connection(engine: Engine) -> Iterator[sqlalchemy.engine.Connection]:
-    conn = engine.connect()
-    try:
-        yield conn
-    finally:
-        conn.close()
-```
+### Prompting technique
 
-The `finally` block runs unconditionally — whether the query succeeds, raises a SQLAlchemy exception, or is interrupted by a keyboard interrupt in the notebook. This prevents connection leaks during long evaluation runs where dozens of queries are executed in sequence.
+The main prompt builder uses a fixed system message with four simple rules:
 
-Connecting to Google Cloud SQL from a Colab environment required using the Cloud SQL Python Connector library rather than a standard SQLAlchemy connection URL. Standard URLs encode credentials in plaintext and do not support IAM-based authentication. The connector wraps the connection inside a `creator` callable that SQLAlchemy calls on demand:
+- output only SQL
+- output exactly one statement starting with `SELECT`
+- use only tables and columns from the schema
+- use `ORDER BY` and `LIMIT` only when the question asks for ranking
 
-```python
-def create_engine_with_connector(*, instance_connection_name, user, password, db_name):
-    connector = Connector()
-    def getconn():
-        return connector.connect(instance_connection_name, "pymysql", ...)
-    engine = sqlalchemy.create_engine("mysql+pymysql://", creator=getconn)
-    return engine, connector
-```
+These rules were not chosen to sound sophisticated. They were chosen because they directly addressed common failure modes seen during development. Without the first rule, models often produced explanations around the SQL. Without the second, they sometimes produced more than one statement. Without the third, they hallucinated believable but wrong table names. The fourth rule helped reduce unnecessary ranking clauses.
 
-Both the engine and the connector are returned, since the connector holds its own background thread and must be explicitly closed at the end of the session. Returning both from the factory ensures callers cannot create a connector and then lose the reference needed to close it.
+The prompt order is also important. The schema is shown before the exemplars and before the final question. This keeps the whole interaction grounded in the same database context. If the examples came first, the model would see SQL patterns before it had seen the schema it was supposed to use.
 
-The `QueryRunner` class wraps this infrastructure into a stateful executor that maintains an audit history of every query attempted:
+### Why `k=3` was used
 
-```python
-class QueryRunner:
-    """..."""
-    def run(self, sql: str, ...) -> QueryResult:
-        timestamp = now_utc_iso()
-        try:
-            self._safety_check(sql)
-            with safe_connection(self.engine) as conn:
-                result = conn.execute(sqlalchemy.text(sql), ...)
-                rows = result.fetchmany(self.max_rows + 1)
-                truncated = len(rows) > self.max_rows
-                ...
-        except Exception as e:
-            out = QueryResult(..., success=False, error=str(e))
-        self.history.append(out)
-        return out
-```
+The dissertation compares `k=0` and `k=3`. Here, `k` is the number of few-shot exemplars added to the prompt.
 
-Every call to `run()` produces an immutable `QueryResult` record regardless of success or failure. The truncation check (`fetchmany(max_rows + 1)`) is a deliberate trick: fetching one extra row is enough to detect that the result set exceeds the limit, without materialising the entire result in memory. This bounds memory usage during evaluation without needing a separate `COUNT(*)` query.
+`k=0` is the zero-shot baseline. It answers the question without worked examples and shows what the model can do from instructions and schema alone.
+
+`k=3` was chosen as the few-shot condition because it is large enough to demonstrate the intended question-to-SQL format, but still small enough to keep the prompt compact and the comparison easy to explain. A larger sweep such as `k=1, 3, 5, 8` was possible, but it would have added many more runs, made the evaluation heavier, and shifted the project away from its main comparison questions. Using one clear few-shot setting made the experiment easier to defend.
+
+The exemplars are sampled from the benchmark pool with a fixed random seed, and the current test item is removed from the exemplar pool to avoid leakage. This is important. If the exact question being tested appeared in the prompt examples, the system would no longer be measuring genuine generalisation.
+
+### Generation settings
+
+Generation is kept deterministic by setting `do_sample=False`. This was done for reproducibility. If sampling were enabled, run-to-run variation would come from decoding randomness as well as from exemplar choice. The baseline and QLoRA pipeline also uses `max_new_tokens=128`, which is enough for typical SQL queries while limiting long or rambling outputs.
+
+This is a pragmatic choice rather than a theoretical one. The aim here is controlled evaluation, not creative text generation.
+
+### Post-processing and validation
+
+The main baseline scorer stays close to the raw model output. It does not run the full schema-aware `validate_sql()` step before scoring. Instead, it sends the generated text directly to a guarded read-only query runner, which blocks destructive statements and records execution failures as invalid predictions.
+
+This was a deliberate trade-off. Adding more aggressive pre-execution cleaning to the baseline would have made the system look stronger, but it would also have made it harder to separate model quality from extra reliability logic. The stricter extract-and-validate path is used in the ReAct extension, where validation feedback is useful because the agent can repair a failed query and try again.
+
+Overall, the baseline pipeline was designed to be simple, inspectable, and reproducible. That was more important for this project than building a heavily engineered prompt stack with many hidden heuristics.
 
 ---
 
-## 3.3 Immutability for Evaluation Integrity
+## 3.4 Fine-Tuning Design
 
-A recurring pattern across the codebase is the use of Python's frozen dataclasses (Python Software Foundation, 2024) for objects whose values must not change after creation. Three key types use this pattern.
+The second main condition in the dissertation is QLoRA fine-tuning. Full fine-tuning was considered unrealistic for the available hardware, so a parameter-efficient approach was chosen instead.
 
-`QueryResult` is the record of a single query execution. Once a query has run and been scored, its `success`, `rowcount`, and `error` fields must remain fixed. Making the dataclass frozen means that any attempt to mutate a result after the fact — for example, retroactively marking a failed query as successful — raises a `FrozenInstanceError` at runtime rather than silently corrupting the evaluation.
+QLoRA was suitable because it allows the project to adapt the model using low-rank adapters while keeping the main model weights quantised. In practice, this made the experiments feasible in a Colab-style GPU environment without redesigning the whole project around distributed training.
 
-`EvalItem` is the scored record for one test item. It stores the raw model output, the processed prediction, and all four metric scores. Freezing it ensures that the object written to the results JSON is exactly the object that was scored — there is no code path that could update `ex=True` after writing to disk.
+The training data is formatted using the same chat-template style as the prompting pipeline. This keeps the fine-tuned model aligned with the way it will later be evaluated. Before training, the training set is checked for leakage, deduplication issues, non-`SELECT` queries, and basic executability. That validation step is important because poor training data would make it difficult to tell whether later failures came from the model or from the dataset.
 
-`EvalRunConfig` bundles the small set of settings that still belong inside the evaluation layer itself. Before this dataclass was introduced, `eval_run()` accepted many separate keyword arguments, and the call sites were difficult to read and prone to argument-order errors. Grouping the remaining internal settings into a frozen config object keeps the lower-level evaluation code tidy while the fixed scripts and runnable notebook mirrors stay simple.
-
-```python
-@dataclass(frozen=True)
-class EvalRunConfig:
-    max_new_tokens: int = 128
-    max_rows: int = 50
-    max_compare_rows: int = 10000
-    avoid_exemplar_leakage: bool = True
-    ts_suite_db_names: Optional[list[str]] = None
-    ts_make_engine_fn: Optional[Callable[[str], Engine]] = None
-    ts_max_rows: int = 500
-    ...
-```
-
-The use of frozen dataclasses over plain dictionaries was a deliberate choice. Dictionaries allow arbitrary key mutation and provide no type information at the call site. A frozen dataclass provides IDE autocompletion, static type checking, and runtime immutability guarantees simultaneously, with no additional dependencies.
+The project therefore uses fine-tuning in a controlled way: not as an attempt to build the largest possible training pipeline, but as a fair comparison point against prompt-based generation.
 
 ---
 
-## 3.4 Reproducibility Engineering
+## 3.5 ReAct Extension and Alternatives Considered
 
-Scientific validity in machine learning evaluation requires that results be exactly reproducible: running the same condition twice must produce the same scores. Two mechanisms ensure this in the system.
+The project also includes an optional ReAct-style extension. This layer adds a simple feedback loop on top of the baseline pipeline:
 
-The first is a seeded per-run random number generator for exemplar sampling:
+1. generate a candidate query
+2. validate it
+3. execute it
+4. repair it if validation or execution fails
 
-```python
-rng = random.Random(seed)
-...
-exemplars = rng.sample(pool, k)
-```
+The ReAct implementation is intentionally local and lightweight. An external agent framework could have been used, but that would have added more moving parts and reduced control over the exact experiment behaviour. A local loop was easier to inspect, easier to log, and easier to keep consistent with the rest of the codebase.
 
-Python's `random.Random` class (Python Software Foundation, 2024) creates an independent RNG instance seeded from the integer `seed`. This isolates the exemplar sampling from any other random operations happening in the notebook environment — importing a library, shuffling a different list, or any other call to the global `random` module cannot affect which examples are drawn for a given `(k, seed)` condition. Every evaluation run records its seed in the JSON output, so results files are self-documenting.
+Several ReAct settings are fixed in code:
 
-The second mechanism is leakage prevention. When sampling k exemplars for test item i, item i must be excluded from the candidate pool:
+| Setting | Value | Reason |
+|---|---:|---|
+| `few_shot_k` | 3 | keep ReAct aligned with the main few-shot setting |
+| `few_shot_seed` | 7 | fixed prompt context for reproducibility |
+| `max_repairs` | 2 | enough for a small repair budget without long loops |
+| `max_steps` | 8 | prevents the agent from running indefinitely |
+| `max_new_tokens` | 256 | allows slightly longer repair outputs than baseline generation |
+| `do_sample` | `False` | keeps behaviour deterministic |
 
-```python
-return [
-    ex for ex in pool
-    if not (ex.get("nlq") == nlq and ex.get("sql") == gold_sql)
-]
-```
+The repair prompt is zero-shot. This is an important design choice. The normal generation exemplars are pairs of natural language questions and correct SQL. Repair is a different task: it takes broken SQL plus an error message and tries to fix it. Reusing the generation exemplars inside the repair stage would mix two different formats and likely confuse the model. For that reason, the repair stage gets schema information and the current error context, but not the original few-shot examples.
 
-Without this filter, the model could receive the exact question it is being tested on as one of its worked examples, trivially recalling the gold SQL rather than generating it from reasoning. Both the natural language question and the gold SQL must match for an item to be excluded: matching on the question text alone would incorrectly remove paraphrases that happen to share wording but map to different queries.
-
-These two mechanisms together ensure that reported scores reflect genuine model capability rather than sampling artefacts or data contamination.
-
----
-
-## 3.5 Evaluation Metric Design
-
-The evaluation pipeline scores each prediction on four independent metrics, chosen to measure different aspects of correctness at increasing levels of rigour.
-
-**Validity Accuracy (VA)** is the most lenient metric: does the predicted SQL execute without error? This captures both syntactic validity (the SQL can be parsed) and schema validity (the referenced tables and columns exist). It does not say anything about whether the result is correct.
-
-**Exact Match (EM)** compares the normalised string representation of the predicted SQL against the gold SQL. Normalisation strips trailing semicolons, collapses whitespace, and lowercases the entire string. EM is strict — a semantically equivalent query with a different column order or alias name will fail. This metric is most useful as a lower bound and for identifying cases where the model has reproduced the gold phrasing exactly.
-
-**Execution Accuracy (EX)** is the primary metric for semantic correctness. Both the predicted and gold SQL are executed against the live database; the result row sets are compared using Python's `collections.Counter`:
-
-```python
-return Counter(pred_rows) == Counter(gold_rows), None, None
-```
-
-`Counter` provides bag equality — it counts occurrences of each row but ignores order. This matches the definition used by the Spider benchmark (Yu et al., 2018), where SQL execution accuracy is defined as equality of unordered result multisets. A prediction can pass EX with completely different SQL syntax from the gold, as long as the rows it returns are identical. This is the most reliable indicator of real-world correctness.
-
-**Test Suite Accuracy (TS)** extends EX by running both queries against N perturbed variants of the database, each with different data values. A query that hard-codes a specific value (`WHERE country = 'France'`) would pass EX on the original database but fail on a perturbed variant where the French customers have been replaced with German ones. TS therefore measures generalisation rather than point-in-time correctness, following the methodology of Zhong et al. (2020). In the implementation used here, a prediction scores TS=1 only if it matches the gold on every checked perturbed database; a single mismatch is sufficient to fail, and if the gold query itself fails on any replica the item is scored TS=0 rather than skipped.
-
-One subtle implementation challenge arose in the TS scorer: floating-point equality. Two identical `NULL` values in different query results compare as equal in Python. But `float('nan') != float('nan')` by IEEE 754 definition, meaning two rows that should match can appear different if either contains a `NaN`. This was fixed by normalising all `NaN` values to the sentinel string `"NaN"` before comparison, and rounding floats to 10 decimal places to suppress floating-point drift:
-
-```python
-def _coerce_cell(x):
-    if isinstance(x, float):
-        if math.isnan(x): return "NaN"
-        return round(x, 10)
-    return x
-```
+ReAct was kept as an extension rather than the default system because it adds latency and complexity. That trade-off was acceptable for research comparison, but not necessary for every run.
 
 ---
 
-## 3.6 The Prompt Engineering Layer
+## 3.6 Evaluation, Testing, and Analysis Workflow
 
-The system prompt for the baseline evaluation was developed iteratively by identifying failure modes in early model outputs and adding rules to address each one. The comments in `prompting.py` document this reasoning explicitly:
+The project follows a fixed evaluation recipe rather than ad hoc notebook runs. This was a deliberate professional decision. A dissertation is easier to defend when the reader can see exactly which configurations were run and how the outputs were selected.
 
-- *"Output only SQL"* — without this instruction, both Llama and Qwen frequently prefaced their output with explanatory prose ("Here is the SQL query that answers your question:"), which broke downstream SQL extraction.
-- *"Exactly one statement starting with SELECT"* — some model configurations emitted two queries separated by a comment, or emitted a `WITH` clause followed by a `SELECT`.
-- *"Use only tables and columns in the provided schema"* — models consistently hallucinated plausible-sounding table names (`customer_orders`, `product_details`) that did not exist in the ClassicModels schema.
-- *"ORDER BY and LIMIT only when the question asks for ranking"* — this is an output-cleanliness rule rather than the main source of semantic correctness. Because EX uses bag equality, a spurious `ORDER BY` often does not change the EX score by itself. In the final simplified rerun path, the primary evaluation keeps the raw model output rather than relying on a second cleanup profile, so this rule is best understood as prompt guidance rather than a downstream rescue step.
+### Fixed run policy
 
-Schema information is provided to the model before the few-shot examples, rather than after:
+The main baseline and QLoRA grid is:
 
-```python
-msgs = [
-    {"role": "system", "content": SYSTEM_INSTRUCTIONS},
-    {"role": "user",   "content": "Schema Details:\n" + schema},
-    # ... exemplars ...
-    {"role": "user",   "content": f"Natural Language Question: {nlq}"},
-]
-```
+| Setting | Value |
+|---|---|
+| `k` values | `[0, 3]` |
+| seeds | `[7, 17, 27]` |
+| `max_new_tokens` | `128` |
+| TS enabled for | `k=3` only |
+| TS databases | `10` perturbed databases |
+| TS row limit | `500` |
 
-This ordering is intentional. When table names appear in context before the model reads the worked examples, the examples reinforce schema-grounded generation. Placing the schema after the examples would mean the model sees the correct SQL syntax before it has read the schema it should use — an inconsistency that, in early experiments, increased the frequency of hallucinated table names.
+This grid balances coverage with practicality. `k=0` provides the zero-shot baseline. `k=3` provides the few-shot comparison. Three seeds are enough to observe variation in the few-shot runs without creating an unnecessarily large experiment matrix.
+
+Test Suite Accuracy is enabled only for `k=3`. This was done to focus the most expensive semantic test on the main few-shot condition, where it adds the most value. Running TS on every condition would increase cost and runtime without improving the main story of the chapter.
+
+### Metric design
+
+The system records four metrics:
+
+- `VA`: whether the SQL runs without error
+- `EM`: whether the SQL text matches the gold query after normalisation
+- `EX`: whether the returned rows match the gold query result
+- `TS`: whether the prediction still matches under perturbed databases
+
+`EX` is the main semantic metric because it measures what matters most: whether the query returns the correct answer.
+
+### Testing and validation practice
+
+Testing in this project is mainly validation-driven rather than unit-test heavy. This reflects the nature of the system. Much of the risk comes from data quality, prompt behaviour, SQL execution, and experiment configuration rather than from small isolated algorithms.
+
+The main testing procedures are:
+
+- training-set validation before QLoRA training
+- schema validation in the ReAct repair path
+- SQL safety checks before queries reach the database
+- fixed experiment scripts that always write JSON results
+- a final analysis script that rebuilds the CSV evidence tables from a manual final pack
+
+This is a systematic workflow. It makes failure points visible and reduces the chance of silently mixing unofficial runs into the dissertation evidence.
+
+### Final evidence workflow
+
+The official analysis path is:
+
+1. run the fixed experiment scripts
+2. copy the chosen official JSON files into `results/final_pack/`
+3. run `python scripts/build_final_analysis.py`
+4. use the generated CSV files for reporting
+
+The manual `final_pack` stage is important. The alternative would have been automatic discovery of files from the whole `results/` tree. That was rejected because it is harder to audit. A small manual evidence pack makes it clear exactly which runs support the final claims.
+
+### Significance testing
+
+The final pairwise comparison step works on per-seed EX rates, not on the raw per-item binary values. For each condition, one EX rate is computed per seed. This produces values such as `0.415` or `0.557`, which are more suitable for comparing overall condition performance than large lists of `0/1` item outcomes.
+
+The test choice then depends on the type of comparison:
+
+- if one side is deterministic, as can happen for `k=0`, a one-sample t-test is used against that fixed rate
+- if both sides vary by seed, normality is checked first
+- if both look normal, Welch's t-test is used
+- otherwise, Mann-Whitney U is used
+- if both sides are deterministic constants, the comparison is reported descriptively only
+
+This is a better fit for the current experiment design because it compares actual condition-level values rather than mostly binary differences.
 
 ---
 
-## 3.7 The ReAct Pipeline: Design Decisions
+## 3.7 Non-Functional Considerations
 
-The ReAct pipeline (Yao et al., 2023) adds a feedback loop on top of the baseline generation path: generate a candidate, validate it, execute it, and repair it if either step fails. The loop is controlled by a shared state object rather than local variables or nested closures:
+### Security
 
-```python
-@dataclass
-class _ReactState:
-    step: int = 0
-    trace: list[dict] = field(default_factory=list)
-    current_sql: str | None = None
-    repairs_used: int = 0
-```
+Security mattered because the system executes model-generated SQL on a live database. To reduce risk, destructive statements are blocked before execution using a token-based safety check, and database access is routed through a controlled query runner. In a dissertation context, this is an example of professional caution: the model is treated as untrusted input.
 
-Explicit state threading was chosen over using closures or `nonlocal` variable rebinding for clarity. In Python, `nonlocal` can be used to modify a variable in an enclosing function's scope, but it makes the data flow implicit and difficult to inspect during debugging. An explicit `_ReactState` object can be printed, logged, or inspected at any point in the loop without additional tooling.
+### Reliability and reproducibility
 
-The repair budget (`repairs_used`) is shared across both validation failures and execution failures. This was a deliberate trade-off: with `max_repairs=2`, the loop can afford one validation repair and one execution-guided repair before stopping. Setting separate budgets per failure type would require two counters and more complex stopping logic for minimal benefit at the scale of a dissertation experiment.
+Reliability is supported in several ways. Results are stored in frozen data structures after scoring, saved to JSON immediately after runs, and labelled with configuration metadata such as `k`, seed, and timestamp. Deterministic decoding and fixed seeds further reduce ambiguity. This makes reruns and later checking much easier.
 
-Repair prompts are intentionally zero-shot — they do not include the few-shot NLQ→SQL examples used during generation:
+### Performance
 
-```python
-messages = [
-    {"role": "system", "content": SQL_REPAIR_SYSTEM_PROMPT},
-    {"role": "user",   "content": "Schema Details:\n" + schema_text},
-    {"role": "user",   "content": repair_prompt},  # bad SQL + error + hint
-]
-```
+Performance was constrained mainly by model inference, not by database time. Several decisions respond directly to that fact:
 
-The reason is format mismatch: the generation exemplars are (question, SQL) pairs, which teach the model to translate natural language to SQL. Repair is a different task — (bad SQL, error message) to (fixed SQL) — and providing generation exemplars in a repair context would present the model with examples in the wrong format, likely increasing confusion. In the absence of a dedicated repair corpus, zero-shot is the correct choice, consistent with the DIN-SQL self-correction approach (Pourreza and Rafiei, 2023).
+- compact schema summaries instead of raw DDL
+- deterministic decoding instead of repeated sampling
+- row limits during query execution and comparison
+- QLoRA rather than full fine-tuning
+- TS enabled only where it adds the most value
 
-Every step in the loop appends to the `trace` list, recording the action taken, the SQL at that point, and any error or validation result. This trace is serialised into the results JSON alongside the final prediction, providing a full audit trail of the agent's decision path for every test item — a requirement for the ablation analysis in Chapter 4.
+These are not arbitrary simplifications. They are design responses to the real hardware limits of the project.
+
+### Maintainability and usability
+
+Moving logic out of notebooks and into modules improved maintainability. Keeping the notebooks as readable wrappers still helps usability, because they show the workflow step by step, but the authoritative logic now lives in reusable files. This is a better balance than either extreme of notebook-only development or a fully abstracted codebase with no readable experiment entry points.
 
 ---
 
-## 3.8 Non-Functional Considerations
+## 3.8 Chapter Summary
 
-**Security.** The primary security concern is SQL injection: a model-generated query that contains a destructive statement could corrupt the live ClassicModels database. This is addressed at two independent layers. First, `check_sql_safety()` rejects any query containing a DML token before it reaches the database connection. Second, the Cloud SQL Connector uses IAM-based authentication; the database user credentials are notebook-local variables set per session and are never written to files or committed to version control. These two layers together mean that even if the DML blocklist missed a token, the database user's permissions would need to include write access for damage to occur.
+The final system was designed as a controlled and defensible NL-to-SQL research prototype. The key decisions were shaped by safety, reproducibility, hardware limits, and the need for a fair comparison between prompting, QLoRA, and a small ReAct extension. Choices such as compact schema text, `k=3` few-shot prompting, deterministic decoding, QLoRA training, and a manual final evidence pack were not isolated implementation details. They were deliberate responses to the project requirements and constraints.
 
-**Performance.** Model inference is the dominant cost — each of the 200 test items requires one forward pass through a 7–8 billion parameter model on a single GPU. Database query time is negligible by comparison, but two measures bound the worst-case overhead. Row limits cap result sets at 50 rows for evaluation queries and 10,000 rows for execution-accuracy comparison. Schema text is cached in `AgentContext` after the first retrieval: the system checks a text cache, then a structured dict cache, before making a live database call. In practice this means the schema is queried from the database at most once per evaluation session.
-
-**Reliability.** Frozen dataclasses prevent result mutation after scoring. All results are written to JSON immediately after each run with a UTC timestamp, so a notebook crash partway through a session does not lose completed results — each JSON file is a complete, self-contained record for that condition. The `QueryResult.history` list on `QueryRunner` provides a per-session audit of every attempted query, including failures, which was used during development to diagnose systematic extraction failures without re-running the full evaluation.
-
-**Reproducibility.** Beyond the seeded RNG described in Section 3.4, each results JSON records the configuration under which it was produced: model ID, k, seed, limit, and a UTC timestamp. In the final dissertation workflow, reproducibility is enforced by a manual evidence pack rather than by recursively scanning the entire `results/` tree. After the fixed rerun scripts have produced their raw JSON files, only the selected official files are copied into `results/final_pack/` using canonical names such as `llama_base_k3_seed17.json`. The script `scripts/build_final_analysis.py` then reads only that folder and writes four CSV outputs under `results/final_analysis/`: a manifest, a flat per-item table, a per-condition summary, and an EX-only pairwise Wilcoxon test table with BH-FDR correction. This makes the cited evidence explicit and auditable: the dissertation claims are tied to a small folder of hand-selected JSON files rather than to a discovery layer that decides which archived runs to include.
+For that reason, the technical contribution of the project is not only the code that generates SQL. It is also the engineering of a reliable evaluation workflow around that code.
