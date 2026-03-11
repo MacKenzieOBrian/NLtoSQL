@@ -1,7 +1,7 @@
 """Official evaluation surface for the simplified dissertation workflow.
 
 The active analysis path is deliberately small: load the manual final pack,
-build a condition summary, and run the fixed EX-only pairwise tests.
+build a condition summary, and run the fixed EX-only pairwise significance tests.
 """
 
 from .final_pack import build_tables_from_pack

@@ -19,6 +19,10 @@ official experiment and analysis workflow.
   2. manually copy the chosen JSON outputs into `results/final_pack/`
   3. run `python scripts/build_final_analysis.py`
   4. inspect `results/final_analysis/*.csv`
+- Official baseline/QLoRA seed policy:
+  - `k=0` -> `[7]` only, because this condition is deterministic
+  - `k=3` -> `[7, 17, 27, 37, 47]`
+  - `TS` remains enabled only for `k=3`
 
 
 2) Repository structure
@@ -34,13 +38,27 @@ official experiment and analysis workflow.
 - `nl2sql/infra/`
   - DB/model/notebook support code
 - `notebooks/`
-  - runnable mirrors for baseline, QLoRA, ReAct, and final reporting
+  - runnable mirrors and support material, not the official evidence path
 - `scripts/`
   - fixed rerun entrypoints and final analysis builder
 - `results/final_pack/`
   - manually selected official JSON evidence files
 - `results/final_analysis/`
   - official CSV outputs built from `final_pack`
+
+Official submission surface:
+- `nl2sql/`
+- `scripts/`
+- `README.txt`
+- `technical_description.md`
+- `results/final_pack/`
+- `results/final_analysis/`
+
+Support material that is useful to inspect but not needed to justify the final claims:
+- `notebooks/`
+- `notebooks/01_demo.ipynb`
+- `diagrams.md`
+- `writing_code_alignment_report.md`
 
 
 3) Code ownership and provenance
@@ -140,16 +158,23 @@ Official rerun order:
 7. `python scripts/build_final_analysis.py`
 8. open `notebooks/06_research_comparison.ipynb` for reporting only
 
+Official baseline/QLoRA run counts:
+- one canonical `k=0` JSON per condition
+- multiple `k=3` JSON files per stochastic condition; the target seed set is `7, 17, 27, 37, 47`
+- ReAct remains one fixed descriptive run at `k=3`, seed `7`
+
 Official analysis outputs:
 - `results/final_analysis/manifest.csv`
 - `results/final_analysis/per_item.csv`
 - `results/final_analysis/summary_by_condition.csv`
 - `results/final_analysis/pairwise_tests.csv`
+- `pairwise_tests.csv` contains only the two formal `k=3` baseline-vs-QLoRA `EX` comparisons
 
 Runnable notebook mirrors:
 - `notebooks/02_baseline_prompting_eval.ipynb`
 - `notebooks/03_agentic_eval.ipynb`
 - `notebooks/05_qlora_train_eval.ipynb`
+- these notebooks are convenience wrappers and checks, not the official evidence path
 
 
 6) Reproducibility and handover notes

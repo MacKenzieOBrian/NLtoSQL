@@ -37,7 +37,13 @@ def main() -> None:
         token = ensure_hf_token(prompt_if_missing=True)
         model, tok = load_quantized_model(MODEL_ID, token=token)
 
-        print({"run": "baseline", "model_id": MODEL_ID, "k_values": [0, 3], "seeds": [7, 17, 27], "ts_k": [3]})
+        print({
+            "run": "baseline",
+            "model_id": MODEL_ID,
+            "k_values": [0, 3],
+            "seed_policy": {"k0": [7], "k3": [7, 17, 27, 37, 47]},
+            "ts_k": [3],
+        })
         report = run_eval_grid(
             test_set=test_set,
             schema_summary=schema_summary,

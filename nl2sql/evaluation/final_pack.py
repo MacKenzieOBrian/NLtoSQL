@@ -12,7 +12,7 @@ import pandas as pd
 
 FULL_BENCHMARK_SIZE = 200
 PACK_DIR = Path("results/final_pack")
-_PRIMARY_PATTERN = re.compile(r"^(llama|qwen)_(base|qlora)_k(0|3)_seed(7|17|27)\.json$")
+_PRIMARY_PATTERN = re.compile(r"^(llama|qwen)_(base|qlora)_k(0|3)_seed(\d+)\.json$")
 _REACT_PATTERN = re.compile(r"^(llama|qwen)_react_k(0|3)_seed(\d+)\.json$")
 
 
@@ -46,7 +46,7 @@ def _parse_filename(path: Path) -> tuple[str, str, int, int]:
 
     raise ValueError(
         f"{path.name}: unsupported filename. Expected names like "
-        "`llama_base_k0_seed7.json` or `qwen_react_k3_seed7.json`."
+        "`llama_base_k0_seed7.json`, `llama_base_k3_seed37.json`, or `qwen_react_k3_seed7.json`."
     )
 
 

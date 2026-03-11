@@ -84,7 +84,7 @@ def main() -> None:
             "model_id": model_id,
             "adapter": str(adapter_path),
             "k_values": [0, 3],
-            "seeds": [7, 17, 27],
+            "seed_policy": {"k0": [7], "k3": [7, 17, 27, 37, 47]},
             "ts_k": [3],
         })
         report = run_eval_grid(

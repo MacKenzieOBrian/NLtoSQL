@@ -68,7 +68,6 @@ def generate_sql_from_messages(
     top_p: float = 0.9,
     extract_select: bool = False,
     stop_on_semicolon: bool = False,
-    **_kwargs: Any,  # compatibility with older call sites
 ) -> str:
     """Run the model and return SQL, or raw text if no SELECT is found."""
     import torch

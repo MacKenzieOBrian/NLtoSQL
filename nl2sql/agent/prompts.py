@@ -1,39 +1,26 @@
-"""Prompt strings for generation and repair."""
+"""Prompt strings for the ReAct agent."""
 
 from __future__ import annotations
 
 
-# This prompt is slightly stricter than the baseline prompt because the agent
-# loop relies on repair and execution feedback.
-SQL_GENERATOR_SYSTEM_PROMPT = """You are a MySQL analyst.
-Return exactly one executable SQL SELECT statement.
+REACT_SYSTEM_PROMPT = """You are a MySQL analyst working step by step.
 
-Rules:
-- Output SQL only.
-- Output one statement starting with SELECT.
-- Use only provided schema tables/columns.
+For each step, respond in this exact format:
+Thought: <one sentence of reasoning>
+Action: query[<sql_statement>]
+
+When you are satisfied with the result, respond:
+Thought: <one sentence of reasoning>
+Action: finish[<sql_statement>]
+
+Rules for SQL:
+- One SELECT statement only.
+- Use only the provided schema tables and columns.
 - Return the smallest projection that answers the question.
-- Do not add extra columns, IDs, codes, or ORDER BY unless the question asks for them.
 - Never use SELECT *.
-- Do not output explanations.
+- No ORDER BY unless the question asks for it.
+- Do not add explanations outside the Thought line.
 """
 
 
-# Repair prompt used after validation or execution errors.
-SQL_REPAIR_SYSTEM_PROMPT = """You fix faulty MySQL SELECT statements.
-Return exactly one corrected SQL SELECT statement.
-
-Rules:
-- Output SQL only.
-- Keep query intent aligned to the question.
-- Use only provided schema tables/columns.
-- Return the smallest projection that answers the question.
-- Do not add extra columns, IDs, codes, or ORDER BY unless the question asks for them.
-- Never use SELECT *.
-"""
-
-
-__all__ = [
-    "SQL_GENERATOR_SYSTEM_PROMPT",
-    "SQL_REPAIR_SYSTEM_PROMPT",
-]
+__all__ = ["REACT_SYSTEM_PROMPT"]
