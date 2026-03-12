@@ -9,6 +9,7 @@ with external tool observations fed back into the context window.
 from __future__ import annotations
 
 import random
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -57,12 +58,23 @@ def _parse_react_output(raw: str) -> tuple[str, str, str]:
         line = line.strip()
         if line.startswith("Thought:"):
             thought = line[len("Thought:"):].strip()
-        elif line.lower().startswith("action: finish["):
-            action = "finish"
-            sql = line[line.index("[") + 1 : line.rindex("]")].strip()
-        elif line.lower().startswith("action: query["):
-            action = "query"
-            sql = line[line.index("[") + 1 : line.rindex("]")].strip()
+        elif line.lower().startswith("action:"):
+            # Accept both the strict prompt format:
+            #   Action: query[SELECT ...]
+            # and the looser form some models emit:
+            #   Action: query SELECT ...
+            lower = line.lower()
+            if lower.startswith("action: finish["):
+                action = "finish"
+                sql = line[line.index("[") + 1 : line.rindex("]")].strip()
+            elif lower.startswith("action: query["):
+                action = "query"
+                sql = line[line.index("[") + 1 : line.rindex("]")].strip()
+            else:
+                m = re.match(r"(?is)^action:\s*(query|finish)\s+(.*)$", line)
+                if m:
+                    action = m.group(1).lower()
+                    sql = m.group(2).strip()
 
     # Fallback: model did not follow the format — grab the first SELECT.
     if not sql:
