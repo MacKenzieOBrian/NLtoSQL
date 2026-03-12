@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the fixed Llama ReAct campaign for the dissertation rerun."""
+"""Run the fixed Llama base-model ReAct campaign for the dissertation rerun."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from nl2sql.infra.db import connect_notebook_db, make_cached_engine_factory
 from nl2sql.infra.experiment_helpers import (
-    QLORA_EXPERIMENT_PRESETS,
     configure_react_notebook,
     run_react_notebook_eval,
 )
@@ -19,7 +18,9 @@ from nl2sql.infra.notebook_utils import ensure_hf_token, load_test_set
 
 
 MODEL_ID = "meta-llama/Meta-Llama-3-8B-Instruct"
-ADAPTER_PATH = QLORA_EXPERIMENT_PRESETS["llama3_8b"]["adapter_output_dir"]
+ADAPTER_PATH = None
+SMOKE_VA_MIN = 0.70
+SMOKE_EX_MIN = 0.30
 
 
 def main() -> None:
@@ -43,6 +44,40 @@ def main() -> None:
             user=db_config["db_user"],
             password=db_config["db_pass"],
         )
+        smoke_report, _, smoke_out_path = run_react_notebook_eval(
+            test_set=test_set[:20],
+            engine=engine,
+            config=react_config,
+            model_id=MODEL_ID,
+            adapter_path=ADAPTER_PATH,
+            ts_make_engine_fn=ts_make_engine,
+            notebook="scripts/run_react_llama.py:smoke",
+        )
+        smoke_ok = (
+            smoke_report.get("va_rate", 0.0) >= SMOKE_VA_MIN
+            and smoke_report.get("ex_rate", 0.0) >= SMOKE_EX_MIN
+        )
+        print({
+            "run": "react_smoke",
+            "model_id": MODEL_ID,
+            "adapter_path": ADAPTER_PATH,
+            "limit": 20,
+            "va_min": SMOKE_VA_MIN,
+            "ex_min": SMOKE_EX_MIN,
+            "pass": smoke_ok,
+        })
+        print(
+            "ReAct smoke",
+            "VA=", round(smoke_report.get("va_rate", 0.0), 3),
+            "EM=", round(smoke_report.get("em_rate", 0.0), 3),
+            "EX=", round(smoke_report.get("ex_rate", 0.0), 3),
+            "TS=", "NA" if smoke_report.get("ts_rate") is None else round(smoke_report["ts_rate"], 3),
+        )
+        print("Saved smoke report:", smoke_out_path)
+        if not smoke_ok:
+            raise RuntimeError(
+                f"Smoke test failed: require VA >= {SMOKE_VA_MIN:.2f} and EX >= {SMOKE_EX_MIN:.2f}"
+            )
         report, _, out_path = run_react_notebook_eval(
             test_set=test_set,
             engine=engine,
@@ -55,6 +90,8 @@ def main() -> None:
         print({
             "run": "react",
             "config": react_config.name,
+            "model_id": MODEL_ID,
+            "adapter_path": ADAPTER_PATH,
             "run_size": 200,
             "ts_n": 10,
             "ts_prefix": "classicmodels_ts",
