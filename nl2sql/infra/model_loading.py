@@ -21,7 +21,10 @@ def _compute_dtype() -> torch.dtype:
 def build_4bit_quant_config() -> tuple[Any, torch.dtype, bool]:
     """Return (BitsAndBytesConfig, compute_dtype, use_bf16).
 
-    Inspired by the usual QLoRA-style 4-bit NF4 loading setup.
+    This mirrors the QLoRA-style 4-bit NF4 loading pattern described by
+    Dettmers et al. (dissertation ref [14]). The runtime implementation here
+    uses Hugging Face Transformers plus bitsandbytes rather than reproducing
+    the paper's training stack verbatim.
     """
     from transformers import BitsAndBytesConfig
 
@@ -100,8 +103,11 @@ def build_trainable_qlora_model(
 ) -> tuple[Any, Any, Any, torch.dtype, bool]:
     """Load the base model, attach LoRA layers, and return training-ready objects.
 
-    Inspired by the common QLoRA recipe: load a 4-bit base model, prepare it for
-    k-bit training, then add LoRA adapters on top.
+    This follows the method-level pattern from QLoRA [14] plus LoRA [10]:
+    load a 4-bit base model, prepare it for k-bit training, then attach LoRA
+    adapters. The adapter mechanism itself is provided by the PEFT library, so
+    PEFT is an implementation stack here rather than a separate paper-level
+    method claim.
     """
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
@@ -111,7 +117,8 @@ def build_trainable_qlora_model(
     model_id = experiment_config["model_id"]
     bnb_config, compute_dtype, use_bf16 = build_4bit_quant_config()
     base_model, tok = load_quantized_model(model_id, token=token)
-    # This follows the usual "prepare k-bit base first, then add LoRA adapters" order.
+    # Keep the QLoRA/LoRA order explicit: prepare the k-bit base first, then
+    # attach LoRA adapters via PEFT.
     base_model = prepare_model_for_kbit_training(base_model)
 
     lora_config = LoraConfig(

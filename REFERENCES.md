@@ -1,153 +1,85 @@
 # References
 
-Full reference list with code and design anchors.
-Numbers match the dissertation bibliography [1]–[29].
+Reference map for the dissertation codebase. Numbers match the current
+bibliography `[1]`-`[24]`.
+
+This file is intentionally not a second bibliography. Its job is to show where
+the code has:
+
+- a **Direct pattern** match to a cited method or official implementation
+- an **Adapted implementation** of the cited idea
+- **Background only** relevance, where the paper explains the design direction
+  but the code does not implement that method directly
 
 
-## Evaluation Metrics
+## Core Implementation Matches
 
-**[22]** T. Yu et al., 'Spider: A Large-Scale Human-Labeled Dataset for Complex and Cross-Domain
-Semantic Parsing and Text-to-SQL Task', EMNLP 2018. doi: 10.18653/v1/D18-1425.
-→ Defines the EX (execution accuracy) metric. Motivates `Counter(pred_rows) == Counter(gold_rows)`
-  in `nl2sql/evaluation/eval.py`.
-
-**[21]** R. Zhong, T. Yu, and D. Klein, 'Semantic Evaluation for Text-to-SQL with Distilled Test
-Suites', EMNLP 2020. doi: 10.18653/v1/2020.emnlp-main.29.
-→ Motivates `test_suite_accuracy_for_item` in `nl2sql/evaluation/eval.py`.
-
-**[24]** R. Dror et al., 'The Hitchhiker's Guide to Testing Statistical Significance in Natural
-Language Processing', ACL 2018. doi: 10.18653/v1/P18-1128.
-→ Justifies significance testing on continuous run-level scores rather than binary per-item deltas,
-  and supports selecting test families according to distributional assumptions in
-  `nl2sql/evaluation/simple_stats.py`.
-
-**[29]** P. Virtanen et al., 'SciPy 1.0: Fundamental Algorithms for Scientific Computing in
-Python', Nature Methods, vol. 17, pp. 261–272, 2020. doi: 10.1038/s41592-020-0772-5.
-→ Provides `shapiro`, `ttest_1samp`, `ttest_ind`, and `mannwhitneyu` used in
-  `nl2sql/evaluation/simple_stats.py`.
+| Ref | Paper / source | Official repo / docs | Code area | Match type | Note |
+| --- | --- | --- | --- | --- | --- |
+| [17] | ReAct | [ysymyth/ReAct](https://github.com/ysymyth/ReAct) | `nl2sql/agent/react_pipeline.py`, `nl2sql/agent/prompts.py` | Adapted implementation | The live loop keeps the ReAct `reason -> act -> observe -> continue` structure, but adapts the original flat prompt string into chat-format message history for instruct models. |
+| [24] | Transformers | [Transformers repo](https://github.com/huggingface/transformers) · [chat templating docs](https://huggingface.co/docs/transformers/chat_templating) · [generation docs](https://huggingface.co/docs/transformers/en/internal/generation_utils) | `nl2sql/core/llm.py`, `nl2sql/agent/react_pipeline.py` | Direct pattern | The code directly uses `apply_chat_template`, `StoppingCriteria`, and `model.generate` in the way the official library documents them. |
+| [10] | LoRA | [PEFT repo](https://github.com/huggingface/peft) · [PEFT LoRA guide](https://huggingface.co/docs/peft/main/conceptual_guides/lora) | `nl2sql/infra/model_loading.py` | Adapted implementation | The method claim comes from LoRA, while the actual adapter attachment and training stack are implemented through PEFT. |
+| [14] | QLoRA | [PEFT repo](https://github.com/huggingface/peft) · [bitsandbytes docs](https://huggingface.co/docs/bitsandbytes/main/en/index) | `nl2sql/infra/model_loading.py` | Adapted implementation | The loading path mirrors the QLoRA-style 4-bit NF4 setup, but it is a practical Hugging Face / bitsandbytes implementation rather than a copy of one research training script. |
+| [19] | Distilled test-suite evaluation | [test-suite-sql-eval repo](https://github.com/taoyds/test-suite-sql-eval) | `nl2sql/evaluation/eval.py` | Adapted implementation | The local helper follows the same evaluation idea, but uses a simplified project-specific function rather than the exact benchmark toolkit. |
+| [20] | Spider | [Spider repo](https://github.com/taoyds/spider) · [Spider site](https://yale-lily.github.io/spider) | `nl2sql/evaluation/eval.py` | Background only | The project uses Spider-style execution-focused evaluation logic, but it does not run the official Spider benchmark scripts unchanged. |
+| [15] | Qwen2.5 technical report | [Qwen repo](https://github.com/QwenLM/Qwen) · [Qwen2.5-7B-Instruct model card](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct) | notebooks and run scripts using `Qwen/Qwen2.5-7B-Instruct` | Direct pattern | This is the exact model family and model ID used for the Qwen baseline and ReAct conditions. |
+| [23] | Llama 3 technical report | [Llama 3 model card](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct) | notebooks and run scripts using `meta-llama/Meta-Llama-3-8B-Instruct` | Direct pattern | This is the exact model family and model ID used for the Llama baseline and QLoRA conditions. |
 
 
-## Text-to-SQL Surveys and Benchmarks
+## Evaluation and Analysis
 
-**[1]** G. Katsogiannis-Meimarakis and G. Koutrika, 'A survey on deep learning approaches for
-text-to-SQL', The VLDB Journal, vol. 32, no. 4, pp. 905–936, 2023. doi: 10.1007/s00778-022-00776-8.
-→ Background motivation for the NL-to-SQL task and evaluation setup.
-
-**[9]** X. Zhu et al., 'Large Language Model Enhanced Text-to-SQL Generation: A Survey', Oct. 2024,
-arXiv: arXiv:2410.06011.
-→ Positions LLM-based approaches (few-shot, fine-tuning, agents) within the broader field.
-
-**[12]** Z. Hong et al., 'Next-Generation Database Interfaces: A Survey of LLM-based Text-to-SQL',
-Sep. 2025, arXiv: arXiv:2406.08426.
-→ Contextualises the agentic (ReAct) pipeline as part of next-generation interfaces.
-
-**[3]** J. Li et al., 'Can LLM Already Serve as A Database Interface? A BIg Bench for Large-Scale
-Database Grounded Text-to-SQLs', arXiv:2305.03111, 2023. doi: 10.48550/arXiv.2305.03111.
-→ BIRD benchmark — provides broader context for LLM text-to-SQL performance claims.
-
-**[23]** D. Gao et al., 'Text-to-SQL Empowered by Large Language Models: A Benchmark Evaluation',
-Nov. 2023, arXiv: arXiv:2308.15363. doi: 10.48550/arXiv.2308.15363.
-→ Benchmark comparison of few-shot prompting strategies; supports the k=3 few-shot design.
-
-**[13]** S. Ojuri et al., 'Optimizing text-to-SQL conversion techniques through the integration of
-intelligent agents and large language models', Information Processing & Management, vol. 62,
-no. 5, 2025. doi: 10.1016/j.ipm.2025.104136.
-→ Supports the agent-based extension (ReAct pipeline) as a current research direction.
+| Ref | Paper / source | Official repo / docs | Code area | Match type | Note |
+| --- | --- | --- | --- | --- | --- |
+| [21] | Gao et al. benchmark evaluation | — | evaluation design and write-up | Background only | Useful for benchmarking context and for positioning prompt-based text-to-SQL comparisons, but not directly implemented as code. |
+| [22] | Dror et al. significance testing | — | `nl2sql/evaluation/simple_stats.py` | Adapted implementation | The code uses Dror's broader principle of matching the test to the data structure, but the specific Mann-Whitney choice is a project simplification rather than a method copied from the paper. |
+| [3] | BIRD benchmark | [BIRD site](https://bird-bench.github.io/) | benchmarking discussion and write-up | Background only | This is benchmark context for LLM-era text-to-SQL performance, not a directly implemented benchmark in the repo. |
 
 
-## Prompting and In-Context Learning
+## Text-to-SQL Design Context
 
-**[8]** T. Brown et al., 'Language Models are Few-Shot Learners', NeurIPS 2020, vol. 33,
-pp. 1877–1901.
-→ Foundational motivation for k-shot exemplar sampling in `nl2sql/agent/react_pipeline.py`
-  and `nl2sql/evaluation/eval.py`.
-
-**[4]** Q. Yin et al., 'Deeper Insights Without Updates: The Power of In-Context Learning Over
-Fine-Tuning', Oct. 2024, arXiv: arXiv:2410.04691. doi: 10.48550/arXiv.2410.04691.
-→ Background context on the trade-off between in-context learning and fine-tuning; use as design context rather than as direct proof of the dissertation's final result.
-
-**[7]** M. Mosbach et al., 'Few-shot Fine-tuning vs. In-context Learning: A Fair Comparison and
-Evaluation', May 2023, arXiv: arXiv:2305.16938. doi: 10.48550/arXiv.2305.16938.
-→ Motivates the experimental design comparing few-shot ICL against fine-tuning.
-
-
-## Agentic / ReAct
-
-**[19]** S. Yao et al., 'ReAct: Synergizing Reasoning and Acting in Language Models', ICLR 2023,
-arXiv: arXiv:2210.03629. doi: 10.48550/arXiv.2210.03629.
-→ Core motivation for `run_react_pipeline` in `nl2sql/agent/react_pipeline.py`.
-  The Thought→Action→Observation loop maps directly to the validate→run→repair cycle.
-
-**[26]** Z. Xi et al., 'The rise and potential of large language model based agents: a survey',
-Science China Information Sciences, vol. 68, no. 2, 2025. doi: 10.1007/s11432-024-4222-0.
-→ Broader context for the agentic pipeline as an LLM-based agent system.
-
-**[5]** M. Pourreza and D. Rafiei, 'DIN-SQL: Decomposed In-Context Learning of Text-to-SQL with
-Self-Correction', Nov. 2023, arXiv: arXiv:2304.11015. doi: 10.48550/arXiv.2304.11015.
-→ Motivates execution-guided SQL repair in `repair_sql` in `nl2sql/agent/react_pipeline.py`.
-
-**[6]** B. Zhai et al., 'ExCoT: Optimizing Reasoning for Text-to-SQL with Execution Feedback',
-Mar. 2025, arXiv: arXiv:2503.19988. doi: 10.48550/arXiv.2503.19988.
-→ Supports execution feedback as a repair signal in the ReAct loop.
+| Ref | Paper / source | Official repo / docs | Code area | Match type | Note |
+| --- | --- | --- | --- | --- | --- |
+| [1] | Deep learning text-to-SQL survey | — | dissertation framing, task background | Background only | Survey context for the task and its major design pressures. |
+| [2] | BRIDGE | [BRIDGE repo](https://github.com/salesforce/TabularSemanticParsing) | `nl2sql/core/schema.py` | Background only | The compact schema summary is motivated by the importance of schema and value grounding, but the code does not implement BRIDGE's value-grounding architecture. |
+| [4] | DIN-SQL | [DIN-SQL repo](https://github.com/MohammadrezaPourreza/Few-shot-NL2SQL-with-prompting) | `nl2sql/agent/react_pipeline.py`, dissertation design discussion | Background only | Relevant for decomposition and self-correction ideas, but the live controller is a ReAct-style loop rather than DIN-SQL's staged prompting pipeline. |
+| [5] | ExCoT | — | `nl2sql/agent/react_pipeline.py`, dissertation design discussion | Background only | Supports execution feedback as a useful reasoning signal, but the project does not implement ExCoT's exact prompting method. |
+| [8] | LLM text-to-SQL survey | — | dissertation literature review | Background only | Survey context for prompt design, agents, and LLM-era trade-offs. |
+| [11] | LLM-based text-to-SQL survey | — | dissertation literature review | Background only | Background survey used to position open-model and agentic design choices. |
+| [12] | Ojuri et al. agents + text-to-SQL | — | dissertation design discussion | Background only | Supports the relevance of agent-based text-to-SQL systems, but the project's controller and evaluation design are different. |
+| [13] | PICARD | [PICARD repo](https://github.com/ServiceNow/picard) | `nl2sql/core/validation.py`, `nl2sql/core/postprocess.py` | Background only | The project shares PICARD's concern for guarded SQL generation, but it does not implement grammar-constrained decoding or incremental parsing. |
+| [16] | RAT-SQL | [RAT-SQL repo](https://github.com/microsoft/rat-sql) | `nl2sql/core/schema.py` | Background only | The code keeps schema structure explicit in the prompt, but it does not implement RAT-SQL's relation-aware encoder. |
+| [18] | RESDSQL | [RESDSQL repo](https://github.com/RUCKBReasoning/RESDSQL) | dissertation design discussion | Background only | Useful for explaining decomposition in text-to-SQL, but not directly implemented in the repo. |
 
 
-## Fine-Tuning Methods
+## Prompting and Fine-Tuning Context
 
-**[11]** E. J. Hu et al., 'LoRA: Low-Rank Adaptation of Large Language Models', Oct. 2021,
-arXiv: arXiv:2106.09685. doi: 10.48550/arXiv.2106.09685.
-→ Foundational method underlying QLoRA adapter training in `notebooks/05_qlora_train_eval.ipynb`.
-
-**[16]** T. Dettmers et al., 'QLoRA: Efficient Finetuning of Quantized LLMs', May 2023,
-arXiv: arXiv:2305.14314. doi: 10.48550/arXiv.2305.14314.
-→ Motivates 4-bit quantised fine-tuning under Colab GPU memory constraints.
-
-**[10]** D. Biderman et al., 'LoRA Learns Less and Forgets Less', Sep. 2024,
-arXiv: arXiv:2405.09673. doi: 10.48550/arXiv.2405.09673.
-→ Context on how parameter-efficient fine-tuning may change model behaviour; use as background for discussing fine-tuning trade-offs rather than as direct support for the final result.
-
-**[14]** J. Goswami et al., 'Parameter-efficient fine-tuning large language model approach for
-hospital discharge paper summarization', Applied Soft Computing, vol. 157, 2024.
-doi: 10.1016/j.asoc.2024.111531.
-→ PEFT context — supports QLoRA as a parameter-efficient alternative to full fine-tuning.
-
-**[28]** Y. Wang et al., 'Two-stage LLM Fine-tuning with Less Specialization and More Generalization',
-Mar. 2024, arXiv: arXiv:2211.00635. doi: 10.48550/arXiv.2211.00635.
-→ Contextualises the trade-off between fine-tuning specialisation and generalisation.
+| Ref | Paper / source | Official repo / docs | Code area | Match type | Note |
+| --- | --- | --- | --- | --- | --- |
+| [6] | Few-shot fine-tuning vs ICL | — | experimental design and dissertation discussion | Background only | Supports the fairness of comparing prompting and fine-tuning under one evaluation setup. |
+| [7] | Language Models are Few-Shot Learners | — | `nl2sql/evaluation/eval.py`, `nl2sql/agent/react_pipeline.py` | Background only | Foundational support for few-shot exemplar use; the code is a project-specific chat-format adaptation rather than a replication of GPT-3 prompting. |
+| [9] | LoRA Learns Less and Forgets Less | — | dissertation discussion of PEFT trade-offs | Background only | Used to discuss possible behavior changes under PEFT, not to justify a specific code path. |
 
 
-## NL-to-SQL Prior Systems (Related Work)
+## Notes on Attribution
 
-**[2]** X. V. Lin, R. Socher, and C. Xiong, 'Bridging Textual and Tabular Data for Cross-Domain
-Text-to-SQL Semantic Parsing', EMNLP Findings 2020. doi: 10.18653/v1/2020.findings-emnlp.438.
-→ BRIDGE system — schema-linking approach; motivates schema summary design in `nl2sql/core/schema.py`.
+- **Direct pattern** means the code uses the same interface or control pattern as
+  the cited paper or official implementation.
+- **Adapted implementation** means the project keeps the core method idea but
+  changes the carrier, environment, or evaluation setup to fit this repo.
+- **Background only** means the source is used for design rationale or
+  dissertation framing, not because the repo directly implements that system.
 
-**[18]** B. Wang et al., 'RAT-SQL: Relation-Aware Schema Encoding and Linking for Text-to-SQL
-Parsers', ACL 2020. doi: 10.18653/v1/2020.acl-main.677.
-→ Schema-linking prior work; contextualises the schema summary prompt design.
+- The strongest direct implementation links in this repo are:
+  - ReAct `[17]` -> `nl2sql/agent/react_pipeline.py`
+  - Transformers `[24]` -> `nl2sql/core/llm.py`
+  - PEFT-backed LoRA/QLoRA `[10]`, `[14]` -> `nl2sql/infra/model_loading.py`
+  - distilled test-suite evaluation `[19]` -> `nl2sql/evaluation/eval.py`
 
-**[20]** H. Li et al., 'RESDSQL: Decoupling Schema Linking and Skeleton Parsing for Text-to-SQL',
-AAAI 2023. doi: 10.1609/aaai.v37i11.26535.
-→ Decoupled generation approach; contextualises why constrained decoding was tested and deprioritised.
+- The weakest matches should stay in markdown only:
+  - BRIDGE `[2]`
+  - RAT-SQL `[16]`
+  - PICARD `[13]`
+  - RESDSQL `[18]`
 
-**[15]** T. Scholak, N. Schucher, and D. Bahdanau, 'PICARD: Parsing Incrementally for Constrained
-Auto-Regressive Decoding from Language Models', Sep. 2021, arXiv: arXiv:2109.05093.
-doi: 10.48550/arXiv.2109.05093.
-→ Constrained decoding for SQL; provides background for why grammar-constrained decoding was considered
-  during design, even though the final primary implementation uses raw-model and optional reliability-layer
-  profiles rather than a grammar-server path.
-
-
-## Base Models and Libraries
-
-**[25]** A. Grattafiori et al., 'The Llama 3 Herd of Models', Nov. 2024, arXiv: arXiv:2407.21783.
-doi: 10.48550/arXiv.2407.21783.
-→ Meta-Llama-3-8B-Instruct — primary model for Llama conditions.
-
-**[17]** Qwen et al., 'Qwen2.5 Technical Report', Jan. 2025, arXiv: arXiv:2412.15115.
-doi: 10.48550/arXiv.2412.15115.
-→ Qwen2.5-7B-Instruct — primary model for Qwen conditions.
-
-**[27]** T. Wolf et al., 'Transformers: State-of-the-Art Natural Language Processing', EMNLP Demos
-2020. doi: 10.18653/v1/2020.emnlp-demos.6.
-→ HuggingFace Transformers library — `apply_chat_template`, `StoppingCriteria`, `model.generate`
-  in `nl2sql/core/llm.py`. Also covers PEFT/TRL used in QLoRA training.
+Those papers explain why the project made certain design choices, but the code
+does not claim to implement their full architectures.

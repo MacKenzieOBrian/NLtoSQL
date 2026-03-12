@@ -81,6 +81,9 @@ def compare_runs(
 ) -> dict[str, object]:
     """Compare two k=3 run-level EX vectors with one simple Mann-Whitney rule."""
     # Keep k in the signature to make this helper explicit about condition metadata.
+    # The Mann-Whitney choice here is a project-specific simplification that is
+    # consistent with Dror et al.'s broader principle [22]: choose a test that
+    # matches the comparison structure and assumptions actually available.
     _ = (left_k, right_k)
 
     left = np.asarray(left_rates, dtype=float)

@@ -81,7 +81,10 @@ def execution_accuracy(
     max_compare_rows: int = 10000,
 ) -> tuple[bool, str | None, str | None]:
     """Return whether predicted and gold SQL produce the same result rows."""
-    # Inspired by the usual text-to-SQL EX check: run both queries and compare result rows.
+    # This is an execution-based text-to-SQL comparison in the Spider-era
+    # evaluation tradition: run prediction and gold SQL, then compare returned
+    # result bags. It is a local implementation of that metric family, not a
+    # byte-for-byte copy of one benchmark script.
     # `Counter` is the stdlib multiset helper used for bag equality:
     # https://docs.python.org/3/library/collections.html#collections.Counter
     pred_ok, _, pred_rows, pred_err = execute_fetch(engine=engine, sql=pred_sql, max_rows=max_compare_rows)
@@ -131,7 +134,9 @@ def test_suite_accuracy_for_item(
     If the gold query itself fails on any replica, this helper returns 0 rather than
     skipping that replica. That keeps the scoring rule strict and easy to explain.
     """
-    # Inspired by test-suite accuracy: check the same SQL pair on several database variants.
+    # Inspired by distilled test-suite evaluation [19]: check the same SQL pair
+    # on several perturbed database variants. This project uses a simplified
+    # local helper rather than the exact benchmark toolkit.
     # ORDER BY queries need order-sensitive comparison; others can use bag equality.
     ordered = bool(re.search(r"(?i)\border\s+by\b", gold_sql or ""))
     usable = 0

@@ -90,7 +90,7 @@ def configure_react_notebook(
     )
     return ReactAblationConfig(
         name="react_barebones_notebook",
-        max_steps=6,
+        max_steps=7,
         few_shot_k=3,
         few_shot_seed=7,
         max_new_tokens=256,

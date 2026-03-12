@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import decimal
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 import sqlalchemy
@@ -15,6 +16,17 @@ from ..infra.db import safe_connection
 class QueryExecutionError(Exception):
     """Single exception type for safety-check failures before execution."""
     pass
+
+
+def _to_json_safe(value: Any) -> Any:
+    """Coerce a single DB value to a JSON-serializable primitive."""
+    if isinstance(value, decimal.Decimal):
+        return float(value)
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, bytes):
+        return value.hex()
+    return value
 
 
 def now_utc_iso() -> str:
@@ -52,12 +64,14 @@ class QueryResult:
     exec_time_s: Optional[float]
     error: Optional[str]
     columns: Optional[list[str]]
+    preview_rows: Optional[list[tuple[Any, ...]]]
 
     def to_jsonable(self) -> dict[str, Any]:
         return {
             "sql": self.sql, "params": self.params, "timestamp": self.timestamp,
             "success": self.success, "rowcount": self.rowcount, "truncated": self.truncated,
             "exec_time_s": self.exec_time_s, "error": self.error, "columns": self.columns,
+            "preview_rows": self.preview_rows,
         }
 
 
@@ -99,12 +113,14 @@ class QueryRunner:
                 success=True, rowcount=min(len(rows), self.max_rows),
                 truncated=bool(truncated), exec_time_s=exec_time_s,
                 error=None, columns=cols,
+                preview_rows=[tuple(_to_json_safe(v) for v in r) for r in rows[:2]],
             )
         except Exception as e:
             out = QueryResult(
                 sql=sql, params=params, timestamp=timestamp,
                 success=False, rowcount=0, truncated=False,
                 exec_time_s=None, error=str(e), columns=None,
+                preview_rows=None,
             )
 
         self.history.append(out)
