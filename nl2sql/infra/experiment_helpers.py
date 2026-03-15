@@ -17,6 +17,8 @@ from sqlalchemy.engine import Engine
 
 def _git_short_commit(default: str = "unknown") -> str:
     """Return the current short git hash."""
+    # used from python docs
+    # https://docs.python.org/3/library/subprocess.html#subprocess.check_output
     try:
         return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
     except Exception:
@@ -78,6 +80,7 @@ def configure_react_notebook(
     from nl2sql.agent.react_pipeline import ReactAblationConfig
     from nl2sql.core.query_runner import QueryRunner
 
+    # ai note copilot: scaffold block only, i edited final logic
     set_agent_context(
         AgentContext(
             engine=engine,
@@ -88,6 +91,7 @@ def configure_react_notebook(
             exemplar_pool=exemplar_pool,
         )
     )
+    # ai note copilot: scaffold block only, i edited final logic
     return ReactAblationConfig(
         name="react_barebones_notebook",
         max_steps=7,
@@ -110,6 +114,9 @@ def train_qlora_adapter(
     use_bf16: bool,
 ) -> dict[str, Any]:
     """Train one QLoRA adapter and save a simple run card."""
+    # trainer setup from docs
+    # https://huggingface.co/docs/trl/main/en/sft_trainer
+    # https://huggingface.co/docs/transformers/main/en/main_classes/trainer#transformers.TrainingArguments
     from trl import SFTTrainer
     from transformers import TrainingArguments
 
@@ -154,6 +161,8 @@ def train_qlora_adapter(
 
 
 def _react_progress_rates(items: list[dict[str, Any]]) -> tuple[float, float, float]:
+    # simple rate calc with sum
+    # https://docs.python.org/3/library/functions.html#sum
     n_items = max(len(items), 1)
     return (
         sum(int(x["va"]) for x in items) / n_items,
@@ -218,6 +227,7 @@ def _evaluate_react_ablation(
     items = test_set[:limit] if limit else list(test_set)
     out_items: list[dict[str, Any]] = []
 
+    # ai note copilot: scaffold block only, i edited final logic
     for i, item in enumerate(items):
         nlq = item.get("nlq", "")
         gold_sql = item.get("sql", "")
@@ -285,6 +295,7 @@ def run_react_notebook_eval(
     out_root: str | Path = "results/agent/runs",
 ) -> tuple[dict[str, Any], list[dict[str, Any]], Path]:
     """Run ReAct eval and save one report file in a timestamped run folder."""
+    # ai note copilot: scaffold block only, i edited final logic
     run_tag = f"react_{config.name}"
     run_ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%SZ")
     run_dir = Path(out_root) / f"{run_tag}_{run_ts}"
@@ -305,6 +316,7 @@ def run_react_notebook_eval(
         "ts_n": _PRIMARY_REACT_TS_N,
     }
 
+    # ai note copilot: scaffold block only, i edited final logic
     report = _evaluate_react_ablation(
         test_set=test_set,
         engine=engine,

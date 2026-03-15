@@ -34,4 +34,4 @@ Removed or softened because they were harder to defend than the current code:
 - wording that implied baseline pre-execution schema validation
 - wording that implied `TS` was run for every condition
 - wording that implied significance was searched across all possible condition pairings
-- legacy AI notes that still described an obsolete statistics workflow
+- legacy notes that still described an obsolete statistics workflow

@@ -12,6 +12,8 @@ import torch
 
 def _compute_dtype() -> torch.dtype:
     """bf16 on Ampere+ GPUs (cc ≥ 8), fp16 otherwise."""
+    # gpu capability check from pytorch docs
+    # https://pytorch.org/docs/stable/generated/torch.cuda.get_device_capability.html
     if torch.cuda.is_available():
         major, _ = torch.cuda.get_device_capability(0)
         return torch.bfloat16 if major >= 8 else torch.float16
@@ -26,6 +28,8 @@ def build_4bit_quant_config() -> tuple[Any, torch.dtype, bool]:
     uses Hugging Face Transformers plus bitsandbytes rather than reproducing
     the paper's training stack verbatim.
     """
+    # quant config from transformers docs
+    # https://huggingface.co/docs/transformers/main/en/quantization/bitsandbytes
     from transformers import BitsAndBytesConfig
 
     compute_dtype = _compute_dtype()
@@ -51,6 +55,8 @@ def load_quantized_model(
     Falls back to bf16/fp16 non-quantized load if bitsandbytes is unavailable.
     Returns (model, tokenizer).
     """
+    # base model and tokenizer load from docs
+    # https://huggingface.co/docs/transformers/main/en/model_doc/auto
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
     compute_dtype = _compute_dtype()
@@ -82,7 +88,7 @@ def load_quantized_model(
             token=token,
         )
 
-    # Keep generation defaults deterministic.
+    # keep gen deterministic
     model.generation_config.do_sample = False
     model.generation_config.temperature = 1.0
     model.generation_config.top_p = 1.0
@@ -109,6 +115,8 @@ def build_trainable_qlora_model(
     PEFT is an implementation stack here rather than a separate paper-level
     method claim.
     """
+    # lora setup from peft docs
+    # https://huggingface.co/docs/peft/main/en/package_reference/lora
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
     if not torch.cuda.is_available():
@@ -117,8 +125,7 @@ def build_trainable_qlora_model(
     model_id = experiment_config["model_id"]
     bnb_config, compute_dtype, use_bf16 = build_4bit_quant_config()
     base_model, tok = load_quantized_model(model_id, token=token)
-    # Keep the QLoRA/LoRA order explicit: prepare the k-bit base first, then
-    # attach LoRA adapters via PEFT.
+    # do kbit prep first then attach lora
     base_model = prepare_model_for_kbit_training(base_model)
 
     lora_config = LoraConfig(
@@ -136,6 +143,9 @@ def build_trainable_qlora_model(
 
 def resolve_adapter_dir(path_str: str) -> Path:
     """Return the path to the latest adapter checkpoint under path_str."""
+    # path scan with pathlib and regex
+    # https://docs.python.org/3/library/pathlib.html#pathlib.Path.glob
+    # https://docs.python.org/3/library/re.html
     p = Path(path_str).expanduser()
     if not p.is_absolute():
         p = (Path.cwd() / p).resolve()
@@ -160,6 +170,8 @@ def load_eval_adapter_model(
     offload_dir: str | Path = "/content/offload",
 ) -> tuple[Any, Path]:
     """Load a base model plus local adapter for evaluation."""
+    # adapter load pattern from peft docs
+    # https://huggingface.co/docs/peft/main/en/package_reference/peft_model#peft.PeftModel.from_pretrained
     from peft import PeftModel
     from transformers import AutoModelForCausalLM
 

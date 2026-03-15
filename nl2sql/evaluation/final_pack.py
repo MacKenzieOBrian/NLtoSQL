@@ -17,6 +17,8 @@ _REACT_PATTERN = re.compile(r"^(llama|qwen)_react_k(0|3)_seed(\d+)\.json$")
 
 
 def _load_json(path: Path) -> dict[str, Any]:
+    # json parse from stdlib docs
+    # https://docs.python.org/3/library/json.html
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"{path.name}: expected a JSON object at the top level")
@@ -24,6 +26,8 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _item_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    # alt key lookup with dict.get
+    # https://docs.python.org/3/library/stdtypes.html#dict.get
     rows = payload.get("results")
     if isinstance(rows, list):
         return rows
@@ -34,6 +38,7 @@ def _item_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _parse_filename(path: Path) -> tuple[str, str, int, int]:
+    # ai note copilot: scaffold block only, i edited final logic
     primary = _PRIMARY_PATTERN.fullmatch(path.name)
     if primary:
         model_tag, method, k_text, seed_text = primary.groups()
@@ -51,6 +56,7 @@ def _parse_filename(path: Path) -> tuple[str, str, int, int]:
 
 
 def _validate_payload(path: Path, payload: dict[str, Any], method: str, k: int, seed: int) -> list[dict[str, Any]]:
+    # ai note copilot: scaffold block only, i edited final logic
     rows = _item_rows(payload)
     n_items = int(payload.get("n", len(rows)))
     if n_items != FULL_BENCHMARK_SIZE:
@@ -89,6 +95,7 @@ def build_tables_from_pack(pack_dir: Path = PACK_DIR) -> tuple[pd.DataFrame, pd.
             f"No JSON files found in {resolved}. Copy the official run files into this folder first."
         )
 
+    # ai note copilot: scaffold block only, i edited final logic
     for path in json_paths:
         model_tag, method, k, seed = _parse_filename(path)
         payload = _load_json(path)

@@ -1,15 +1,8 @@
-AI_Prompts.md
 data/train/README.md
 .DS_Store
 .ipynb_checkpoints/
 __pycache__/
 *.py[cod]
-
-# Claude / AI scaffolding files
-.claude/
-DISSERTATION_WRITING_GUIDE.md
-Sources_Map.md
-diagrams.md
 
 # Common notebook outputs/artifacts
 # Keep results in git for reproducibility (baseline/qlora/agent runs)

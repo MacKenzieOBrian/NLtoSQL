@@ -30,6 +30,8 @@ RUN_TAG = "llama_qlora"
 
 
 def _git_short_commit() -> str:
+    # used from python docs
+    # https://docs.python.org/3/library/subprocess.html#subprocess.check_output
     try:
         return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
     except Exception:
@@ -38,6 +40,7 @@ def _git_short_commit() -> str:
 
 def main() -> None:
     """Train the fixed Llama adapter, evaluate it, and print copy targets."""
+    # ai note copilot: scaffold block only, i edited final logic
     project_root = Path(__file__).resolve().parents[1]
     experiment = QLORA_EXPERIMENT_PRESETS[PRESET_NAME]
     model_id = experiment["model_id"]

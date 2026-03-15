@@ -28,6 +28,7 @@ _DET_ATOL = 1e-12
 
 def _coerce_per_item(per_item_df: pd.DataFrame) -> pd.DataFrame:
     """Normalize the flat per-item table into numeric columns used downstream."""
+    # ai note copilot: scaffold block only, i edited final logic
     required = {
         "condition_id",
         "model_tag",
@@ -52,6 +53,8 @@ def _coerce_per_item(per_item_df: pd.DataFrame) -> pd.DataFrame:
 
 def _to_float_or_none(value: float | np.floating | None) -> float | None:
     """Convert finite numeric values to ``float``; return ``None`` otherwise."""
+    # finite check with numpy
+    # https://numpy.org/doc/stable/reference/generated/numpy.isfinite.html
     if value is None:
         return None
     out = float(value)
@@ -67,6 +70,8 @@ def _decision_from_p(p_value: float | None) -> str:
 
 def _is_deterministic(values: list[float]) -> bool:
     """Return ``True`` when all rates collapse to one constant value."""
+    # same value check with allclose
+    # https://numpy.org/doc/stable/reference/generated/numpy.allclose.html
     if not values:
         return False
     arr = np.asarray(values, dtype=float)
@@ -80,10 +85,9 @@ def compare_runs(
     right_k: int | None,
 ) -> dict[str, object]:
     """Compare two k=3 run-level EX vectors with one simple Mann-Whitney rule."""
-    # Keep k in the signature to make this helper explicit about condition metadata.
-    # The Mann-Whitney choice here is a project-specific simplification that is
-    # consistent with Dror et al.'s broader principle [22]: choose a test that
-    # matches the comparison structure and assumptions actually available.
+    # keep k in args so run metadata stays clear
+    # mann whitney setup from scipy docs
+    # https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.mannwhitneyu.html
     _ = (left_k, right_k)
 
     left = np.asarray(left_rates, dtype=float)
@@ -93,6 +97,7 @@ def compare_runs(
     left_det = _is_deterministic(left_rates)
     right_det = _is_deterministic(right_rates)
 
+    # ai note copilot: scaffold block only, i edited final logic
     result: dict[str, object] = {
         "normality_left_p": None,
         "normality_right_p": None,
@@ -120,6 +125,7 @@ def compare_runs(
 
 def build_summary_by_condition(per_item_df: pd.DataFrame) -> pd.DataFrame:
     """Aggregate the per-item table into one descriptive summary row per condition."""
+    # ai note copilot: scaffold block only, i edited final logic
     per_item = _coerce_per_item(per_item_df)
     by_run = (
         per_item.groupby(["condition_id", "model_tag", "method", "k", "seed"], sort=True)[list(_SUMMARY_METRICS)]
@@ -169,6 +175,7 @@ def build_pairwise_tests(per_item_df: pd.DataFrame) -> pd.DataFrame:
         ("qwen_base_k3", "qwen_qlora_k3", "Qwen Base->QLoRA @k3"),
     ]
 
+    # ai note copilot: scaffold block only, i edited final logic
     rows: list[dict[str, object]] = []
     for left_id, right_id, label in comparisons:
         if left_id not in by_condition or right_id not in by_condition:

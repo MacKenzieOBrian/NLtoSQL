@@ -21,6 +21,7 @@ def filter_training_records(
     test_nlqs: set[str],
 ) -> dict[str, Any]:
     """Remove obvious leakage and low-quality rows before QLoRA training."""
+    # ai note copilot: scaffold block only, i edited final logic
     overlap: list[tuple[int, str]] = []
     non_select: list[tuple[int, str, str]] = []
     deduped: list[dict[str, str]] = []
@@ -30,17 +31,17 @@ def filter_training_records(
         nlq = str(row["nlq"]).strip()
         sql = str(row["sql"]).strip()
 
-        # Exact NLQ overlap with the held-out benchmark would make later results hard to defend.
+        # drop exact nlq overlap with test set
         if nlq in test_nlqs:
             overlap.append((idx, nlq))
             continue
 
-        # Keep the training set focused on the same SELECT-only task as evaluation.
+        # keep only select sql to match eval task
         if not sql.lower().lstrip().startswith("select"):
             non_select.append((idx, nlq, sql[:120]))
             continue
 
-        # Deduplicate by NLQ so the model is not overexposed to repeated prompts.
+        # dedupe nlq so repeats dont stack
         if nlq in seen:
             continue
         seen.add(nlq)
@@ -59,6 +60,8 @@ def validate_training_queries(
     records: list[dict[str, str]],
 ) -> list[tuple[int, str, str, str]]:
     """Check whether the filtered training SQL still executes against the live DB."""
+    # execute query like sqlalchemy docs
+    # https://docs.sqlalchemy.org/en/20/core/connections.html#sqlalchemy.engine.Connection.execute
     failed: list[tuple[int, str, str, str]] = []
     with engine.connect() as conn:
         for idx, row in enumerate(records):
@@ -78,6 +81,7 @@ def run_training_set_validation(
     engine: Engine,
 ) -> dict[str, Any]:
     """Load train/test data, apply filtering, and run executability checks."""
+    # ai note copilot: scaffold block only, i edited final logic
     test_items = load_test_set(test_path)
     train_records = load_train_records(train_path)
     test_nlqs = {str(item["nlq"]).strip() for item in test_items}
@@ -86,6 +90,7 @@ def run_training_set_validation(
     deduped = filtered["deduped"]
     failed = validate_training_queries(engine=engine, records=deduped)
 
+    # ai note copilot: scaffold block only, i edited final logic
     return {
         "test_items": test_items,
         "train_records": train_records,
@@ -165,6 +170,9 @@ def save_training_validation_report(
     out_path: str | Path = "results/training_set_validation/validation_report.json",
 ) -> Path:
     """Persist the training-set validation summary to disk."""
+    # save json file with pathlib
+    # https://docs.python.org/3/library/pathlib.html#pathlib.Path.mkdir
+    # https://docs.python.org/3/library/pathlib.html#pathlib.Path.write_text
     path = Path(out_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2), encoding="utf-8")

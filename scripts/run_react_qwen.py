@@ -25,6 +25,7 @@ SMOKE_EX_MIN = 0.30
 
 def main() -> None:
     """Run the fixed Qwen ReAct rerun and print the final-pack copy target."""
+    # ai note copilot: scaffold block only, i edited final logic
     project_root = Path(__file__).resolve().parents[1]
     engine, connector, db_config = connect_notebook_db(default_db_name="classicmodels", verify=True)
     try:

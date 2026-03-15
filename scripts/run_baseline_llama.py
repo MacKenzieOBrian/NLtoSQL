@@ -21,6 +21,8 @@ RUN_TAG = "llama_baseline"
 
 
 def _git_short_commit() -> str:
+    # used from python docs
+    # https://docs.python.org/3/library/subprocess.html#subprocess.check_output
     try:
         return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
     except Exception:
@@ -29,6 +31,7 @@ def _git_short_commit() -> str:
 
 def main() -> None:
     """Run the fixed Llama baseline grid and print the final-pack copy targets."""
+    # ai note copilot: scaffold block only, i edited final logic
     project_root = Path(__file__).resolve().parents[1]
     engine, connector, db_config = connect_notebook_db(default_db_name="classicmodels")
     try:

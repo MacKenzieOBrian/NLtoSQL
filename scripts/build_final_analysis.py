@@ -19,6 +19,7 @@ OUT_DIR = Path("results/final_analysis")
 
 def main() -> None:
     """Load the manual final pack and write the official dissertation CSV outputs."""
+    # ai note copilot: scaffold block only, i edited final logic
     project_root = Path(__file__).resolve().parents[1]
     pack_dir = project_root / PACK_DIR
     out_dir = project_root / OUT_DIR
