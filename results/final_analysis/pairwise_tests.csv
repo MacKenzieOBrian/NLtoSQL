@@ -1,3 +1,3 @@
 comparison,left_condition_id,right_condition_id,n_left,n_right,left_mean,right_mean,mean_diff_right_minus_left,test_name,test_stat,p_value,decision_alpha_0_05
-Llama Base->QLoRA @k3,llama_base_k3,llama_qlora_k3,5,3,0.548,0.465,-0.08300000000000002,mann_whitney_u,15.0,0.03571428571428571,reject_H0
-Qwen Base->QLoRA @k3,qwen_base_k3,qwen_qlora_k3,5,3,0.665,0.5483333333333335,-0.11666666666666659,mann_whitney_u,15.0,0.03466118588750728,reject_H0
+Llama Base->QLoRA @k3,llama_base_k3,llama_qlora_k3,5,5,0.548,0.46699999999999997,-0.08100000000000007,mann_whitney_u,25.0,0.011925233593017595,reject_H0
+Qwen Base->QLoRA @k3,qwen_base_k3,qwen_qlora_k3,5,5,0.665,0.539,-0.126,mann_whitney_u,25.0,0.011667312343319388,reject_H0

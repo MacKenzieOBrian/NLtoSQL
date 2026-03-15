@@ -53,6 +53,17 @@ def _parse_react_output(raw: str) -> tuple[str, str, str]:
     action_type is 'finish' or 'query'.  Falls back to extracting the first
     SELECT if the format is not followed exactly.
     """
+    def _extract_action_sql(line: str) -> str:
+        """Return SQL inside action brackets, tolerating missing closing bracket."""
+        open_idx = line.find("[")
+        if open_idx < 0:
+            return ""
+        close_idx = line.rfind("]")
+        if close_idx <= open_idx:
+            # Some model outputs omit the trailing `]`; keep the remainder.
+            return line[open_idx + 1 :].strip()
+        return line[open_idx + 1 : close_idx].strip()
+
     thought = ""
     action = "query"
     sql = ""
@@ -69,10 +80,10 @@ def _parse_react_output(raw: str) -> tuple[str, str, str]:
             lower = line.lower()
             if lower.startswith("action: finish["):
                 action = "finish"
-                sql = line[line.index("[") + 1 : line.rindex("]")].strip()
+                sql = _extract_action_sql(line)
             elif lower.startswith("action: query["):
                 action = "query"
-                sql = line[line.index("[") + 1 : line.rindex("]")].strip()
+                sql = _extract_action_sql(line)
             else:
                 m = re.match(r"(?is)^action:\s*(query|finish)\s+(.*)$", line)
                 if m:
