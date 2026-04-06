@@ -73,6 +73,7 @@ def execute_fetch(
         return False, None, None, str(e)
 
 
+# ai note copilot: "Counter bag equality for result-set comparison"
 def execution_accuracy(
     *,
     engine: Engine,
@@ -81,12 +82,6 @@ def execution_accuracy(
     max_compare_rows: int = 10000,
 ) -> tuple[bool, str | None, str | None]:
     """Return whether predicted and gold SQL produce the same result rows."""
-    # This is an execution-based text-to-SQL comparison in the Spider-era
-    # evaluation tradition: run prediction and gold SQL, then compare returned
-    # result bags. It is a local implementation of that metric family, not a
-    # byte-for-byte copy of one benchmark script.
-    # `Counter` is the stdlib multiset helper used for bag equality:
-    # https://docs.python.org/3/library/collections.html#collections.Counter
     pred_ok, _, pred_rows, pred_err = execute_fetch(engine=engine, sql=pred_sql, max_rows=max_compare_rows)
     gold_ok, _, gold_rows, gold_err = execute_fetch(engine=engine, sql=gold_sql, max_rows=max_compare_rows)
 
@@ -121,6 +116,7 @@ def _run_query_ts(engine: Engine, sql: str, max_rows: int = 2000):
         return None
 
 
+# ai note copilot: "multi-replica loop with any-failure-returns-0 rule"
 def test_suite_accuracy_for_item(
     *,
     make_engine_fn: Callable[[str], Engine],
@@ -154,7 +150,8 @@ def test_suite_accuracy_for_item(
             return 0
     return 1 if usable > 0 else 0
 
-
+# Remove the current test item from the exemplar pool so few-shot examples cannot leak the answer.
+# ai note copilot: "list comprehension to filter test item from exemplar pool"
 def _build_item_pool(
     *,
     item: dict[str, Any],
@@ -446,6 +443,7 @@ def eval_run(
     return out
 
 
+# ai note copilot: "if/elif chain for EX failure category mapping"
 def categorize_failure(item: dict) -> str:
     """Classify one result item into an EX failure category."""
     pred = item.get("pred_sql")

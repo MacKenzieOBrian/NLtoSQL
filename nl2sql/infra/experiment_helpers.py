@@ -1,7 +1,6 @@
 """ReAct setup and QLoRA training helpers for notebooks and fixed scripts.
 
-Baseline and QLoRA grid execution now call ``run_eval_grid()`` directly. This
-module keeps only the parts that still have distinct orchestration logic.
+Baseline and QLoRA grid execution now call ``run_eval_grid()`` 
 """
 
 from __future__ import annotations
@@ -25,6 +24,7 @@ def _git_short_commit(default: str = "unknown") -> str:
         return default
 
 
+# ai note copilot: "generate QLoRA preset configs dict; hyperparameters chosen by me from Dettmers et al. [14]"
 QLORA_EXPERIMENT_PRESETS: dict[str, dict[str, Any]] = {
     "llama3_8b": {
         "label": "Llama-3-8B QLoRA",
@@ -80,7 +80,7 @@ def configure_react_notebook(
     from nl2sql.agent.react_pipeline import ReactAblationConfig
     from nl2sql.core.query_runner import QueryRunner
 
-    # ai note copilot: scaffold block only, i edited final logic
+    # ai note copilot: "wire up AgentContext with engine/model/tokenizer/runner/exemplar_pool"
     set_agent_context(
         AgentContext(
             engine=engine,
@@ -91,7 +91,7 @@ def configure_react_notebook(
             exemplar_pool=exemplar_pool,
         )
     )
-    # ai note copilot: scaffold block only, i edited final logic
+    # ai note copilot: "create ReactAblationConfig with dissertation hyperparameters"
     return ReactAblationConfig(
         name="react_barebones_notebook",
         max_steps=7,
@@ -123,6 +123,7 @@ def train_qlora_adapter(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     cfg = experiment_config
+    # ai note copilot: "set up TrainingArguments and SFTTrainer from cfg dict"
     training_args = TrainingArguments(
         output_dir=str(output_dir),
         per_device_train_batch_size=cfg["train_batch_size"],
@@ -227,7 +228,7 @@ def _evaluate_react_ablation(
     items = test_set[:limit] if limit else list(test_set)
     out_items: list[dict[str, Any]] = []
 
-    # ai note copilot: scaffold block only, i edited final logic
+    # ai note copilot: "loop over test items, run ReAct pipeline, compute VA/EM/EX/TS per item"
     for i, item in enumerate(items):
         nlq = item.get("nlq", "")
         gold_sql = item.get("sql", "")
@@ -295,7 +296,7 @@ def run_react_notebook_eval(
     out_root: str | Path = "results/agent/runs",
 ) -> tuple[dict[str, Any], list[dict[str, Any]], Path]:
     """Run ReAct eval and save one report file in a timestamped run folder."""
-    # ai note copilot: scaffold block only, i edited final logic
+    # ai note copilot: "create timestamped run directory and build run_metadata dict"
     run_tag = f"react_{config.name}"
     run_ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%SZ")
     run_dir = Path(out_root) / f"{run_tag}_{run_ts}"
@@ -316,7 +317,7 @@ def run_react_notebook_eval(
         "ts_n": _PRIMARY_REACT_TS_N,
     }
 
-    # ai note copilot: scaffold block only, i edited final logic
+    # ai note copilot: "call _evaluate_react_ablation passing suite_dbs and run_metadata"
     report = _evaluate_react_ablation(
         test_set=test_set,
         engine=engine,

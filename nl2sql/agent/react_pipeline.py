@@ -43,10 +43,9 @@ def core_react_config(name: str = "react_core") -> ReactAblationConfig:
     return ReactAblationConfig(name=name)
 
 
-# ---------------------------------------------------------------------------
-# Parsing
-# ---------------------------------------------------------------------------
+# --- Parsing
 
+# ai note copilot: "regex to parse Thought/Action lines with missing-bracket fallback"
 def _parse_react_output(raw: str) -> tuple[str, str, str]:
     """Extract (thought, action_type, sql) from a Thought+Action model response.
 
@@ -99,10 +98,8 @@ def _parse_react_output(raw: str) -> tuple[str, str, str]:
     return thought, action, sql
 
 
-# ---------------------------------------------------------------------------
-# Observation
-# ---------------------------------------------------------------------------
-
+# --- Observation
+# Keep observation text short so the growing trace stays usable in small models.
 def _compact_success_text(meta: Any) -> str:
     """Return a short success observation string for the ReAct loop."""
     cols = ", ".join(meta.columns or []) if meta.columns else "none"
@@ -115,6 +112,7 @@ def _compact_success_text(meta: Any) -> str:
     )
 
 
+# ai note copilot: "map MySQL error strings to short observation tokens"
 def _compact_execution_error(error: str | None) -> str:
     """Map noisy DB errors to short, reusable observation labels when possible."""
     err = (error or "").strip()
@@ -162,22 +160,14 @@ def _observe(sql: str, ctx: Any, schema_text: str) -> dict[str, Any]:
     return _observe_with_runner(sql, ctx.runner, schema_text)
 
 
-# ---------------------------------------------------------------------------
-# Initial message construction
-# ---------------------------------------------------------------------------
-
+# --- Initial message construction
+# Verified exemplars keep the agent prompt anchored to examples that really execute.
 def _build_initial_messages(
     nlq: str,
     schema_text: str,
     cfg: ReactAblationConfig,
 ) -> list[dict[str, str]]:
-    """Build chat-format ReAct trajectories plus the final question.
-
-    The official ReAct repo appends Thought/Action/Observation traces into one
-    growing prompt string. Here the same trajectory pattern is adapted into
-    structured chat turns because the evaluation models are instruction-tuned
-    chat models rather than completion-only GPT-3 style models.
-    """
+    """Build chat-format messages: system, schema, k verified exemplars, then the question."""
     ctx = get_agent_context()
     pool = list(ctx.exemplar_pool or [])
     messages: list[dict[str, str]] = [
@@ -185,6 +175,7 @@ def _build_initial_messages(
         {"role": "user", "content": "Schema Details:\n" + schema_text},
     ]
 
+    # ai note copilot: "random.Random per-NLQ seeding pattern"
     if cfg.few_shot_k > 0 and pool:
         pool = [ex for ex in pool if ex.get("nlq") != nlq]
         if pool:
@@ -226,9 +217,7 @@ def _build_initial_messages(
     return messages
 
 
-# ---------------------------------------------------------------------------
-# Main loop
-# ---------------------------------------------------------------------------
+# --- Main loop
 
 def run_react_pipeline(
     *,
@@ -237,14 +226,8 @@ def run_react_pipeline(
 ) -> tuple[str, list[dict[str, Any]]]:
     """Run the ReAct loop for one question; return (final_sql, trace).
 
-    Loop structure:
-      model outputs Thought+Action -> controller validates/executes -> append
-      Observation -> call model again -> repeat until finish or max_steps.
-
-    This is an adapted ReAct implementation, not a verbatim copy of the
-    original web-think setup. The reasoning/action pattern is preserved, while
-    the environment and prompt carrier are specialized for SQL generation with
-    chat-format models.
+    generate Thought+Action -> validate/execute -> append Observation -> repeat
+    until finish action or max_steps reached.
     """
     cfg = config or core_react_config()
     ctx = get_agent_context()
@@ -256,6 +239,7 @@ def run_react_pipeline(
     last_good_sql = ""
     success_refinements_used = 0
 
+    # ai note copilot: "loop boilerplate for the ReAct generate→observe cycle; loop design and termination logic are mine"
     for step in range(cfg.max_steps):
         raw = generate_sql_from_messages(
             model=ctx.model,

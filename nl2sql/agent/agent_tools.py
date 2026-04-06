@@ -51,6 +51,7 @@ def get_agent_context() -> AgentContext:
     return _AGENT_CONTEXT
 
 
+# ai note copilot: "dict traversal to compact schema+FK hint text"
 def schema_to_text(schema_cache: dict[str, Any] | None) -> str:
     """Turn a schema dict into simple prompt text."""
     if not isinstance(schema_cache, dict):
@@ -61,17 +62,23 @@ def schema_to_text(schema_cache: dict[str, Any] | None) -> str:
         table_name = _safe_str(t, "name")
         if not table_name:
             continue
+
+        # Collect the column names for th table so 
+        # one compact line like customers(id, name, country).
         col_names: list[str] = []
         for c in (t.get("columns") or []):
             n = _safe_str(c, "name") if isinstance(c, dict) else str(c or "").strip()
             if n:
                 col_names.append(n)
+
         lines.append(f"{table_name}({', '.join(col_names)})")
 
     hints: list[str] = []
     for fk in schema_cache.get("foreign_keys") or []:
         t, c = _safe_str(fk, "table"), _safe_str(fk, "column")
         rt, rc = _safe_str(fk, "ref_table"), _safe_str(fk, "ref_column")
+
+        # Foreign key hints make likely join paths explicit in the prompt.
         if t and c and rt and rc:
             hints.append(f"{t}.{c} = {rt}.{rc}")
 
@@ -82,14 +89,17 @@ def schema_to_text(schema_cache: dict[str, Any] | None) -> str:
 
 def ensure_schema_text(ctx: AgentContext) -> str:
     """Return schema text, using cached data first when available."""
+    # Reuse cached schema text if we already built it earlier.
     if isinstance(ctx.schema_text_cache, str) and ctx.schema_text_cache.strip():
         return ctx.schema_text_cache
 
+    # If structured schema data is cached, convert that into prompt text.
     text_from_cache = schema_to_text(ctx.schema_cache)
     if text_from_cache.strip():
         ctx.schema_text_cache = text_from_cache
         return text_from_cache
 
+    # Fallback: rebuild the schema summary from the live database.
     schema_text = build_schema_summary(ctx.engine, db_name=ctx.db_name)
     ctx.schema_text_cache = schema_text
     return schema_text

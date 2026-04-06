@@ -16,6 +16,7 @@ from ..infra.db import safe_connection
 
 
 # Put obvious identifier columns first to make the prompt easier for the model.
+# ai note copilot: "regex for name/id/code column detection"
 NAME_LIKE_RE = re.compile(r"name|id|line|code|number", re.IGNORECASE)
 
 
@@ -48,16 +49,12 @@ def get_table_columns(engine: Engine, *, db_name: str, table_name: str) -> pd.Da
 
 
 def build_schema_summary(engine: Engine, *, db_name: str, max_cols_per_table: int = 50) -> str:
-    """Build compact prompt text in the form ``table(col1, col2, ...)``.
-
-    The summary is intentionally compact rather than exhaustive so it fits
-    inside prompt budgets while still surfacing the most obvious identifier
-    columns first.
-    """
+    """Build compact prompt text in the form ``table(col1, col2, ...)`` with PK and name-like columns first."""
     chunks: list[str] = []
     for table in list_tables(engine):
         cols_df = get_table_columns(engine, db_name=db_name, table_name=table)
 
+        # ai note copilot: "pandas mask to sort PK and name-like columns first"
         # Prioritize keys and name-like columns because they are most useful in NL questions.
         priority_mask = cols_df["COLUMN_KEY"].fillna("").isin(["PRI"]) | cols_df["COLUMN_NAME"].astype(
             str

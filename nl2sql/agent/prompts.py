@@ -6,6 +6,7 @@ from __future__ import annotations
 # Prompt shape adapted from the official ReAct repo trajectories:
 # short reasoning, task-specific action, then an observation on the next turn.
 # This project narrows the action space to SQL-oriented query[...] / finish[...].
+# ai note copilot: "ReAct prompt template syntax; SQL rules and action format written by me"
 REACT_SYSTEM_PROMPT = """You are a MySQL analyst working step by step.
 
 Follow the same Thought / Action / Observation pattern shown in the worked examples.

@@ -21,7 +21,7 @@ def filter_training_records(
     test_nlqs: set[str],
 ) -> dict[str, Any]:
     """Remove obvious leakage and low-quality rows before QLoRA training."""
-    # ai note copilot: scaffold block only, i edited final logic
+    # ai note copilot: "filter loop: remove test overlap, non-SELECT rows, NLQ duplicates"
     overlap: list[tuple[int, str]] = []
     non_select: list[tuple[int, str, str]] = []
     deduped: list[dict[str, str]] = []
@@ -81,7 +81,7 @@ def run_training_set_validation(
     engine: Engine,
 ) -> dict[str, Any]:
     """Load train/test data, apply filtering, and run executability checks."""
-    # ai note copilot: scaffold block only, i edited final logic
+    # ai note copilot: "load train/test sets, build test NLQ set, run filtering and executability checks"
     test_items = load_test_set(test_path)
     train_records = load_train_records(train_path)
     test_nlqs = {str(item["nlq"]).strip() for item in test_items}
@@ -90,7 +90,7 @@ def run_training_set_validation(
     deduped = filtered["deduped"]
     failed = validate_training_queries(engine=engine, records=deduped)
 
-    # ai note copilot: scaffold block only, i edited final logic
+    # ai note copilot: "assemble and return full validation result dict"
     return {
         "test_items": test_items,
         "train_records": train_records,

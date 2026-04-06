@@ -10,6 +10,11 @@ quick structure
 `results/final_pack/` curated json run files used for final reporting
 `results/final_analysis/` csv outputs generated from final_pack
 
+official reported runs in `results/final_pack/`
+non agentic `k=0` conditions use 1 seed
+non agentic `k=3` conditions use 10 seeds
+react `k=3` conditions use 5 seeds
+
 main research code is in
 `nl2sql/core/*`
 `nl2sql/agent/*`
@@ -65,4 +70,7 @@ official run order
 7. copy selected json files into `results/final_pack/`
 8. `python scripts/build_final_analysis.py`
 
-attestation and exact subpart-level AI disclosure are in `AI_USE.md`; all unlisted code is hand-coded
+ai use is documented in AI_USE.md
+each ai assisted section is marked inline with a comment in the form  # ai note copilot: "prompt used"
+these inline comments are the per piece prompt record required under aias level 3
+all unlisted code is hand written

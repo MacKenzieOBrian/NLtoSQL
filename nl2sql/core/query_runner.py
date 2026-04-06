@@ -39,7 +39,7 @@ DEFAULT_FORBIDDEN_TOKENS = [
     "update ", "insert ", "grant ", "revoke ",
 ]
 
-
+# Treat generated SQL as untrusted input before it reaches the database.
 def check_sql_safety(sql: str, forbidden_tokens: Optional[list[str]] = None) -> None:
     """Raise ValueError if sql is empty or contains a destructive DML token."""
     tokens = forbidden_tokens if forbidden_tokens is not None else DEFAULT_FORBIDDEN_TOKENS

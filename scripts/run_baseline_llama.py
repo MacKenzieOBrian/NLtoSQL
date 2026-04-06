@@ -31,7 +31,7 @@ def _git_short_commit() -> str:
 
 def main() -> None:
     """Run the fixed Llama baseline grid and print the final-pack copy targets."""
-    # ai note copilot: scaffold block only, i edited final logic
+    # ai note copilot: "script entrypoint: db connect, model load, eval grid call, print copy targets"
     project_root = Path(__file__).resolve().parents[1]
     engine, connector, db_config = connect_notebook_db(default_db_name="classicmodels")
     try:
@@ -44,7 +44,7 @@ def main() -> None:
             "run": "baseline",
             "model_id": MODEL_ID,
             "k_values": [0, 3],
-            "seed_policy": {"k0": [7], "k3": [7, 17, 27, 37, 47]},
+            "seed_policy": {"k0": [7], "k3": [7, 17, 27, 37, 47, 57, 67, 77, 87, 97]},
             "ts_k": [3],
         })
         report = run_eval_grid(

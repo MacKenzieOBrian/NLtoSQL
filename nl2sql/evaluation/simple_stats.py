@@ -28,7 +28,7 @@ _DET_ATOL = 1e-12
 
 def _coerce_per_item(per_item_df: pd.DataFrame) -> pd.DataFrame:
     """Normalize the flat per-item table into numeric columns used downstream."""
-    # ai note copilot: scaffold block only, i edited final logic
+    # ai note copilot: "validate required columns exist, coerce k/seed/metric columns to numeric"
     required = {
         "condition_id",
         "model_tag",
@@ -77,7 +77,7 @@ def _is_deterministic(values: list[float]) -> bool:
     arr = np.asarray(values, dtype=float)
     return bool(np.allclose(arr, arr[0], rtol=0.0, atol=_DET_ATOL))
 
-
+# The seeded run is the inferential unit, so the test works on run-level EX means.
 def compare_runs(
     left_rates: list[float],
     right_rates: list[float],
@@ -88,8 +88,6 @@ def compare_runs(
     # keep k in args so run metadata stays clear
     # mann whitney setup from scipy docs
     # https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.mannwhitneyu.html
-    _ = (left_k, right_k)
-
     left = np.asarray(left_rates, dtype=float)
     right = np.asarray(right_rates, dtype=float)
     n_left = int(left.size)
@@ -97,7 +95,7 @@ def compare_runs(
     left_det = _is_deterministic(left_rates)
     right_det = _is_deterministic(right_rates)
 
-    # ai note copilot: scaffold block only, i edited final logic
+    # ai note copilot: "Mann-Whitney result dict init and scipy mannwhitneyu two-sided call"
     result: dict[str, object] = {
         "normality_left_p": None,
         "normality_right_p": None,
@@ -125,7 +123,7 @@ def compare_runs(
 
 def build_summary_by_condition(per_item_df: pd.DataFrame) -> pd.DataFrame:
     """Aggregate the per-item table into one descriptive summary row per condition."""
-    # ai note copilot: scaffold block only, i edited final logic
+    # ai note copilot: "groupby per condition/seed, compute per-metric mean/std, aggregate to summary rows"
     per_item = _coerce_per_item(per_item_df)
     by_run = (
         per_item.groupby(["condition_id", "model_tag", "method", "k", "seed"], sort=True)[list(_SUMMARY_METRICS)]
@@ -152,7 +150,7 @@ def build_summary_by_condition(per_item_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_pairwise_tests(per_item_df: pd.DataFrame) -> pd.DataFrame:
-    """Run the simple EX-only k=3 baseline-vs-QLoRA comparison set."""
+    """Run the simple EX-only k=3 comparison set for balanced seeded runs."""
     per_item = _coerce_per_item(per_item_df)
     run_level = (
         per_item.dropna(subset=["ex"])
@@ -172,10 +170,14 @@ def build_pairwise_tests(per_item_df: pd.DataFrame) -> pd.DataFrame:
 
     comparisons = [
         ("llama_base_k3", "llama_qlora_k3", "Llama Base->QLoRA @k3"),
+        ("llama_base_k3", "llama_react_k3", "Llama Base->ReAct @k3"),
+        ("llama_qlora_k3", "llama_react_k3", "Llama QLoRA->ReAct @k3"),
         ("qwen_base_k3", "qwen_qlora_k3", "Qwen Base->QLoRA @k3"),
+        ("qwen_base_k3", "qwen_react_k3", "Qwen Base->ReAct @k3"),
+        ("qwen_qlora_k3", "qwen_react_k3", "Qwen QLoRA->ReAct @k3"),
     ]
 
-    # ai note copilot: scaffold block only, i edited final logic
+    # ai note copilot: "iterate comparison pairs, extract rates, call compare_runs, build output rows"
     rows: list[dict[str, object]] = []
     for left_id, right_id, label in comparisons:
         if left_id not in by_condition or right_id not in by_condition:

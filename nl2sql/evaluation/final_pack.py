@@ -38,7 +38,6 @@ def _item_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _parse_filename(path: Path) -> tuple[str, str, int, int]:
-    # ai note copilot: scaffold block only, i edited final logic
     primary = _PRIMARY_PATTERN.fullmatch(path.name)
     if primary:
         model_tag, method, k_text, seed_text = primary.groups()
@@ -56,7 +55,7 @@ def _parse_filename(path: Path) -> tuple[str, str, int, int]:
 
 
 def _validate_payload(path: Path, payload: dict[str, Any], method: str, k: int, seed: int) -> list[dict[str, Any]]:
-    # ai note copilot: scaffold block only, i edited final logic
+    # ai note copilot: "validation function structure; n=200 check, k/seed consistency, eval_profile guard"
     rows = _item_rows(payload)
     n_items = int(payload.get("n", len(rows)))
     if n_items != FULL_BENCHMARK_SIZE:
@@ -95,7 +94,7 @@ def build_tables_from_pack(pack_dir: Path = PACK_DIR) -> tuple[pd.DataFrame, pd.
             f"No JSON files found in {resolved}. Copy the official run files into this folder first."
         )
 
-    # ai note copilot: scaffold block only, i edited final logic
+    # ai note copilot: "loop over pack JSONs, build manifest and per-item row dicts"
     for path in json_paths:
         model_tag, method, k, seed = _parse_filename(path)
         payload = _load_json(path)

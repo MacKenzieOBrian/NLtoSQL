@@ -23,7 +23,7 @@ from ..evaluation.eval import (
 PRIMARY_GRID_K_VALUES = [0, 3]
 PRIMARY_GRID_SEEDS_BY_K = {
     0: [7],
-    3: [7, 17, 27, 37, 47],
+    3: [7, 17, 27, 37, 47, 57, 67, 77, 87, 97],
 }
 PRIMARY_GRID_TS_K_VALUES = {3}
 PRIMARY_GRID_TS_N = 10

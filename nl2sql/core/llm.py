@@ -31,6 +31,7 @@ def _read_from_target(s: str) -> str | None:
 
 def extract_first_select(text: str) -> str | None:
     """Extract the first valid SELECT…FROM statement from raw model output."""
+    # ai note copilot: "SQL extraction from noisy output: fence strip, regex SELECT scan, prose-from stopword filter, semicolon normalise"
     t = (text or "").strip()
     t = t.replace("```json", "```").replace("```sql", "```")
     t = re.sub(r"```(.*?)```", r"\1", t, flags=re.DOTALL).strip()
@@ -74,7 +75,7 @@ def generate_sql_from_messages(
     from transformers import StoppingCriteria, StoppingCriteriaList
 
     class _StopOnSemicolon(StoppingCriteria):
-        # Inspired by Hugging Face's custom stopping-criteria pattern.
+        # ai note copilot: "HuggingFace custom StoppingCriteria subclass for semicolon-triggered generation halt"
         # Docs: https://huggingface.co/docs/transformers/en/internal/generation_utils
         def __init__(self, tok: Any):
             ids = tok.encode(";", add_special_tokens=False)

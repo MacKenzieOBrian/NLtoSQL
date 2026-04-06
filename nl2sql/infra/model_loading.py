@@ -30,6 +30,7 @@ def build_4bit_quant_config() -> tuple[Any, torch.dtype, bool]:
     """
     # quant config from transformers docs
     # https://huggingface.co/docs/transformers/main/en/quantization/bitsandbytes
+    # ai note copilot: "BitsAndBytesConfig 4-bit NF4 setup from HF bitsandbytes docs"
     from transformers import BitsAndBytesConfig
 
     compute_dtype = _compute_dtype()
@@ -66,6 +67,7 @@ def load_quantized_model(
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
 
+    # ai note copilot: "4-bit quantized model load with bitsandbytes fallback to bf16/fp16"
     try:
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -128,6 +130,7 @@ def build_trainable_qlora_model(
     # do kbit prep first then attach lora
     base_model = prepare_model_for_kbit_training(base_model)
 
+    # ai note copilot: "LoraConfig block from PEFT docs with experiment_config params"
     lora_config = LoraConfig(
         r=experiment_config["lora_r"],
         lora_alpha=experiment_config["lora_alpha"],
@@ -183,6 +186,7 @@ def load_eval_adapter_model(
     offload_dir = Path(offload_dir)
     offload_dir.mkdir(parents=True, exist_ok=True)
 
+    # ai note copilot: "eval model load with device-map, memory config, and PeftModel adapter attach"
     eval_base = AutoModelForCausalLM.from_pretrained(
         model_id,
         quantization_config=bnb_config,

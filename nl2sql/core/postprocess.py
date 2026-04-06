@@ -7,6 +7,7 @@ import re
 from .llm import extract_first_select as _extract_first_select
 
 # "first"/"last" omitted — both appear in ClassicModels column names (contactFirstName etc.).
+# ai note copilot: "regex for ranking keyword detection in NLQ"
 RANKING_HINT_RE = re.compile(
     r"\b(top|highest|lowest|most|least|largest|smallest|max|min|order|sort|rank)\b",
     re.IGNORECASE,
@@ -27,6 +28,7 @@ def first_select_only(text: str) -> str:
     return result if result is not None else (text or "")
 
 
+# ai note copilot: "regex substitution to strip ORDER BY/LIMIT conditionally"
 def _strip_order_by_limit(sql: str, nlq: str) -> str:
     """Remove ORDER BY/LIMIT unless the question clearly asks for ranking."""
     if RANKING_HINT_RE.search(nlq or ""):
@@ -35,7 +37,7 @@ def _strip_order_by_limit(sql: str, nlq: str) -> str:
     out = re.sub(r"(?is)\slimit\s+\d+\s*", "", out)
     return out
 
-
+# Keep this conservative: clean obvious formatting noise, but do not guess a new query.
 def guarded_postprocess(sql: str, nlq: str) -> str:
     """Apply conservative post-processing: extract first SELECT, strip ranking clauses."""
     current = first_select_only(sql or "")

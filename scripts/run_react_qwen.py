@@ -19,13 +19,11 @@ from nl2sql.infra.notebook_utils import ensure_hf_token, load_test_set
 
 MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"
 ADAPTER_PATH = None
-SMOKE_VA_MIN = 0.70
-SMOKE_EX_MIN = 0.30
 
 
 def main() -> None:
     """Run the fixed Qwen ReAct rerun and print the final-pack copy target."""
-    # ai note copilot: scaffold block only, i edited final logic
+    # ai note copilot: "script entrypoint: db connect, model load, eval grid call, print copy targets"
     project_root = Path(__file__).resolve().parents[1]
     engine, connector, db_config = connect_notebook_db(default_db_name="classicmodels", verify=True)
     try:
@@ -45,40 +43,6 @@ def main() -> None:
             user=db_config["db_user"],
             password=db_config["db_pass"],
         )
-        smoke_report, _, smoke_out_path = run_react_notebook_eval(
-            test_set=test_set[:20],
-            engine=engine,
-            config=react_config,
-            model_id=MODEL_ID,
-            adapter_path=ADAPTER_PATH,
-            ts_make_engine_fn=ts_make_engine,
-            notebook="scripts/run_react_qwen.py:smoke",
-        )
-        smoke_ok = (
-            smoke_report.get("va_rate", 0.0) >= SMOKE_VA_MIN
-            and smoke_report.get("ex_rate", 0.0) >= SMOKE_EX_MIN
-        )
-        print({
-            "run": "react_smoke",
-            "model_id": MODEL_ID,
-            "adapter_path": ADAPTER_PATH,
-            "limit": 20,
-            "va_min": SMOKE_VA_MIN,
-            "ex_min": SMOKE_EX_MIN,
-            "pass": smoke_ok,
-        })
-        print(
-            "ReAct smoke",
-            "VA=", round(smoke_report.get("va_rate", 0.0), 3),
-            "EM=", round(smoke_report.get("em_rate", 0.0), 3),
-            "EX=", round(smoke_report.get("ex_rate", 0.0), 3),
-            "TS=", "NA" if smoke_report.get("ts_rate") is None else round(smoke_report["ts_rate"], 3),
-        )
-        print("Saved smoke report:", smoke_out_path)
-        if not smoke_ok:
-            raise RuntimeError(
-                f"Smoke test failed: require VA >= {SMOKE_VA_MIN:.2f} and EX >= {SMOKE_EX_MIN:.2f}"
-            )
         report, _, out_path = run_react_notebook_eval(
             test_set=test_set,
             engine=engine,

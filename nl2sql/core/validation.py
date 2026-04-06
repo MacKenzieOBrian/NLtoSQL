@@ -55,7 +55,7 @@ def schema_validate(
 
     return True, "ok", {}
 
-
+# Keep this validation narrow: reject obvious bad SQL before execution, not semantic mistakes.
 def validate_sql(
     sql: str,
     schema_text: Optional[str] = None,
